@@ -1,42 +1,42 @@
 # forestgreen — ghostty
 
-background = #111813
-foreground = #A7B59F
+background = #141C16
+foreground = #B4C1AC
 
-cursor-color = #C8D96A
-cursor-text = #111813
+cursor-color = #D2E06D
+cursor-text = #141C16
 
-selection-background = #304A32
-selection-foreground = #D9E2D1
+selection-background = #3A5540
+selection-foreground = #E0E8DA
 
 # black
-palette = 0=#111813
-palette = 8=#29352C
+palette = 0=#141C16
+palette = 8=#3A463D
 
-# red — earthy berry
+# red
 palette = 1=#9A5F52
 palette = 9=#C47765
 
-# green — forest
+# green
 palette = 2=#5F8A55
 palette = 10=#7EAE68
 
-# yellow — moss / autumn
+# yellow
 palette = 3=#A0A45A
 palette = 11=#C5C96B
 
-# blue — deep spruce
+# blue
 palette = 4=#4F7068
 palette = 12=#668F82
 
-# magenta — muted woodland purple
+# magenta
 palette = 5=#725D76
 palette = 13=#927A96
 
-# cyan — cool sage
+# cyan
 palette = 6=#60917C
 palette = 14=#82B59B
 
-# white — pale sage
-palette = 7=#A7B59F
-palette = 15=#D4DFD0
+# white
+palette = 7=#B4C1AC
+palette = 15=#E0E8DA
