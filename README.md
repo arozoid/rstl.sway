@@ -2,6 +2,8 @@
 
 ultra minimalistic sway config (based on arch linux) for those who want to make the most of their screen space
 
+![preview](./assets/images/preview.png)
+
 ## installation
 
 installation is rather easy:
@@ -30,6 +32,7 @@ follow the steps to select what you wanna do and not do, and that's basically it
 - bluez/networkmanager: set up for minimal arch install
 - ffmpeg/gstreamer/*: video / multimedia codec base
 - pipewire/pavucontrol/*: audio stack
+- nvim: vim alternative
 
 ## keybinds
 
@@ -64,3 +67,7 @@ follow the steps to select what you wanna do and not do, and that's basically it
 ---
 
 - keyboard f1-12 function keys: desktop actions (lower/higher brightness, keyboard backlight, volume, etc)
+
+## credits
+
+[melatonia/meloworld-dotfiles](https://github.com/melatonia/meloworld-dotfiles) for various desktop sounds (usb connect/remove and chime startup) and the cozy default wallpaper selection :3
