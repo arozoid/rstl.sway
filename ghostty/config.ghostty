@@ -1,8 +1,8 @@
-theme = forestgreen 
+theme = Cursor Dark 
 
 # Font — matches the JetBrainsMono Nerd Font used everywhere else in the rice
 font-family = JetBrainsMono Nerd Font
-font-size = 13
+font-size = 11.5
 
 # Cursor
 cursor-style = block
