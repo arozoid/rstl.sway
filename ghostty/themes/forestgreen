@@ -1,30 +1,42 @@
-# forestgreen — cool forest variant
+# forestgreen — ghostty
 
-background = #121A18
-foreground = #A0B09F
+background = #111813
+foreground = #A7B59F
 
-cursor-color = #D9E95A
-cursor-text = #121A18
+cursor-color = #C8D96A
+cursor-text = #111813
 
-selection-background = #3A5A35
-selection-foreground = #E0EBDD
+selection-background = #304A32
+selection-foreground = #D9E2D1
 
-# normal
-palette = 0=#121A18
-palette = 1=#6E6842
-palette = 2=#527F55
-palette = 3=#A7B84F
-palette = 4=#354F48
-palette = 5=#554765
-palette = 6=#5D9271
-palette = 7=#A0B09F
+# black
+palette = 0=#111813
+palette = 8=#29352C
 
-# bright
-palette = 8=#2A3B35
-palette = 9=#8EB84D
-palette = 10=#76B978
-palette = 11=#D9E95A
-palette = 12=#4D756A
-palette = 13=#A9A94F
-palette = 14=#9ACAA8
-palette = 15=#D3E2D1
+# red — earthy berry
+palette = 1=#9A5F52
+palette = 9=#C47765
+
+# green — forest
+palette = 2=#5F8A55
+palette = 10=#7EAE68
+
+# yellow — moss / autumn
+palette = 3=#A0A45A
+palette = 11=#C5C96B
+
+# blue — deep spruce
+palette = 4=#4F7068
+palette = 12=#668F82
+
+# magenta — muted woodland purple
+palette = 5=#725D76
+palette = 13=#927A96
+
+# cyan — cool sage
+palette = 6=#60917C
+palette = 14=#82B59B
+
+# white — pale sage
+palette = 7=#A7B59F
+palette = 15=#D4DFD0
