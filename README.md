@@ -38,22 +38,29 @@ follow the steps to select what you wanna do and not do, and that's basically it
 - win+shift+s: screenshot to clipboard and Pictures/Screenshots/*
 - win+backspace: wlogout
 
+---
+
 - win+f: fullscreen window
 - win+e: split windows horizontally/vertically
 - win+w: tabbed window layout
 - win+space: float window
 
+---
+
 - win+shift+q: kill window
 - win+hjkl/arrow keys: move between windows
 - win+shift+hjkl/arrow keys: move focused window
-
 - win+1-9: move to workspace 1-9
 - win+shift+1-9: move focused window to workspace 1-9
+
+---
 
 - win+shift+r: resize mode
     - hjkl/arrow keys: directional window resize
     - win+escape/return: back to default mode
     - win+shift+r: back to default mode
     - mouse: manually resize windows
+
+---
 
 - keyboard f1-12 function keys: desktop actions (lower/higher brightness, keyboard backlight, volume, etc)
