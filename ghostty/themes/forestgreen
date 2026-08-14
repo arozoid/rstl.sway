@@ -1,0 +1,30 @@
+# forestgreen — cool forest variant
+
+background = #121A18
+foreground = #A0B09F
+
+cursor-color = #D9E95A
+cursor-text = #121A18
+
+selection-background = #3A5A35
+selection-foreground = #E0EBDD
+
+# normal
+palette = 0=#121A18
+palette = 1=#6E6842
+palette = 2=#527F55
+palette = 3=#A7B84F
+palette = 4=#354F48
+palette = 5=#554765
+palette = 6=#5D9271
+palette = 7=#A0B09F
+
+# bright
+palette = 8=#2A3B35
+palette = 9=#8EB84D
+palette = 10=#76B978
+palette = 11=#D9E95A
+palette = 12=#4D756A
+palette = 13=#A9A94F
+palette = 14=#9ACAA8
+palette = 15=#D3E2D1

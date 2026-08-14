@@ -1,0 +1,159 @@
+configuration {
+    show-icons: true;
+    icon-theme: "Papirus-Dark";
+    drun-display-format: "{name}";
+    display-drun: "apps ";
+    font: "JetBrainsMono Nerd Font 11";
+}
+
+* {
+    background-color: transparent;
+    text-color: #ffffff;
+
+    bg: #0b0d0d;
+    bg-alt: #121616;
+    bg-selected: #1b2221;
+    border-dark: #252c2b;
+    accent: #80cbc4;
+}
+
+mainbox {
+    children: [ inputbar, listview ];
+}
+
+/* main window */
+
+window {
+    width: 500px;
+    border: 1px;
+    border-color: @border-dark;
+    border-radius: 6px;
+    background-color: @bg;
+    padding: 12px;
+}
+
+/* layout */
+
+mainbox {
+    children: [ inputbar, listview ];
+    spacing: 10px;
+    background-color: @bg;
+}
+
+/* search bar */
+
+inputbar {
+    children: [ prompt, entry ];
+    background-color: @bg-alt;
+    border-radius: 4px;
+    padding: 8px 10px;
+}
+
+prompt {
+    text-color: @accent;
+    background-color: transparent;
+}
+
+entry {
+    text-color: #ffffff;
+    background-color: transparent;
+    placeholder: "search...";
+    placeholder-color: #666666;
+}
+
+/* application list */
+
+listview {
+    lines: 8;
+    columns: 1;
+    scrollbar: false;
+    spacing: 2px;
+    background-color: @bg;
+}
+
+/* rows */
+
+element {
+    padding: 7px 8px;
+    spacing: 10px;
+    border-radius: 4px;
+    background-color: @bg;
+    text-color: #ffffff;
+}
+
+/* normal row */
+
+element normal.normal {
+    background-color: @bg;
+    text-color: #ffffff;
+}
+
+/* alternate row */
+
+element alternate.normal {
+    background-color: @bg;
+    text-color: #ffffff;
+}
+
+/* selected row */
+
+element selected.normal {
+    background-color: @bg-selected;
+    text-color: #ffffff;
+}
+
+/* urgent states */
+
+element normal.urgent {
+    background-color: @bg;
+    text-color: #ffffff;
+}
+
+element alternate.urgent {
+    background-color: @bg;
+    text-color: #ffffff;
+}
+
+element selected.urgent {
+    background-color: @bg-selected;
+    text-color: #ffffff;
+}
+
+/* active states */
+
+element normal.active {
+    background-color: @bg;
+    text-color: #ffffff;
+}
+
+element alternate.active {
+    background-color: @bg;
+    text-color: #ffffff;
+}
+
+element selected.active {
+    background-color: @bg-selected;
+    text-color: #ffffff;
+}
+
+/* icons */
+
+element-icon {
+    size: 24px;
+    background-color: transparent;
+}
+
+/* text */
+
+element-text {
+    text-color: #ffffff;
+    background-color: transparent;
+    vertical-align: 0.5;
+}
+
+/* selected text */
+
+element-text selected {
+    text-color: #ffffff;
+    background-color: transparent;
+}

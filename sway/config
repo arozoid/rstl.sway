@@ -1,0 +1,174 @@
+# sway config for rstl.sway 
+# simple, zero-margin, 1px-border setup
+
+### appearance
+default_border pixel 1
+default_floating_border pixel 1
+
+gaps inner 0
+gaps outer 0
+
+# slightly muted dark borders
+client.focused          #80cbc4 #80cbc4 #ffffff #80cbc4 #80cbc4
+client.unfocused        #37474f #37474f #dddddd #37474f #37474f
+client.focused_inactive #37474f #37474f #dddddd #37474f #37474f
+client.urgent            #ef9a9a #ef9a9a #ffffff #ef9a9a #ef9a9a
+
+### modifier
+set $mod Mod4
+
+### terminal / launcher
+set $term ghostty
+set $menu fsh
+
+bindsym $mod+Return exec $term
+bindsym $mod+d exec rofi -show drun 
+bindsym $mod+o exec $term -e fsh
+bindsym $mod+Backspace exec wlogout
+
+### session
+bindsym $mod+Shift+q kill
+bindsym $mod+Shift+e exec swaymsg exit
+bindsym $mod+r reload
+
+### focus
+bindsym $mod+h focus left
+bindsym $mod+j focus down
+bindsym $mod+k focus up
+bindsym $mod+l focus right
+
+bindsym $mod+Left focus left
+bindsym $mod+Down focus down
+bindsym $mod+Up focus up
+bindsym $mod+Right focus right
+
+### move windows
+bindsym $mod+Shift+h move left
+bindsym $mod+Shift+j move down
+bindsym $mod+Shift+k move up
+bindsym $mod+Shift+l move right
+
+bindsym $mod+Shift+Left move left
+bindsym $mod+Shift+Down move down
+bindsym $mod+Shift+Up move up
+bindsym $mod+Shift+Right move right
+
+### window state
+bindsym $mod+space floating toggle
+bindsym $mod+f fullscreen toggle
+bindsym $mod+m layout toggle split
+bindsym $mod+Tab workspace back_and_forth
+
+### workspaces
+set $ws1 "1"
+set $ws2 "2"
+set $ws3 "3"
+set $ws4 "4"
+set $ws5 "5"
+set $ws6 "6"
+set $ws7 "7"
+set $ws8 "8"
+set $ws9 "9"
+
+bindsym $mod+1 workspace $ws1
+bindsym $mod+2 workspace $ws2
+bindsym $mod+3 workspace $ws3
+bindsym $mod+4 workspace $ws4
+bindsym $mod+5 workspace $ws5
+bindsym $mod+6 workspace $ws6
+bindsym $mod+7 workspace $ws7
+bindsym $mod+8 workspace $ws8
+bindsym $mod+9 workspace $ws9
+
+### move windows to workspaces
+bindsym $mod+Shift+1 move container to workspace $ws1; workspace $ws1
+bindsym $mod+Shift+2 move container to workspace $ws2; workspace $ws2
+bindsym $mod+Shift+3 move container to workspace $ws3; workspace $ws3
+bindsym $mod+Shift+4 move container to workspace $ws4; workspace $ws4
+bindsym $mod+Shift+5 move container to workspace $ws5; workspace $ws5
+bindsym $mod+Shift+6 move container to workspace $ws6; workspace $ws6
+bindsym $mod+Shift+7 move container to workspace $ws7; workspace $ws7
+bindsym $mod+Shift+8 move container to workspace $ws8; workspace $ws8
+bindsym $mod+Shift+9 move container to workspace $ws9; workspace $ws9
+
+### workspace navigation
+bindsym $mod+Ctrl+Left workspace prev
+bindsym $mod+Ctrl+Right workspace next
+
+### layout
+bindsym $mod+s layout toggle split
+bindsym $mod+w layout tabbed
+bindsym $mod+e layout toggle split
+bindsym $mod+Shift+space floating toggle
+
+### resize mode
+mode "resize" {
+    bindsym h resize shrink width 20 px
+    bindsym j resize grow height 20 px
+    bindsym k resize shrink height 20 px
+    bindsym l resize grow width 20 px
+
+    bindsym Left resize shrink width 20 px
+    bindsym Down resize grow height 20 px
+    bindsym Up resize shrink height 20 px
+    bindsym Right resize grow width 20 px
+
+    bindsym Return mode "default"
+    bindsym Escape mode "default"
+    bindsym $mod+Shift+r mode "default"
+}
+
+bindsym $mod+Shift+r mode "resize"
+
+### mouse
+floating_modifier $mod normal
+
+### media / hardware keys
+bindsym XF86AudioRaiseVolume exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+ --limit 1.0
+bindsym XF86AudioLowerVolume exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-
+bindsym XF86AudioMute exec wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
+bindsym Shift+XF86AudioMute exec wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle
+bindsym XF86AudioMicMute exec wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle
+
+bindsym XF86MonBrightnessUp exec brightnessctl set 5%+
+bindsym XF86MonBrightnessDown exec brightnessctl set 5%-
+bindsym Shift+XF86MonBrightnessUp exec brightnessctl set 100%
+bindsym Shift+XF86MonBrightnessDown exec brightnessctl set 1%
+
+bindsym XF86AudioPlay exec playerctl play-pause
+bindsym XF86AudioNext exec playerctl next
+bindsym XF86AudioPrev exec playerctl previous
+bindsym XF86AudioStop exec playerctl stop
+
+bindsym XF86TouchpadToggle exec swaymsg input type:touchpad events toggle
+bindsym XF86WLAN exec nmcli radio wifi toggle
+bindsym XF86RFKill exec rfkill toggle wlan
+bindsym XF86Bluetooth exec rfkill toggle bluetooth
+
+### screenshots
+bindsym $mod+Shift+s exec grim -g "$(slurp)" - | tee "$HOME/Pictures/Screenshots/$(date +%Y-%m-%d_%H-%M-%S).png" | wl-copy 
+
+### autostart
+exec_always --no-startup-id ~/.config/rstl.sway/scripts/wallpaper-restore.sh
+exec --no-startup-id wl-paste --type text --watch cliphist store
+exec --no-startup-id wl-paste --type image --watch cliphist store
+exec --no-startup-id ~/.local/bin/nightlight.sh
+exec --no-startup-id ~/.config/rstl.sway/scripts/chime.sh
+exec --no-startup-id ~/.config/rstl.sway/scripts/usb-sound.sh
+
+### cursor
+seat seat0 xcursor_theme Bibata-Modern-Classic 22
+
+### focus behavior
+focus_follows_mouse yes
+mouse_warping none
+
+### floating
+smart_gaps off
+
+### startup
+# wallpaper is handled by scripts/wallpaper-restore.sh (autostart above)
+exec --no-startup-id waybar
+
+exec_always --no-startup-id kill $(pgrep waybar); waybar
+exec_always --no-startup-id kill $(pgrep mako); mako

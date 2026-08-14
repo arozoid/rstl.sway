@@ -1,0 +1,63 @@
+// ~/.config/waybar/config
+
+{
+    "layer": "top",
+    "position": "top",
+
+    "modules-left": [
+        "backlight",
+        "custom/spacer",
+        "sway/workspaces"
+    ],
+
+    "modules-center": [
+        "clock"
+    ],
+
+    "modules-right": [
+        "cpu",
+        "memory",
+        //"network",
+        "pulseaudio",
+        "battery"
+    ],
+
+    "clock": {
+        "format": "{:%H:%M}"
+    },
+
+    "cpu": {
+        "format": "cpu {usage}%"
+    },
+
+    "memory": {
+        "format": "ram {}%"
+    },
+
+    "network": {
+        "format-wifi": "↓ {bandwidthDownBytes} ↑ {bandwidthUpBytes}",
+        "format-ethernet": "↓ {bandwidthDownBytes} ↑ {bandwidthUpBytes}",
+        "format-disconnected": "offline"
+    },
+
+    "pulseaudio": {
+        "format": "vol {volume}%"
+    },
+
+    "battery": {
+        "format": "bat {capacity}%"
+    },
+
+    "backlight": {
+        "device": "intel_backlight",
+        "format": "{percent}%",
+        "format-icons": ["li"],
+        "on-scroll-up": "brightnessctl set +1%",
+        "on-scroll-down": "brightnessctl set 1%-"
+    },
+
+    "custom/spacer": {
+        "format": " ", // Add as many spaces as you need
+        "tooltip": false
+    }
+}
