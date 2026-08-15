@@ -1,6 +1,6 @@
 # rstl.sway
 
-ultra minimalistic sway config (based on arch linux) for those who want to make the most of their screen space
+ultra minimalistic sway config (based on arch linux) for those who want to make the most of their screen space (optimized for laptops)
 
 ![preview](./assets/images/preview.png)
 
@@ -18,21 +18,30 @@ follow the steps to select what you wanna do and not do, and that's basically it
 
 ## programs
 
-- ghostty: customizable and stylized terminal
 - awww: lightweight wallpaper daemon
 - waybar: heavily customizable navigation bar
 - sway: tiling window manager
 - mako: lightweight notification daemon
-- fish: friendly interactive shell
 - rofi: minimal and customizable launcher
+
+---
+
 - grim/slurp: screenshot tools
 - wl-clipboard/cliphist: wayland clipboard
 - greetd/tuigreet: ultra minimal greet program
 - ttf-jetbrains-mono-nerd/noto-fonts-emoji: for terminal and other apps
+
+---
+
 - bluez/networkmanager: set up for minimal arch install
 - ffmpeg/gstreamer/*: video / multimedia codec base
 - pipewire/pavucontrol/*: audio stack
+
+---
+
+- ghostty: customizable and stylized terminal
 - nvim: vim alternative
+- fish: friendly interactive shell
 
 ## keybinds
 
@@ -67,6 +76,7 @@ follow the steps to select what you wanna do and not do, and that's basically it
 ---
 
 - keyboard f1-12 function keys: desktop actions (lower/higher brightness, keyboard backlight, volume, etc)
+- win+r: reload config
 
 ## credits
 
