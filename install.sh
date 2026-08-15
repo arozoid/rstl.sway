@@ -392,7 +392,7 @@ steps=(
   "1|copy dotfiles to ~/.config/rstl.sway|Copy dotfiles into ~/.config/rstl.sway?|step_1"
   "2|install required packages|Install all required packages?|step_2"
   "3|symlink dotfile directories|Symlink dotfile directories to their proper paths?|step_3"
-  "4|greetd + tuirgeet setup|Set up greetd + tuirgeet as the login manager?|step_4"
+  "4|greetd + tuigreet setup|Set up greetd + tuigreet as the login manager?|step_4"
   "5|fish default shell + final preferences|Set fish as the default shell and apply final preferences?|step_5"
   "6|wallpaper setup|Set up the wallpaper?|step_6"
 )

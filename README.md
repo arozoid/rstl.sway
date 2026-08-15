@@ -80,4 +80,4 @@ follow the steps to select what you wanna do and not do, and that's basically it
 
 ## credits
 
-[melatonia/meloworld-dotfiles](https://github.com/melatonia/meloworld-dotfiles) for various desktop sounds (usb connect/remove and chime startup) and the cozy default wallpaper selection :3
+[melatonia/meloworld-dotfiles](https://github.com/melatonia/meloworld-dotfiles) for various desktop sounds (usb connect/remove and chime startup) and the cozy wallpaper selection :3
