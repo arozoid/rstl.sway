@@ -170,5 +170,5 @@ smart_gaps off
 # wallpaper is handled by scripts/wallpaper-restore.sh (autostart above)
 exec --no-startup-id waybar
 
-exec_always --no-startup-id kill $(pgrep waybar); waybar
-exec_always --no-startup-id kill $(pgrep mako); mako
+exec_always --no-startup-id sh -c 'pkill waybar; sleep 0.2; waybar'
+exec_always --no-startup-id pkill mako; mako
