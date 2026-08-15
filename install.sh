@@ -268,10 +268,10 @@ step_3() {
 }
 
 # ---------------------------------------------------------------------------
-# Step 4: greetd / tuirgeet setup
+# Step 4: greetd / tuigreet setup
 # ---------------------------------------------------------------------------
 step_4() {
-  info "greetd + tuirgeet setup"
+  info "greetd + tuigreet setup"
 
   if ! [[ -e /etc/greetd/config.toml ]]; then
     warn "/etc/greetd/config.toml missing — did step 3 run?"
