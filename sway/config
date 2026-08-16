@@ -8,11 +8,11 @@ default_floating_border pixel 1
 gaps inner 0
 gaps outer 0
 
-# slightly muted dark borders
-client.focused          #80cbc4 #80cbc4 #ffffff #80cbc4 #80cbc4
-client.unfocused        #37474f #37474f #dddddd #37474f #37474f
-client.focused_inactive #37474f #37474f #dddddd #37474f #37474f
-client.urgent            #ef9a9a #ef9a9a #ffffff #ef9a9a #ef9a9a
+# forest-green borders
+client.focused          #76a882 #76a882 #e8f5ea #76a882 #76a882
+client.unfocused        #3f6047 #3f6047 #c4d5c8 #3f6047 #3f6047
+client.focused_inactive #527a5b #527a5b #d0dfd3 #527a5b #527a5b
+client.urgent            #9aff9a #9aff9a #ffffff #9aff9a #9aff9a
 
 ### modifier
 set $mod Mod4 

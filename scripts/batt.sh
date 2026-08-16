@@ -25,7 +25,7 @@ now=$(date +%s)
 # Low battery reminder
 if [ "$capacity" -le "$LOW" ] && [ "$status" = "Discharging" ]; then
     if (( now - last_low >= INTERVAL )); then
-        notify-send "Plug in Charger!" "Battery is at ${capacity}%"
+        notify-send -u critical "Plug in Charger!" "Battery is at ${capacity}%"
         paplay /usr/share/sounds/freedesktop/stereo/suspend-error.oga
         last_low=$now
     fi
@@ -36,7 +36,7 @@ fi
 # High battery reminder
 if [ "$capacity" -ge "$HIGH" ] && [ "$status" = "Charging" ]; then
     if (( now - last_high >= INTERVAL )); then
-        notify-send "Unplug Charger!" "Battery reached ${capacity}%"
+        notify-send -u critical "Unplug Charger!" "Battery reached ${capacity}%"
         paplay /usr/share/sounds/freedesktop/stereo/suspend-error.oga
         last_high=$now
     fi
