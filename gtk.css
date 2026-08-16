@@ -1,0 +1,19 @@
+* {
+    border-radius: 0;
+}
+
+window {
+    border-radius: 0;
+}
+
+button {
+    border-radius: 0;
+}
+
+entry {
+    border-radius: 0;
+}
+
+popover {
+    border-radius: 0;
+}

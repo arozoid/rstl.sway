@@ -397,9 +397,34 @@ DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${uid}/bus
 }
 
 # ---------------------------------------------------------------------------
-# Step 7: fish as default shell + final preferences
+# Step 7: gtk theme (gtk.css)
 # ---------------------------------------------------------------------------
 step_7() {
+  info "gtk theme setup (gtk.css)"
+
+  local gtk_css="$DOTFILES_DIR/gtk.css"
+  if [[ ! -f "$gtk_css" ]]; then
+    warn "no gtk.css found in ${DOTFILES_DIR} — skipping"
+    return 1
+  fi
+
+  local ver dir
+  for ver in 3.0 4.0; do
+    dir="$HOME/.config/gtk-${ver}"
+    mkdir -p "$dir"
+    if [[ -f "$dir/gtk.css" ]]; then
+      mv "$dir/gtk.css" "$dir/gtk.css.bak"
+      warn "moved existing ${dir}/gtk.css to gtk.css.bak"
+    fi
+    cp -a "$gtk_css" "$dir/gtk.css"
+    ok "copied gtk.css to ${dir}"
+  done
+}
+
+# ---------------------------------------------------------------------------
+# Step 8: fish as default shell + final preferences
+# ---------------------------------------------------------------------------
+step_8() {
   info "fish default shell + final preferences"
 
   if command -v fish >/dev/null 2>&1; then
@@ -450,7 +475,8 @@ steps=(
   "4|greetd + tuigreet setup|Set up greetd + tuigreet as the login manager?|step_4"
   "5|wallpaper setup|Set up the wallpaper?|step_5"
   "6|battery alerts (40% / 80%)|Set up the 40% / 80% battery alerts (batt.sh)?|step_6"
-  "7|fish default shell + final preferences|Set fish as the default shell and apply final preferences?|step_7"
+  "7|gtk theme (gtk.css)|Copy gtk.css to gtk-3.0 and gtk-4.0?|step_7"
+  "8|fish default shell + final preferences|Set fish as the default shell and apply final preferences?|step_8"
 )
 
 for entry in "${steps[@]}"; do
