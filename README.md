@@ -23,6 +23,7 @@ follow the steps to select what you wanna do and not do, and that's basically it
 - sway: tiling window manager
 - mako: lightweight notification daemon
 - rofi: minimal and customizable launcher
+- wlogout: customizable power menu
 
 ---
 
