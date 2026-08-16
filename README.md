@@ -38,6 +38,7 @@ follow the steps to select what you wanna do and not do, and that's basically it
 - bluez/networkmanager: set up for minimal arch install
 - ffmpeg/gstreamer/*: video / multimedia codec base
 - pipewire/pavucontrol/*: audio stack
+- gnome-keyring (optional): secret session API
 
 ---
 
