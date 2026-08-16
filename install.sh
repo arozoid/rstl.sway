@@ -312,6 +312,12 @@ setup_wallpaper() {
 
   mkdir -p "$wp_dir"
 
+  # copy bundled wallpapers from the dotfiles repo, if any
+  if [[ -d "$DOTFILES_DIR/wallpapers" ]] && compgen -G "$DOTFILES_DIR/wallpapers/*" >/dev/null; then
+    cp -a "$DOTFILES_DIR"/wallpapers/. "$wp_dir"/
+    ok "copied wallpapers from ${DOTFILES_DIR}/wallpapers to ${wp_dir}"
+  fi
+
   if [[ ! -f "$wp_conf" ]]; then
     printf '%s\n' "~/Pictures/Wallpapers/wallpaper.jpg" > "$wp_conf"
     ok "wrote wallpaper config ${wp_conf}"
@@ -328,7 +334,7 @@ setup_wallpaper() {
     fi
     if [[ -n "$magick_bin" ]]; then
       printf "  ${C_DIM}generating a default wallpaper at ${wp_file}${C_RESET}\n"
-      "$magick_bin" -size 2560x1600 gradient:'#12161c'-'#263238' "$wp_file"
+      "$magick_bin" -size 2560x1600 gradient:'#3f8f4f'-'#0b160e' "$wp_file"
       ok "default wallpaper generated"
     else
       warn "imagemagick not available — no default wallpaper generated."
