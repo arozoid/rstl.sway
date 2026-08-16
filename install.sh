@@ -422,9 +422,56 @@ step_7() {
 }
 
 # ---------------------------------------------------------------------------
-# Step 8: fish as default shell + final preferences
+# Step 8: pam + gnome keyring integration (greetd)
 # ---------------------------------------------------------------------------
 step_8() {
+  info "pam + gnome keyring integration"
+
+  if [[ ! -x /usr/bin/pacman ]]; then
+    warn "pacman not found — skipping (this script targets Arch Linux)."
+    return 1
+  fi
+
+  run_sudo pacman -S --needed --noconfirm gnome-keyring
+
+  if [[ ! -f /etc/pam.d/greetd ]]; then
+    warn "/etc/pam.d/greetd not found — is greetd installed?"
+    return 1
+  fi
+
+  # keep a pristine copy of the original pam config
+  if [[ ! -f /etc/pam.d/greetd.rstl.bak ]]; then
+    run_sudo cp /etc/pam.d/greetd /etc/pam.d/greetd.rstl.bak
+    ok "backed up /etc/pam.d/greetd -> greetd.rstl.bak"
+  else
+    ok "backup greetd.rstl.bak already exists"
+  fi
+
+  # auth line (unlock the keyring at login)
+  if ! grep -qE '^auth.*pam_gnome_keyring\.so' /etc/pam.d/greetd; then
+    run_sudo sed -i \
+      '/^auth.*include.*system-local-login/a auth       optional     pam_gnome_keyring.so' \
+      /etc/pam.d/greetd
+  fi
+
+  # session line (start the keyring daemon)
+  if ! grep -qE '^session.*pam_gnome_keyring\.so' /etc/pam.d/greetd; then
+    run_sudo sed -i \
+      '/^session.*include.*system-local-login/a session    optional     pam_gnome_keyring.so auto_start' \
+      /etc/pam.d/greetd
+  fi
+
+  if grep -qE 'pam_gnome_keyring\.so' /etc/pam.d/greetd; then
+    ok "gnome keyring pam integration in place (auth + session)"
+  else
+    warn "could not verify pam integration in /etc/pam.d/greetd"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Step 9: fish as default shell + final preferences
+# ---------------------------------------------------------------------------
+step_9() {
   info "fish default shell + final preferences"
 
   if command -v fish >/dev/null 2>&1; then
@@ -476,7 +523,8 @@ steps=(
   "5|wallpaper setup|Set up the wallpaper?|step_5"
   "6|battery alerts (40% / 80%)|Set up the 40% / 80% battery alerts (batt.sh)?|step_6"
   "7|gtk theme (gtk.css)|Copy gtk.css to gtk-3.0 and gtk-4.0?|step_7"
-  "8|fish default shell + final preferences|Set fish as the default shell and apply final preferences?|step_8"
+  "8|pam + gnome keyring|Integrate gnome keyring with greetd pam?|step_8"
+  "9|fish default shell + final preferences|Set fish as the default shell and apply final preferences?|step_9"
 )
 
 for entry in "${steps[@]}"; do
