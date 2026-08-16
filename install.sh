@@ -196,7 +196,7 @@ step_2() {
     pipewire wireplumber pipewire-pulse pipewire-alsa alsa-utils pulseaudio-utils pavucontrol
 
     # notifications + polkit
-    libnotify polkit
+    libnotify polkit sound-theme-freedesktop
 
     # login manager
     greetd greetd-tuigreet
@@ -214,7 +214,7 @@ step_2() {
     xorg-xwayland xdg-utils xdg-desktop-portal-wlr
 
     # misc CLI referenced by the dotfiles
-    hwinfo expac gnu-netcat grub
+    hwinfo expac gnu-netcat grub cronie
 
     # video / multimedia codec base for a minimal install
     ffmpeg gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav
@@ -303,42 +303,7 @@ step_4() {
 }
 
 # ---------------------------------------------------------------------------
-# Step 5: fish as default shell + final preferences
-# ---------------------------------------------------------------------------
-step_5() {
-  info "fish default shell + final preferences"
-
-  if command -v fish >/dev/null 2>&1; then
-    printf "  ${C_DIM}setting fish as the default shell for ${USER}${C_RESET}\n"
-    run_sudo chsh -s "$(command -v fish)" "$USER"
-    ok "default shell is now fish"
-  else
-    warn "fish not installed — skipping shell change"
-  fi
-
-  # fish config sourced a CachyOS-only file; guard it so vanilla Arch works
-  local fishconf="$HOME/.config/fish/config.fish"
-  if [[ -f "$fishconf" ]] && ! grep -q 'if test -f /usr/share/cachyos-fish-config' "$fishconf"; then
-    sed -i 's|^source /usr/share/cachyos-fish-config/conf.d/done.fish$|if test -f /usr/share/cachyos-fish-config/conf.d/done.fish\n    source /usr/share/cachyos-fish-config/conf.d/done.fish\nend|' "$fishconf"
-    ok "guarded cachyos-fish-config source in ${fishconf}"
-  fi
-
-  # keep the user's own 'done' notifications working (already shipped in conf.d)
-
-  printf "  ${C_DIM}enabling lingering + pipewire user services${C_RESET}\n"
-  run_sudo loginctl enable-linger "$USER"
-  sudo -u "$USER" systemctl --user enable pipewire.socket pipewire-pulse.socket wireplumber.service >/dev/null 2>&1 || \
-    warn "could not enable pipewire user services (enable them after login if needed)"
-
-  printf "  ${C_DIM}enabling system services (network, bluetooth)${C_RESET}\n"
-  run_sudo systemctl enable NetworkManager.service >/dev/null 2>&1
-  run_sudo systemctl enable bluetooth.service >/dev/null 2>&1
-
-  ok "final preferences applied"
-}
-
-# ---------------------------------------------------------------------------
-# Step 6: wallpaper setup
+# Step 5: wallpaper setup
 # ---------------------------------------------------------------------------
 setup_wallpaper() {
   local wp_dir="$HOME/Pictures/Wallpapers"
@@ -374,9 +339,90 @@ setup_wallpaper() {
   fi
 }
 
-step_6() {
+step_5() {
   info "wallpaper setup"
   setup_wallpaper
+}
+
+# ---------------------------------------------------------------------------
+# Step 6: battery alerts (scripts/batt.sh) via cronie / crontab
+# ---------------------------------------------------------------------------
+step_6() {
+  info "battery alerts setup (40% / 80%)"
+
+  # remove the old systemd timer config, if any
+  if systemctl --user is-enabled batt.timer >/dev/null 2>&1; then
+    systemctl --user disable --now batt.timer >/dev/null 2>&1 || true
+  fi
+  rm -f "$HOME/.config/systemd/user/batt.service" "$HOME/.config/systemd/user/batt.timer"
+  systemctl --user daemon-reload >/dev/null 2>&1 || true
+
+  if ! command -v crontab >/dev/null 2>&1; then
+    warn "crontab not found — install cronie (step 2) and re-run this step."
+    return 1
+  fi
+
+  # make sure cronie is running
+  run_sudo systemctl enable --now cronie.service >/dev/null 2>&1 || \
+    warn "could not enable cronie.service — start it manually (systemctl enable --now cronie)"
+
+  local uid
+  uid="$(id -u)"
+
+  local cron_content="# rstl.sway battery alerts (40% / 80%)
+SHELL=/bin/bash
+XDG_RUNTIME_DIR=/run/user/${uid}
+DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${uid}/bus
+
+* * * * * ${DOTFILES_DIR}/scripts/batt.sh >/dev/null 2>&1
+"
+
+  # crontab - replaces the whole file, so merge with anything already there
+  local existing merged
+  existing="$(crontab -l 2>/dev/null || true)"
+  if [[ -n "$existing" ]]; then
+    merged="$(printf '%s\n' "$existing" | grep -vE 'batt\.sh' || true)"
+    printf '%s\n%s' "$merged" "$cron_content" | crontab -
+  else
+    printf '%s\n' "$cron_content" | crontab -
+  fi
+
+  ok "battery alerts enabled in crontab (every minute, notify at ≤40% and ≥80%)"
+}
+
+# ---------------------------------------------------------------------------
+# Step 7: fish as default shell + final preferences
+# ---------------------------------------------------------------------------
+step_7() {
+  info "fish default shell + final preferences"
+
+  if command -v fish >/dev/null 2>&1; then
+    printf "  ${C_DIM}setting fish as the default shell for ${USER}${C_RESET}\n"
+    run_sudo chsh -s "$(command -v fish)" "$USER"
+    ok "default shell is now fish"
+  else
+    warn "fish not installed — skipping shell change"
+  fi
+
+  # fish config sourced a CachyOS-only file; guard it so vanilla Arch works
+  local fishconf="$HOME/.config/fish/config.fish"
+  if [[ -f "$fishconf" ]] && ! grep -q 'if test -f /usr/share/cachyos-fish-config' "$fishconf"; then
+    sed -i 's|^source /usr/share/cachyos-fish-config/conf.d/done.fish$|if test -f /usr/share/cachyos-fish-config/conf.d/done.fish\n    source /usr/share/cachyos-fish-config/conf.d/done.fish\nend|' "$fishconf"
+    ok "guarded cachyos-fish-config source in ${fishconf}"
+  fi
+
+  # keep the user's own 'done' notifications working (already shipped in conf.d)
+
+  printf "  ${C_DIM}enabling lingering + pipewire user services${C_RESET}\n"
+  run_sudo loginctl enable-linger "$USER"
+  sudo -u "$USER" systemctl --user enable pipewire.socket pipewire-pulse.socket wireplumber.service >/dev/null 2>&1 || \
+    warn "could not enable pipewire user services (enable them after login if needed)"
+
+  printf "  ${C_DIM}enabling system services (network, bluetooth)${C_RESET}\n"
+  run_sudo systemctl enable NetworkManager.service >/dev/null 2>&1
+  run_sudo systemctl enable bluetooth.service >/dev/null 2>&1
+
+  ok "final preferences applied"
 }
 
 # ---------------------------------------------------------------------------
@@ -396,8 +442,9 @@ steps=(
   "2|install required packages|Install all required packages?|step_2"
   "3|symlink dotfile directories|Symlink dotfile directories to their proper paths?|step_3"
   "4|greetd + tuigreet setup|Set up greetd + tuigreet as the login manager?|step_4"
-  "5|fish default shell + final preferences|Set fish as the default shell and apply final preferences?|step_5"
-  "6|wallpaper setup|Set up the wallpaper?|step_6"
+  "5|wallpaper setup|Set up the wallpaper?|step_5"
+  "6|battery alerts (40% / 80%)|Set up the 40% / 80% battery alerts (batt.sh)?|step_6"
+  "7|fish default shell + final preferences|Set fish as the default shell and apply final preferences?|step_7"
 )
 
 for entry in "${steps[@]}"; do
@@ -415,6 +462,7 @@ printf "  ${C_BOLD}Next steps${C_RESET}\n"
 printf "  ${C_DIM}• Reboot (or log out) to start the greetd → sway session.${C_RESET}\n"
 printf "  ${C_DIM}• The default shell change applies to new shells.${C_RESET}\n"
 printf "  ${C_DIM}• Edit ~/.config/rstl.sway/wallpaper to point at your own image.${C_RESET}\n"
+printf "  ${C_DIM}• Battery alerts fire via cronie (crontab) every minute.${C_RESET}\n"
 rule "$C_GREEN"
 printf "  ${C_DIM}Notes: 'nightlight.sh', 'fsh' and the Bibata cursor theme are${C_RESET}\n"
 printf "  ${C_DIM}personal extras and are NOT installed by this script. 'light'${C_RESET}\n"

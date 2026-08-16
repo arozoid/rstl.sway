@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Battery charge reminder. Single-shot: a scheduler (systemd user timer
-# batt.timer, 10s) invokes it repeatedly. Throttle state survives across
-# invocations via a state file, so no long-running while-loop is needed.
+# Battery charge reminder. Single-shot: cronie invokes it every minute
+# (see install.sh step 6). Throttle state survives across invocations via a
+# state file, so no long-running while-loop is needed.
 
 LOW=40
 HIGH=80
