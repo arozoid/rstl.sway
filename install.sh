@@ -264,6 +264,8 @@ step_3() {
   link_dir "$DOTFILES_DIR/fish"     "$HOME/.config/fish"
   link_dir "$DOTFILES_DIR/ghostty"  "$HOME/.config/ghostty"
   link_dir "$DOTFILES_DIR/nvim"     "$HOME/.config/nvim"
+  link_dir "$DOTFILES_DIR/wlogout"  "$HOME/.config/wlogout"
+  link_dir "$DOTFILES_DIR/assets"   "$DOTFILES_DIR/wlogout/assets" 
   link_dir "$DOTFILES_DIR/greetd"   "/etc/greetd" yes
 }
 
