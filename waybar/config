@@ -15,19 +15,36 @@
     ],
 
     "modules-right": [
-        "cpu",
+        "custom/cpu",
         "memory",
         //"network",
         "pulseaudio",
         "battery"
     ],
 
+    
     "clock": {
-        "format": "{:%H:%M}"
+        "format": "{:%H:%M}",
+        "tooltip-format": "<tt><small>{calendar}</small></tt>",
+        "calendar": {
+            "mode": "month",
+            "weeks-pos": "left", 
+            "iso8601": true,
+            "format": {
+                "months": "<span color='#a3b18a'><b>{}</b></span>",
+                "days": "<span color='#e9ecef'><b>{}</b></span>",
+                "weeks": "<span color='#588157'><b>{}</b></span>",
+                "weekdays": "<span color='#ddb892'><b>{}</b></span>",
+                "today": "<span color='#a3b18a'><b><u>{}</u></b></span>"
+            }
+        }
     },
 
-    "cpu": {
-        "format": "cpu {usage}%"
+    "custom/cpu": {
+        "exec": "~/.config/waybar/scripts/cpu-tooltip.sh",
+        "return-type": "json",
+        "format": "{}",
+        "tooltip": true
     },
 
     "memory": {

@@ -15,7 +15,7 @@ client.focused_inactive #37474f #37474f #dddddd #37474f #37474f
 client.urgent            #ef9a9a #ef9a9a #ffffff #ef9a9a #ef9a9a
 
 ### modifier
-set $mod Mod4
+set $mod Mod4 
 
 ### terminal / launcher
 set $term ghostty
@@ -23,7 +23,7 @@ set $menu fsh
 
 bindsym $mod+Return exec $term
 bindsym $mod+d exec rofi -show drun 
-bindsym $mod+o exec $term -e fsh
+bindsym $mod+o exec $term -e $menu 
 bindsym $mod+Backspace exec wlogout
 
 ### session
@@ -168,7 +168,5 @@ smart_gaps off
 
 ### startup
 # wallpaper is handled by scripts/wallpaper-restore.sh (autostart above)
-exec --no-startup-id waybar
-
-exec_always --no-startup-id sh -c 'pkill waybar; sleep 0.2; waybar'
-exec_always --no-startup-id pkill mako; mako
+exec_always --no-startup-id sh -c 'killall -q waybar; sleep 0.2; waybar'
+exec_always --no-startup-id sh -c 'killall -q mako; sleep 0.2; mako'
