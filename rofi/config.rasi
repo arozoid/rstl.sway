@@ -8,27 +8,33 @@ configuration {
 
 * {
     background-color: transparent;
-    text-color: #ffffff;
+    text-color: #d0ddd3;
 
-    bg: #0b0d0d;
-    bg-alt: #121616;
-    bg-selected: #1b2221;
-    border-dark: #252c2b;
-    accent: #80cbc4;
-}
+    bg: #0b120d;
+    bg-alt: #142418;
+    bg-search: #1d3024;
+    bg-selected: #214f2b;
 
-mainbox {
-    children: [ inputbar, listview ];
+    border-dark: #294a31;
+    border: #35633f;
+
+    accent: #76a882;
+    accent-bright: #9aff9a;
+
+    text-muted: #91a596;
 }
 
 /* main window */
 
 window {
     width: 500px;
+
     border: 1px;
     border-color: @border-dark;
-    border-radius: 6px;
+    border-radius: 0;
+
     background-color: @bg;
+
     padding: 12px;
 }
 
@@ -44,8 +50,14 @@ mainbox {
 
 inputbar {
     children: [ prompt, entry ];
-    background-color: @bg-alt;
-    border-radius: 4px;
+
+    background-color: @bg-search;
+
+    border: 1px;
+    border-color: @border;
+
+    border-radius: 0;
+
     padding: 8px 10px;
 }
 
@@ -55,10 +67,11 @@ prompt {
 }
 
 entry {
-    text-color: #ffffff;
+    text-color: #d0ddd3;
     background-color: transparent;
+
     placeholder: "search...";
-    placeholder-color: #666666;
+    placeholder-color: @text-muted;
 }
 
 /* application list */
@@ -66,9 +79,19 @@ entry {
 listview {
     lines: 8;
     columns: 1;
+
     scrollbar: false;
+
     spacing: 2px;
+
     background-color: @bg;
+
+    border: 1px;
+    border-color: @border-dark;
+
+    border-radius: 0;
+
+    padding: 0px;
 }
 
 /* rows */
@@ -76,64 +99,75 @@ listview {
 element {
     padding: 7px 8px;
     spacing: 10px;
-    border-radius: 4px;
+
+    border-radius: 0;
+
     background-color: @bg;
-    text-color: #ffffff;
+    text-color: @text-muted;
 }
 
-/* normal row */
+/* normal */
 
 element normal.normal {
     background-color: @bg;
-    text-color: #ffffff;
+    text-color: @text-muted;
 }
 
-/* alternate row */
+/* alternate */
 
 element alternate.normal {
     background-color: @bg;
-    text-color: #ffffff;
+    text-color: @text-muted;
 }
 
-/* selected row */
+/* selected */
 
 element selected.normal {
     background-color: @bg-selected;
-    text-color: #ffffff;
+    text-color: #e8f5ea;
+
+    border: 1px;
+    border-color: @accent;
 }
 
-/* urgent states */
+/* urgent */
 
 element normal.urgent {
     background-color: @bg;
-    text-color: #ffffff;
+    text-color: @accent-bright;
 }
 
 element alternate.urgent {
     background-color: @bg;
-    text-color: #ffffff;
+    text-color: @accent-bright;
 }
 
 element selected.urgent {
     background-color: @bg-selected;
     text-color: #ffffff;
+
+    border: 1px;
+    border-color: @accent-bright;
 }
 
-/* active states */
+/* active */
 
 element normal.active {
     background-color: @bg;
-    text-color: #ffffff;
+    text-color: @text-muted;
 }
 
 element alternate.active {
     background-color: @bg;
-    text-color: #ffffff;
+    text-color: @text-muted;
 }
 
 element selected.active {
     background-color: @bg-selected;
-    text-color: #ffffff;
+    text-color: #e8f5ea;
+
+    border: 1px;
+    border-color: @accent;
 }
 
 /* icons */
@@ -146,7 +180,7 @@ element-icon {
 /* text */
 
 element-text {
-    text-color: #ffffff;
+    text-color: @text-muted;
     background-color: transparent;
     vertical-align: 0.5;
 }
@@ -154,6 +188,6 @@ element-text {
 /* selected text */
 
 element-text selected {
-    text-color: #ffffff;
+    text-color: #e8f5ea;
     background-color: transparent;
 }
