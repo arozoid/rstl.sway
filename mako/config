@@ -10,7 +10,7 @@ margin=6
 
 font=JetBrainsMono Nerd 11
 
-default-timeout=0
+default-timeout=6000
 
 [urgency="low"]
 background-color=#1d3024F5

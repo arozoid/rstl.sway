@@ -211,7 +211,7 @@ step_2() {
     ttf-jetbrains-mono-nerd noto-fonts noto-fonts-emoji
 
     # wayland helpers
-    xorg-xwayland xdg-utils xdg-desktop-portal-wlr
+    xorg-xwayland xdg-utils xdg-desktop-portal-wlr xdg-desktop-portal-gtk
 
     # misc CLI referenced by the dotfiles
     hwinfo expac gnu-netcat grub cronie

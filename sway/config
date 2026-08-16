@@ -26,6 +26,9 @@ bindsym $mod+d exec rofi -show drun
 bindsym $mod+o exec $term -e $menu 
 bindsym $mod+Backspace exec wlogout
 
+### window rules
+for_window [app_id="xdg-desktop-portal-gtk"] floating enable, resize set width 900 px height 600 px, move position center
+
 ### session
 bindsym $mod+Shift+q kill
 bindsym $mod+Shift+e exec swaymsg exit
@@ -156,6 +159,9 @@ exec --no-startup-id ~/.local/bin/nightlight.sh
 exec --no-startup-id ~/.config/rstl.sway/scripts/chime.sh
 exec --no-startup-id ~/.config/rstl.sway/scripts/usb-sound.sh
 
+exec_always --no-startup-id sh -c 'killall -q waybar; sleep 0.2; waybar'
+exec_always --no-startup-id sh -c 'killall -q mako; sleep 0.2; mako'
+
 ### cursor
 seat seat0 xcursor_theme Bibata-Modern-Classic 22
 
@@ -167,6 +173,4 @@ mouse_warping none
 smart_gaps off
 
 ### startup
-# wallpaper is handled by scripts/wallpaper-restore.sh (autostart above)
-exec_always --no-startup-id sh -c 'killall -q waybar; sleep 0.2; waybar'
-exec_always --no-startup-id sh -c 'killall -q mako; sleep 0.2; mako'
+exec_always sh -c 'export XDG_CURRENT_DESKTOP=sway XDG_SESSION_DESKTOP=sway; dbus-update-activation-environment --systemd XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP WAYLAND_DISPLAY DISPLAY'
