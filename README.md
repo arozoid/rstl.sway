@@ -3,6 +3,7 @@
 ultra minimalistic sway config (based on arch linux) for those who want to make the most of their screen space (optimized for laptops)
 
 ![preview](./assets/images/preview.png)
+![wlogout](./assets/images/wlogout.png)
 
 ## installation
 
