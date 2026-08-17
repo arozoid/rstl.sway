@@ -1,0 +1,15 @@
+sway swaybg waybar rofi mako swaylock swayidle
+grim slurp wl-clipboard cliphist
+awww imagemagick
+playerctl brightnessctl light acpi
+networkmanager bluez bluez-utils
+pipewire wireplumber pipewire-pulse pipewire-alsa alsa-utils pulseaudio-utils pavucontrol
+libnotify polkit sound-theme-freedesktop
+greetd greetd-tuigreet
+foot fish fastfetch bat eza zoxide jq ranger
+neovim git curl wget unzip ripgrep fd make gcc
+ttf-jetbrains-mono-nerd noto-fonts noto-fonts-emoji
+xorg-xwayland xdg-utils xdg-desktop-portal-wlr
+hwinfo expac gnu-netcat grub cronie
+ffmpeg gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav
+mesa vulkan-icd-loader

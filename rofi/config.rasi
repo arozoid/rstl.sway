@@ -13,7 +13,7 @@ configuration {
     bg: #0b120d;
     bg-alt: #142418;
     bg-search: #1d3024;
-    bg-selected: #214f2b;
+    bg-selected: #1d3024;
 
     border-dark: #294a31;
     border: #35633f;

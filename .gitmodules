@@ -2,3 +2,9 @@
 [submodule "nvim"]
 	path = nvim
 	url = https://github.com/arozoid/rustle.nvim
+[submodule "ranger"]
+	path = ranger
+	url = https://github.com/arozoid/rustle.ranger
+[submodule "rstlpk"]
+	path = rstlpk
+	url = https://github.com/arozoid/rstlpk

@@ -1,0 +1,9 @@
+# rstl.sway idle/lock daemon
+# lock after 3 minutes idle, suspend (with dpms) after 10 minutes
+
+timeout 180 ~/.config/rstl.sway/scripts/lock.sh
+timeout 600 'swaymsg "output * dpms off"'
+resume 'swaymsg "output * dpms on"'
+lock ~/.config/rstl.sway/scripts/lock.sh
+unlock 'swaymsg "output * dpms on"'
+before-sleep ~/.config/rstl.sway/scripts/lock.sh

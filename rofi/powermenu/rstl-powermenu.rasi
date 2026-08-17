@@ -1,0 +1,81 @@
+/* rstl.sway power menu — wlogout-style 3x2 grid */
+
+configuration {
+    show-icons: true;
+    font: "JetBrainsMono Nerd Font 14";
+}
+
+window {
+    width: 540px;
+
+    border: 1px;
+    border-color: #26382c;
+    border-radius: 0;
+
+    background-color: rgba(10, 15, 12, 0.94);
+
+    padding: 8px;
+}
+
+mainbox {
+    children: [ listview ];
+    spacing: 0;
+    background-color: transparent;
+}
+
+listview {
+    columns: 3;
+    lines: 2;
+    fixed-columns: true;
+    flow: horizontal;
+
+    spacing: 8px;
+    padding: 0px;
+
+    scrollbar: false;
+    background-color: transparent;
+}
+
+element {
+    children: [ element-icon, element-text ];
+    orientation: vertical;
+
+    spacing: 14px;
+    padding: 20px 10px 16px;
+
+    border: 1px;
+    border-color: #26382c;
+    border-radius: 0;
+
+    background-color: rgba(16, 24, 19, 0.85);
+}
+
+element normal.normal {
+    background-color: rgba(16, 24, 19, 0.85);
+    border-color: #26382c;
+}
+
+element selected.normal {
+    background-color: #1d3024;
+    border-color: #62856b;
+}
+
+element-icon {
+    size: 42px;
+
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+
+    background-color: transparent;
+}
+
+element-text {
+    horizontal-align: 0.5;
+
+    text-color: #c8d5cb;
+    background-color: transparent;
+}
+
+element selected.normal element-text {
+    text-color: #e0ebe3;
+}

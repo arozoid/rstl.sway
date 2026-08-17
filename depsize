@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+file="${1:-packages.txt}"
+
+# extract package names from a shell-style package list
+mapfile -t packages < <(
+    sed \
+        -e 's/#.*//' \
+        -e 's/local packages=(//' \
+        -e 's/)//' \
+        "$file" |
+    tr '[:space:]' '\n' |
+    sed '/^$/d'
+)
+
+# collect every transitive dependency
+mapfile -t deps < <(
+    for pkg in "${packages[@]}"; do
+        pactree -u "$pkg" 2>/dev/null
+    done |
+    sort -u
+)
+
+total=0
+
+for pkg in "${deps[@]}"; do
+    size=$(
+        pacman -Qi "$pkg" 2>/dev/null |
+        awk '
+            /^Installed Size/ {
+                size = $4
+                unit = $5
+
+                if (unit == "KiB")
+                    size /= 1024
+                else if (unit == "GiB")
+                    size *= 1024
+
+                print size
+                exit
+            }
+        '
+    )
+
+    if [[ -n "$size" ]]; then
+        total=$(awk -v a="$total" -v b="$size" 'BEGIN { print a + b }')
+    fi
+done
+
+printf '%s packages in dependency tree\n' "${#deps[@]}"
+printf 'TOTAL INSTALLED SIZE: %.2f MiB\n' "$total"
+printf 'TOTAL INSTALLED SIZE: %.2f GiB\n' "$(awk -v x="$total" 'BEGIN { print x / 1024 }')"

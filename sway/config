@@ -18,16 +18,18 @@ client.urgent            #9aff9a #9aff9a #ffffff #9aff9a #9aff9a
 set $mod Mod4 
 
 ### terminal / launcher
-set $term ghostty
+set $term foot
 set $menu fsh
 
 bindsym $mod+Return exec $term
 bindsym $mod+d exec rofi -show drun 
 bindsym $mod+o exec $term -e $menu 
-bindsym $mod+Backspace exec wlogout
+bindsym $mod+Backspace exec ~/.config/rstl.sway/rofi/powermenu/rstl-powermenu.sh
+bindsym $mod+Escape exec ~/.config/rstl.sway/scripts/lock.sh
 
 ### window rules
-for_window [app_id="xdg-desktop-portal-gtk"] floating enable, resize set width 900 px height 600 px, move position center
+for_window [app_id="termfilechooser"] floating enable, resize set width 1000 px height 600 px, move position center
+for_window [app_id="rstlpk"] floating enable, resize set width 650 px height 250 px, move position center
 
 ### session
 bindsym $mod+Shift+q kill
@@ -153,6 +155,7 @@ bindsym $mod+Shift+s exec grim -g "$(slurp)" - | tee "$HOME/Pictures/Screenshots
 
 ### autostart
 exec_always --no-startup-id ~/.config/rstl.sway/scripts/wallpaper-restore.sh
+exec --no-startup-id swayidle -w -C ~/.config/swayidle/config
 exec --no-startup-id wl-paste --type text --watch cliphist store
 exec --no-startup-id wl-paste --type image --watch cliphist store
 exec --no-startup-id ~/.local/bin/nightlight.sh
@@ -161,6 +164,9 @@ exec --no-startup-id ~/.config/rstl.sway/scripts/usb-sound.sh
 
 exec_always --no-startup-id sh -c 'killall -q waybar; sleep 0.2; waybar'
 exec_always --no-startup-id sh -c 'killall -q mako; sleep 0.2; mako'
+
+# polkit authentication agent (our own minimal agent, no gtk)
+exec_always --no-startup-id /bin/rstlpk
 
 ### cursor
 seat seat0 xcursor_theme Bibata-Modern-Classic 22

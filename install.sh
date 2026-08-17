@@ -104,6 +104,52 @@ run_sudo() {
   sudo "$@"
 }
 
+# build an AUR package manually with git + makepkg (no AUR helper required)
+build_aur() {
+  local pkg="$1"
+
+  if ! command -v makepkg >/dev/null 2>&1; then
+    warn "makepkg not found — install 'base-devel' and re-run this step."
+    return 1
+  fi
+  if ! command -v git >/dev/null 2>&1; then
+    warn "git not found — cannot build '${pkg}' from the AUR."
+    return 1
+  fi
+
+  local build_dir
+  build_dir="$(mktemp -d)"
+  printf "  ${C_DIM}building '${pkg}' from the AUR (no helper found)${C_RESET}\n"
+  if ! git clone "https://aur.archlinux.org/${pkg}.git" "$build_dir/$pkg" >/dev/null 2>&1; then
+    warn "could not clone the AUR package '${pkg}'."
+    rm -rf "$build_dir"
+    return 1
+  fi
+
+  ( cd "$build_dir/$pkg" && makepkg -si --noconfirm )
+  local rc=$?
+  if [[ $rc -eq 0 ]]; then
+    ok "${pkg} built and installed from the AUR"
+  else
+    warn "'${pkg}' build failed (rc=${rc}) — build it manually in ${build_dir}"
+    rm -rf "$build_dir"
+  fi
+  return $rc
+}
+
+# install an AUR package via the user's preferred AUR helper (yay/paru),
+# falling back to a manual git + makepkg build when no helper is present
+install_aur() {
+  local pkg="$1"
+  if command -v yay >/dev/null 2>&1; then
+    yay -S --needed --noconfirm "$pkg"
+  elif command -v paru >/dev/null 2>&1; then
+    paru -S --needed --noconfirm "$pkg"
+  else
+    build_aur "$pkg"
+  fi
+}
+
 # combined step header + confirmation prompt
 ask_step() {
   local idx="$1" label="$2" question="$3"
@@ -177,8 +223,8 @@ step_2() {
   fi
 
   local packages=(
-    # window manager / bar / launcher / notifications
-    sway swaybg waybar rofi mako wlogout
+    # window manager / bar / launcher / notifications / lock screen
+    sway swaybg waybar rofi mako swaylock swayidle
 
     # screenshots / clipboard history
     grim slurp wl-clipboard cliphist
@@ -201,8 +247,8 @@ step_2() {
     # login manager
     greetd greetd-tuigreet
 
-    # terminal + shell
-    ghostty fish fastfetch bat eza zoxide jq
+    # terminal + shell + terminal file manager (for the file chooser portal)
+    foot fish fastfetch bat eza zoxide jq ranger
 
     # editor
     neovim git curl wget unzip ripgrep fd make gcc
@@ -211,10 +257,10 @@ step_2() {
     ttf-jetbrains-mono-nerd noto-fonts noto-fonts-emoji
 
     # wayland helpers
-    xorg-xwayland xdg-utils xdg-desktop-portal-wlr xdg-desktop-portal-gtk
+    xorg-xwayland xdg-utils xdg-desktop-portal-wlr
 
     # misc CLI referenced by the dotfiles
-    hwinfo expac gnu-netcat grub cronie
+    expac git cronie
 
     # video / multimedia codec base for a minimal install
     ffmpeg gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav
@@ -223,6 +269,10 @@ step_2() {
 
   printf "  ${C_DIM}installing: %s${C_RESET}\n" "${packages[*]}"
   run_sudo pacman -S --needed --noconfirm "${packages[@]}"
+
+  # AUR: terminal file chooser portal backend (not in the official repos)
+  install_aur xdg-desktop-portal-termfilechooser
+
   ok "packages installed"
 }
 
@@ -259,15 +309,39 @@ step_3() {
   info "symlinking dotfile directories"
 
   link_dir "$DOTFILES_DIR/sway"     "$HOME/.config/sway"
+  link_dir "$DOTFILES_DIR/swaylock" "$HOME/.config/swaylock"
+  link_dir "$DOTFILES_DIR/swayidle" "$HOME/.config/swayidle"
   link_dir "$DOTFILES_DIR/waybar"   "$HOME/.config/waybar"
   link_dir "$DOTFILES_DIR/rofi"     "$HOME/.config/rofi"
   link_dir "$DOTFILES_DIR/fish"     "$HOME/.config/fish"
-  link_dir "$DOTFILES_DIR/ghostty"  "$HOME/.config/ghostty"
+  link_dir "$DOTFILES_DIR/foot"     "$HOME/.config/foot"
   link_dir "$DOTFILES_DIR/nvim"     "$HOME/.config/nvim"
-  link_dir "$DOTFILES_DIR/wlogout"  "$HOME/.config/wlogout"
-  link_dir "$DOTFILES_DIR/assets"   "$DOTFILES_DIR/wlogout/assets"
   link_dir "$DOTFILES_DIR/mako"     "$HOME/.config/mako"
+  link_dir "$DOTFILES_DIR/ranger"   "$HOME/.config/ranger"
   link_dir "$DOTFILES_DIR/greetd"   "/etc/greetd" yes
+
+  # xdg-desktop-portal-termfilechooser: prefer it for file pickers
+  local portal_dir="$HOME/.config/xdg-desktop-portal-termfilechooser"
+  mkdir -p "$portal_dir"
+  if [[ -e "$portal_dir/config" ]] && ! diff -q "$DOTFILES_DIR/portal/config" "$portal_dir/config" >/dev/null 2>&1; then
+    mv "$portal_dir/config" "$portal_dir/config.bak"
+    warn "moved existing ${portal_dir}/config to config.bak"
+  fi
+  cp -a "$DOTFILES_DIR/portal/config" "$portal_dir/config"
+  cp -a "$DOTFILES_DIR/portal/ranger-wrapper.sh" "$portal_dir/ranger-wrapper.sh"
+  chmod +x "$portal_dir/ranger-wrapper.sh"
+  ok "configured ${portal_dir}/config (ranger file chooser)"
+
+  local portals_conf="$HOME/.config/xdg-desktop-portal/portals.conf"
+  mkdir -p "$(dirname "$portals_conf")"
+  if [[ ! -f "$portals_conf" ]]; then
+    printf '%s\n' \
+      '[preferred]' \
+      'org.freedesktop.impl.portal.FileChooser=termfilechooser' > "$portals_conf"
+    ok "preferred termfilechooser in ${portals_conf}"
+  else
+    ok "portals.conf already present: ${portals_conf}"
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -397,34 +471,9 @@ DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${uid}/bus
 }
 
 # ---------------------------------------------------------------------------
-# Step 7: gtk theme (gtk.css)
+# Step 7: pam + gnome keyring integration (greetd)
 # ---------------------------------------------------------------------------
 step_7() {
-  info "gtk theme setup (gtk.css)"
-
-  local gtk_css="$DOTFILES_DIR/gtk.css"
-  if [[ ! -f "$gtk_css" ]]; then
-    warn "no gtk.css found in ${DOTFILES_DIR} — skipping"
-    return 1
-  fi
-
-  local ver dir
-  for ver in 3.0 4.0; do
-    dir="$HOME/.config/gtk-${ver}"
-    mkdir -p "$dir"
-    if [[ -f "$dir/gtk.css" ]]; then
-      mv "$dir/gtk.css" "$dir/gtk.css.bak"
-      warn "moved existing ${dir}/gtk.css to gtk.css.bak"
-    fi
-    cp -a "$gtk_css" "$dir/gtk.css"
-    ok "copied gtk.css to ${dir}"
-  done
-}
-
-# ---------------------------------------------------------------------------
-# Step 8: pam + gnome keyring integration (greetd)
-# ---------------------------------------------------------------------------
-step_8() {
   info "pam + gnome keyring integration"
 
   if [[ ! -x /usr/bin/pacman ]]; then
@@ -469,10 +518,10 @@ step_8() {
 }
 
 # ---------------------------------------------------------------------------
-# Step 9: fish as default shell + final preferences
+# Step 8: fish as default shell
 # ---------------------------------------------------------------------------
-step_9() {
-  info "fish default shell + final preferences"
+step_8() {
+  info "fish default shell"
 
   if command -v fish >/dev/null 2>&1; then
     printf "  ${C_DIM}setting fish as the default shell for ${USER}${C_RESET}\n"
@@ -488,8 +537,45 @@ step_9() {
     sed -i 's|^source /usr/share/cachyos-fish-config/conf.d/done.fish$|if test -f /usr/share/cachyos-fish-config/conf.d/done.fish\n    source /usr/share/cachyos-fish-config/conf.d/done.fish\nend|' "$fishconf"
     ok "guarded cachyos-fish-config source in ${fishconf}"
   fi
+}
 
-  # keep the user's own 'done' notifications working (already shipped in conf.d)
+# ---------------------------------------------------------------------------
+# Step 9: install rstlpk polkit agent
+# ---------------------------------------------------------------------------
+step_9() {
+  info "install rstlpk polkit agent"
+
+  local rstlpk_dir="$DOTFILES_DIR/rstlpk"
+
+  if [[ ! -f "$rstlpk_dir/install.sh" ]]; then
+    warn "rstlpk/install.sh not found — skipping"
+    return 1
+  fi
+
+  if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+    warn "neither curl nor wget found — install one and re-run this step."
+    return 1
+  fi
+
+  run_sudo "$rstlpk_dir/install.sh"
+
+  local swayconf="$HOME/.config/sway/config"
+  if [[ -f "$swayconf" ]] && ! grep -q '/bin/rstlpk' "$swayconf"; then
+    printf '%s\n' \
+      '' \
+      '# polkit authentication agent (our own minimal agent, no gtk)' \
+      'exec_always --no-startup-id /bin/rstlpk' >> "$swayconf"
+    ok "added rstlpk polkit auth agent to sway autostart"
+  else
+    ok "rstlpk polkit auth agent already in sway config"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Step 10: final preferences
+# ---------------------------------------------------------------------------
+step_10() {
+  info "final preferences"
 
   printf "  ${C_DIM}enabling lingering + pipewire user services${C_RESET}\n"
   run_sudo loginctl enable-linger "$USER"
@@ -501,6 +587,59 @@ step_9() {
   run_sudo systemctl enable bluetooth.service >/dev/null 2>&1
 
   ok "final preferences applied"
+}
+
+# ---------------------------------------------------------------------------
+# Step 11: remove unnecessary dotfile directories
+# ---------------------------------------------------------------------------
+step_11() {
+  info "cleanup: remove unnecessary dotfile directories"
+
+  local removed=0
+
+  # directories that are no longer needed after install
+  local dirs=(
+    rstlpk        # source code — binary is now at /bin/rstlpk
+    wallpapers    # copied to ~/Pictures/Wallpapers in step 5
+    depsize       # dev utility
+    nvim/.git     # submodule git internal
+    ranger/.git   # submodule git internal
+  )
+
+  for d in "${dirs[@]}"; do
+    local full="$DOTFILES_DIR/$d"
+    if [[ -e "$full" || -L "$full" ]]; then
+      rm -rf "$full"
+      ok "removed ${d}"
+      removed=1
+    fi
+  done
+
+  # files that are no longer needed after install
+  local files=(
+    packages.txt
+    README.md
+    install.sh    # this script itself
+    .git          # repo git internals
+    .gitmodules   # submodule config
+  )
+
+  for f in "${files[@]}"; do
+    local full="$DOTFILES_DIR/$f"
+    if [[ -e "$full" || -L "$full" ]]; then
+      rm -f "$full"
+      ok "removed ${f}"
+      removed=1
+    fi
+  done
+
+  # python bytecache
+  while IFS= read -r -d '' pycache; do
+    rm -rf "$pycache"
+    removed=1
+  done < <(find "$DOTFILES_DIR" -type d -name '__pycache__' -print0 2>/dev/null)
+
+  [[ $removed -eq 1 ]] && ok "cleaned up" || ok "nothing to clean"
 }
 
 # ---------------------------------------------------------------------------
@@ -522,9 +661,11 @@ steps=(
   "4|greetd + tuigreet setup|Set up greetd + tuigreet as the login manager?|step_4"
   "5|wallpaper setup|Set up the wallpaper?|step_5"
   "6|battery alerts (40% / 80%)|Set up the 40% / 80% battery alerts (batt.sh)?|step_6"
-  "7|gtk theme (gtk.css)|Copy gtk.css to gtk-3.0 and gtk-4.0?|step_7"
-  "8|pam + gnome keyring|Integrate gnome keyring with greetd pam?|step_8"
-  "9|fish default shell + final preferences|Set fish as the default shell and apply final preferences?|step_9"
+  "7|pam + gnome keyring|Integrate gnome keyring with greetd pam?|step_7"
+  "8|fish default shell|Set fish as the default shell?|step_8"
+  "9|install rstlpk|Build and install the rstlpk polkit agent to /bin?|step_9"
+  "10|final preferences|Enable lingering, pipewire, network, bluetooth?|step_10"
+  "11|cleanup|Remove build artifacts and caches from the dotfiles?|step_11"
 )
 
 for entry in "${steps[@]}"; do

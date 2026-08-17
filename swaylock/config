@@ -1,0 +1,43 @@
+# rstl.sway lock screen — foresty ring on the current wallpaper
+# palette: #0b160e base, #1d3024 panel, #4d7458 muted, #76a882 accent
+
+color=0b160e
+font=JetBrainsMono Nerd Font
+
+# the "lock ring" — forest green
+ring-color=4d7458
+ring-ver-color=76a882
+ring-wrong-color=8a5f5f
+ring-clear-color=62856b
+
+# inside of the ring
+inside-color=0b160e
+inside-ver-color=1d3024
+inside-wrong-color=3a2626
+inside-clear-color=1d3024
+
+# keypress / backspace highlights
+key-hl-color=76a882
+bs-hl-color=8a5f5f
+caps-lock-key-hl-color=76a882
+caps-lock-bs-hl-color=8a5f5f
+
+# indicator text
+text-color=0b160e
+text-ver-color=c8d5cb
+text-wrong-color=e08a7c
+text-clear-color=c8d5cb
+
+# indicator outline
+line-color=0b160e
+line-ver-color=1d3024
+line-wrong-color=3a2626
+line-clear-color=1d3024
+
+separator-color=1d3024
+
+indicator-idle-visible
+indicator-radius=60
+indicator-thickness=10
+
+ignore-empty-password
