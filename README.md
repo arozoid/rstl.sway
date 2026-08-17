@@ -18,6 +18,7 @@ this setup includes but is not limited to:
 - audio protocols
 - network manager
 - login screen
+- papirus icon theme
 and several more features, such as polkit + keepassxc keyring management + xdg portal integration.
 
 ## installation
