@@ -5,6 +5,14 @@ set mouse
 set preview
 set icons
 set incsearch
+set dirfirst
+
+# foresty green borders
+set drawbox
+set borderfmt "\033[38;5;65m"
+
+# cursor styling (muted green highlight)
+set cursoractivefmt "\033[38;5;108m\033[48;5;65m"
 
 # use the foresty green colors
 source ~/.config/lf/colors

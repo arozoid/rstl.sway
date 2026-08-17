@@ -4,7 +4,7 @@ ultra lean & minimalistic sway config (based on arch linux) for those who want t
 
 ![preview](./assets/images/preview.png)
 
-the package installation size for the full desktop experience totals to about 959 MiB. this setup includes but is not limited to:
+the entire package installation size for the full desktop experience totals to about 959 MiB (ironically smaller than xfce tree). this setup includes but is not limited to:
 - window manager
 - minimal bar
 - launcher
@@ -16,6 +16,7 @@ the package installation size for the full desktop experience totals to about 95
 - multimedia codecs
 - audio protocols
 - network manager
+- login screen
 and several more features, such as polkit + keepassxc keyring management + xdg portal integration.
 
 ## installation

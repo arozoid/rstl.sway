@@ -26,9 +26,9 @@ ow=38;5;65     # other-writable — forest green
 # regular files — pale gray (dashboard desc)
 fi=38;5;252
 
-# selection
-sn=0;7         # selected name — reverse
-sb=0;7         # selection bar — reverse
+# selection — muted green highlight
+sn=38;5;108;48;5;65
+sb=38;5;108;48;5;65
 
 # cursor line
-da=38;5;252    # directory under cursor
+da=38;5;252
