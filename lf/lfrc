@@ -17,6 +17,10 @@ set cursoractivefmt "\033[38;5;108m\033[48;5;65m"
 # use the foresty green colors
 source ~/.config/lf/colors
 
+# open highlighted file/folder on enter
+map <enter> open
+map <return> open
+
 # keybindings
 map q quit
 map . set hidden!

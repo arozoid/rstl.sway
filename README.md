@@ -9,6 +9,7 @@ the entire package installation size for the full desktop experience totals to a
 - minimal bar
 - launcher
 - notifications
+- lf file manager
 - lock screen
 - screenshots
 - clipboard history

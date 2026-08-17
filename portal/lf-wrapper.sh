@@ -21,16 +21,16 @@ termcmd="${TERMCMD:-foot -a termfilechooser -T 'terminal filechooser'}"
 
 if [ "$save" = "1" ]; then
     # save a file
-    set -- -command "cmd-set save-path $path" -selection-path "$out"
+	set -- -selection-path "$out" "$path"
 elif [ "$directory" = "1" ]; then
     # upload files from a directory
-    set -- -command "cmd-set dir-only true" -selection-path "$out" "$path"
+	set -- -last-dir-path "$out" "$path"
 elif [ "$multiple" = "1" ]; then
     # upload multiple files
-    set -- -multi -selection-path "$out" "$path"
+	set -- -selection-path "$out" "$path"
 else
     # upload only 1 file
-    set -- -selection-path "$out" "$path"
+	set -- -selection-path "$out" "$path"
 fi
 
 command="$termcmd $cmd"
