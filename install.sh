@@ -224,7 +224,7 @@ step_2() {
 
   local packages=(
     # window manager / bar / launcher / notifications / lock screen
-    sway swaybg waybar rofi mako swaylock swayidle
+    sway swaybg rofi mako swaylock swayidle
 
     # screenshots / clipboard history
     grim slurp wl-clipboard cliphist
@@ -241,14 +241,14 @@ step_2() {
     # audio (pipewire stack + alsa tools used by rofi applets)
     pipewire wireplumber pipewire-pulse pipewire-alsa alsa-utils pulseaudio-utils pavucontrol
 
-    # notifications + polkit
-    libnotify polkit sound-theme-freedesktop
+    # notifications + password manager
+    libnotify keepassxc sound-theme-freedesktop
 
     # login manager
     greetd greetd-tuigreet
 
     # terminal + shell + terminal file manager (for the file chooser portal)
-    foot fish fastfetch bat eza zoxide jq ranger
+    foot fish fastfetch bat eza zoxide jq lf
 
     # editor
     neovim git curl wget unzip ripgrep fd make gcc
@@ -262,6 +262,9 @@ step_2() {
     # misc CLI referenced by the dotfiles
     expac git cronie
 
+    # AUR helper (used for waybar-minimal-git, etc.)
+    yay
+
     # video / multimedia codec base for a minimal install
     ffmpeg gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav
     mesa vulkan-icd-loader
@@ -270,7 +273,8 @@ step_2() {
   printf "  ${C_DIM}installing: %s${C_RESET}\n" "${packages[*]}"
   run_sudo pacman -S --needed --noconfirm "${packages[@]}"
 
-  # AUR: terminal file chooser portal backend (not in the official repos)
+  # AUR: not in the official repos
+  install_aur waybar-minimal-git
   install_aur xdg-desktop-portal-termfilechooser
 
   ok "packages installed"
@@ -317,7 +321,7 @@ step_3() {
   link_dir "$DOTFILES_DIR/foot"     "$HOME/.config/foot"
   link_dir "$DOTFILES_DIR/nvim"     "$HOME/.config/nvim"
   link_dir "$DOTFILES_DIR/mako"     "$HOME/.config/mako"
-  link_dir "$DOTFILES_DIR/ranger"   "$HOME/.config/ranger"
+  link_dir "$DOTFILES_DIR/lf"       "$HOME/.config/lf"
   link_dir "$DOTFILES_DIR/greetd"   "/etc/greetd" yes
 
   # xdg-desktop-portal-termfilechooser: prefer it for file pickers
@@ -328,9 +332,9 @@ step_3() {
     warn "moved existing ${portal_dir}/config to config.bak"
   fi
   cp -a "$DOTFILES_DIR/portal/config" "$portal_dir/config"
-  cp -a "$DOTFILES_DIR/portal/ranger-wrapper.sh" "$portal_dir/ranger-wrapper.sh"
-  chmod +x "$portal_dir/ranger-wrapper.sh"
-  ok "configured ${portal_dir}/config (ranger file chooser)"
+  cp -a "$DOTFILES_DIR/portal/lf-wrapper.sh" "$portal_dir/lf-wrapper.sh"
+  chmod +x "$portal_dir/lf-wrapper.sh"
+  ok "configured ${portal_dir}/config (lf file chooser)"
 
   local portals_conf="$HOME/.config/xdg-desktop-portal/portals.conf"
   mkdir -p "$(dirname "$portals_conf")"
@@ -471,56 +475,9 @@ DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${uid}/bus
 }
 
 # ---------------------------------------------------------------------------
-# Step 7: pam + gnome keyring integration (greetd)
-# ---------------------------------------------------------------------------
-step_7() {
-  info "pam + gnome keyring integration"
-
-  if [[ ! -x /usr/bin/pacman ]]; then
-    warn "pacman not found — skipping (this script targets Arch Linux)."
-    return 1
-  fi
-
-  run_sudo pacman -S --needed --noconfirm gnome-keyring
-
-  if [[ ! -f /etc/pam.d/greetd ]]; then
-    warn "/etc/pam.d/greetd not found — is greetd installed?"
-    return 1
-  fi
-
-  # keep a pristine copy of the original pam config
-  if [[ ! -f /etc/pam.d/greetd.rstl.bak ]]; then
-    run_sudo cp /etc/pam.d/greetd /etc/pam.d/greetd.rstl.bak
-    ok "backed up /etc/pam.d/greetd -> greetd.rstl.bak"
-  else
-    ok "backup greetd.rstl.bak already exists"
-  fi
-
-  # auth line (unlock the keyring at login)
-  if ! grep -qE '^auth.*pam_gnome_keyring\.so' /etc/pam.d/greetd; then
-    run_sudo sed -i \
-      '/^auth.*include.*system-local-login/a auth       optional     pam_gnome_keyring.so' \
-      /etc/pam.d/greetd
-  fi
-
-  # session line (start the keyring daemon)
-  if ! grep -qE '^session.*pam_gnome_keyring\.so' /etc/pam.d/greetd; then
-    run_sudo sed -i \
-      '/^session.*include.*system-local-login/a session    optional     pam_gnome_keyring.so auto_start' \
-      /etc/pam.d/greetd
-  fi
-
-  if grep -qE 'pam_gnome_keyring\.so' /etc/pam.d/greetd; then
-    ok "gnome keyring pam integration in place (auth + session)"
-  else
-    warn "could not verify pam integration in /etc/pam.d/greetd"
-  fi
-}
-
-# ---------------------------------------------------------------------------
 # Step 8: fish as default shell
 # ---------------------------------------------------------------------------
-step_8() {
+step_7() {
   info "fish default shell"
 
   if command -v fish >/dev/null 2>&1; then
@@ -542,7 +499,7 @@ step_8() {
 # ---------------------------------------------------------------------------
 # Step 9: install rstlpk polkit agent
 # ---------------------------------------------------------------------------
-step_9() {
+step_8() {
   info "install rstlpk polkit agent"
 
   local rstlpk_dir="$DOTFILES_DIR/rstlpk"
@@ -574,7 +531,7 @@ step_9() {
 # ---------------------------------------------------------------------------
 # Step 10: final preferences
 # ---------------------------------------------------------------------------
-step_10() {
+step_9() {
   info "final preferences"
 
   printf "  ${C_DIM}enabling lingering + pipewire user services${C_RESET}\n"
@@ -590,10 +547,10 @@ step_10() {
 }
 
 # ---------------------------------------------------------------------------
-# Step 11: remove unnecessary dotfile directories
+# Step 10: cleanup
 # ---------------------------------------------------------------------------
-step_11() {
-  info "cleanup: remove unnecessary dotfile directories"
+step_10() {
+  info "cleanup"
 
   local removed=0
 
@@ -639,6 +596,15 @@ step_11() {
     removed=1
   done < <(find "$DOTFILES_DIR" -type d -name '__pycache__' -print0 2>/dev/null)
 
+  # remove orphaned make dependencies
+  printf "  ${C_DIM}removing orphaned packages...${C_RESET}\n"
+  run_sudo pacman -Rns --noconfirm $(pacman -Qdtq 2>/dev/null) 2>/dev/null || true
+
+  # clear pacman cache
+  printf "  ${C_DIM}clearing pacman cache...${C_RESET}\n"
+  run_sudo pacman -Scc --noconfirm 2>/dev/null || true
+  run_sudo rm -rf /var/cache/pacman/pkg/* 2>/dev/null || true
+
   [[ $removed -eq 1 ]] && ok "cleaned up" || ok "nothing to clean"
 }
 
@@ -661,11 +627,10 @@ steps=(
   "4|greetd + tuigreet setup|Set up greetd + tuigreet as the login manager?|step_4"
   "5|wallpaper setup|Set up the wallpaper?|step_5"
   "6|battery alerts (40% / 80%)|Set up the 40% / 80% battery alerts (batt.sh)?|step_6"
-  "7|pam + gnome keyring|Integrate gnome keyring with greetd pam?|step_7"
-  "8|fish default shell|Set fish as the default shell?|step_8"
-  "9|install rstlpk|Build and install the rstlpk polkit agent to /bin?|step_9"
-  "10|final preferences|Enable lingering, pipewire, network, bluetooth?|step_10"
-  "11|cleanup|Remove build artifacts and caches from the dotfiles?|step_11"
+  "7|fish default shell|Set fish as the default shell?|step_7"
+  "8|install rstlpk|Build and install the rstlpk polkit agent to /bin?|step_8"
+  "9|final preferences|Enable lingering, pipewire, network, bluetooth?|step_9"
+  "10|cleanup|Remove build artifacts and caches from the dotfiles?|step_10"
 )
 
 for entry in "${steps[@]}"; do

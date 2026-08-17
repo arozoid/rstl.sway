@@ -1,7 +1,7 @@
-# xdg-desktop-portal-termfilechooser — pick files in ranger (our ranger config)
+# xdg-desktop-portal-termfilechooser — pick files in lf (our lf config)
 
 [filechooser]
-cmd=ranger-wrapper.sh
+cmd=lf-wrapper.sh
 default_dir=$HOME
 env=TERMCMD='foot -a termfilechooser -T "terminal filechooser"'
 open_mode=suggested

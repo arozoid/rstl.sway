@@ -1,0 +1,23 @@
+# rstl — lf config
+
+set hidden
+set mouse
+set preview
+set icons
+set incsearch
+
+# use the foresty green colors
+source ~/.config/lf/colors
+
+# keybindings
+map q quit
+map . set hidden!
+map gh cd ~
+map gd cd ~/Documents
+map gl cd ~/Pictures
+map gD cd ~/Downloads
+map gs cd ~/.config/rstl.sway
+
+# preview
+set previewer scope.sh
+set cleaner cleanup.sh

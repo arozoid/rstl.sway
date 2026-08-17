@@ -4,7 +4,7 @@ ultra lean & minimalistic sway config (based on arch linux) for those who want t
 
 ![preview](./assets/images/preview.png)
 
-the package installation size for the full desktop experience totals to about 1.3gib. this setup includes but is not limited to:
+the package installation size for the full desktop experience totals to about 959 MiB. this setup includes but is not limited to:
 - window manager
 - minimal bar
 - launcher
@@ -12,11 +12,11 @@ the package installation size for the full desktop experience totals to about 1.
 - lock screen
 - screenshots
 - clipboard history
-- neovim
+- neovim text editor
 - multimedia codecs
 - audio protocols
 - network manager
-and several more features, such as polkit + gnome-keyring + xdg portal integration.
+and several more features, such as polkit + keepassxc keyring management + xdg portal integration.
 
 ## installation
 
@@ -44,7 +44,8 @@ then install each package group below, skipping whatever you don't need:
 #### window manager / bar / launcher / notifications / lock screen
 
 ```bash
-sudo pacman -S --needed sway swaybg waybar rofi mako swaylock swayidle
+sudo pacman -S --needed sway swaybg rofi mako swaylock swayidle
+sudo pacman -S --needed yay && yay -S --needed waybar-minimal-git
 ```
 
 #### screenshots / clipboard history
@@ -92,7 +93,7 @@ sudo pacman -S --needed greetd greetd-tuigreet
 #### terminal / shell / terminal file manager
 
 ```bash
-sudo pacman -S --needed foot fish fastfetch bat eza zoxide jq ranger
+sudo pacman -S --needed foot fish fastfetch bat eza zoxide jq lf
 ```
 
 #### editor
@@ -143,7 +144,7 @@ ln -s ~/.config/rstl.sway/fish     ~/.config/fish
 ln -s ~/.config/rstl.sway/foot     ~/.config/foot
 ln -s ~/.config/rstl.sway/nvim     ~/.config/nvim
 ln -s ~/.config/rstl.sway/mako     ~/.config/mako
-ln -s ~/.config/rstl.sway/ranger   ~/.config/ranger
+ln -s ~/.config/rstl.sway/lf       ~/.config/lf
 sudo ln -s ~/.config/rstl.sway/greetd /etc/greetd
 ```
 
@@ -157,7 +158,7 @@ sudo ln -s ~/.config/rstl.sway/greetd /etc/greetd
 ## programs
 
 - awww: lightweight wallpaper daemon
-- waybar: heavily customizable navigation bar
+- waybar-minimal-git (AUR): heavily customizable navigation bar
 - sway: tiling window manager
 - mako: lightweight notification daemon
 - rofi: minimal and customizable launcher
@@ -174,14 +175,14 @@ sudo ln -s ~/.config/rstl.sway/greetd /etc/greetd
 - bluez/networkmanager: set up for minimal arch install
 - ffmpeg/gstreamer/*: video / multimedia codec base
 - pipewire/pavucontrol/*: audio stack
-- gnome-keyring (optional): secret session API
+- keepassxc (optional): password manager
 - rstlpk (this repo): our own minimal polkit auth agent (no gtk; prompt in foot)
-- xdg-desktop-portal-termfilechooser (AUR): file pickers open in ranger
+- xdg-desktop-portal-termfilechooser (AUR): file pickers open in lf
 
 ---
 
 - foot: fast, feature-rich terminal (rust)
-- ranger: terminal file manager (used by the file chooser portal)
+- lf: terminal file manager (used by the file chooser portal)
 - nvim: vim alternative
 - fish: friendly interactive shell
 
