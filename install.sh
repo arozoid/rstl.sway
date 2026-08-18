@@ -228,8 +228,8 @@ step_2() {
     # editor
     neovim git curl wget unzip ripgrep fd make gcc
 
-    # fonts (JetBrainsMono Nerd Font used in the rice)
-    ttf-jetbrains-mono-nerd noto-fonts noto-fonts-emoji
+    # emoji support 
+    noto-fonts-emoji
 
     # wayland helpers
     xorg-xwayland xdg-utils xdg-desktop-portal-wlr
@@ -251,6 +251,8 @@ step_2() {
     dssd
     yambar
     xdg-desktop-portal-termfilechooser
+    ttf-jetbrains-mono-nerd-min
+    papirus-icon-theme-dark-only
   )
 
   printf "  ${C_DIM}installing: %s${C_RESET}\n" "${packages[*]}"

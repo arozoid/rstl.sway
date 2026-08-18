@@ -1,4 +1,4 @@
-# rstl.sway ⋅ 1 GiB desktop
+# rstl.sway ⋅ ~0.69 GiB desktop
 
 ultra lean & minimalistic sway config (based on arch linux) for those who want to make the most of their screen space while keeping all the features and storage space (optimized for laptops)
 
@@ -20,7 +20,7 @@ this setup includes but is not limited to:
 - login screen
 - papirus icon theme
 
-and several more features, such as [polkit authentication](https://github.com/arozoid/rstlpk) + dssd secret service + xdg portal integration. (1 GiB installed size on base arch linux install)
+and several more features, such as [polkit authentication](https://github.com/arozoid/rstlpk) + dssd secret service + xdg portal integration. (~0.7 GiB installed size on base arch linux install)
 
 ## installation
 
@@ -51,7 +51,8 @@ prefer doing everything by hand? see [MANUAL_INSTALL.md](MANUAL_INSTALL.md)
 - grim/slurp: screenshot tools
 - wl-clipboard/cliphist: wayland clipboard
 - greetd/tuigreet: ultra minimal greet program
-- ttf-jetbrains-mono-nerd/noto-fonts-emoji: for terminal and other apps
+- ttf-jetbrains-mono-nerd-min ([rstl.repo](https://github.com/arozoid/rstl.repo))/noto-fonts-emoji: for terminal and other apps
+- papirus-icon-theme-dark-only ([rstl.repo](https://github.com/arozoid/rstl.repo)): for rofi launcher and other utilities
 
 ---
 
