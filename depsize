@@ -13,11 +13,15 @@ mapfile -t packages < <(
 # one-shot official package list
 official_set=$(pacman -Sl 2>/dev/null | awk '{print $2}')
 
-# rstl-repo packages (from our custom repo)
+# rstl-repo packages (from my custom repo)
 rstlrepo_set=$(pacman -Sl rstl-repo 2>/dev/null | awk '{print $2}')
+
+# base group — excluded from dependency tree
+base_set=$(pacman -Sg base 2>/dev/null | awk '{print $2}')
 
 is_official()  { echo "$official_set" | grep -qx "$1"; }
 is_rstlrepo()  { echo "$rstlrepo_set" | grep -qx "$1"; }
+is_base()      { echo "$base_set" | grep -qx "$1"; }
 
 clean_name() { echo "$1" | sed 's/[>=<].*//'; }
 
@@ -35,13 +39,16 @@ for pkg in "${packages[@]}"; do
     fi
 done
 
-# resolve full dependency closure
+# resolve full dependency closure, excluding base group
 mapfile -t all_deps < <(
     for pkg in "${packages[@]}"; do
         pactree -s -u "$pkg" 2>/dev/null
     done |
     sed 's/^[^[:alnum:]_+.-]*//' |
-    sort -u
+    sort -u |
+    while IFS= read -r dep; do
+        is_base "$(clean_name "$dep")" || echo "$dep"
+    done
 )
 
 # classify deps using set (strip version constraints)
