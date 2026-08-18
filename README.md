@@ -1,4 +1,4 @@
-# rstl.sway ⋅ 0.94 GiB desktop
+# rstl.sway ⋅ 2.33 GiB desktop
 
 ultra lean & minimalistic sway config (based on arch linux) for those who want to make the most of their screen space while keeping all the features and storage space (optimized for laptops)
 
@@ -19,7 +19,8 @@ this setup includes but is not limited to:
 - network manager
 - login screen
 - papirus icon theme
-and several more features, such as polkit + keepassxc keyring management + xdg portal integration.
+
+and several more features, such as [polkit authentication](https://github.com/arozoid/rstlpk) + dssd secret service + xdg portal integration.
 
 ## installation
 
@@ -31,7 +32,7 @@ cd ~/.config/rstl.sway/
 ./install.sh
 ```
 
-follow the steps to select what you wanna do and not do, and that's basically it.
+follow the steps to select what you wanna do and not do, and that's basically it. after installation, the net installation size is ~
 
 ### manual install
 
@@ -40,7 +41,7 @@ prefer doing everything by hand? see [MANUAL_INSTALL.md](MANUAL_INSTALL.md)
 ## programs
 
 - awww: lightweight wallpaper daemon
-- waybar-minimal-git (AUR): heavily customizable navigation bar
+- yambar ([rstl.repo](https://github.com/arozoid/rstl.repo)): modular status bar for wayland
 - sway: tiling window manager
 - mako: lightweight notification daemon
 - rofi: minimal and customizable launcher
@@ -55,11 +56,11 @@ prefer doing everything by hand? see [MANUAL_INSTALL.md](MANUAL_INSTALL.md)
 ---
 
 - bluez/networkmanager: set up for minimal arch install
-- ffmpeg/gstreamer/*: video / multimedia codec base
-- pipewire/pavucontrol/*: audio stack
-- keepassxc (optional): password manager
-- rstlpk (this repo): our own minimal polkit auth agent (no gtk; prompt in foot)
-- xdg-desktop-portal-termfilechooser (AUR): file pickers open in lf
+- flac/mpg123/opus/vorbis/dav1d/libvpx/openh264: audio & video codecs
+- pipewire/*: audio stack
+- dssd ([rstl.repo](https://github.com/arozoid/rstl.repo)): dead simple freedesktop secret service
+- rstlpk ([rstl.repo](https://github.com/arozoid/rstl.repo)): our own minimal polkit auth agent (no gtk; prompt in foot)
+- xdg-desktop-portal-termfilechooser ([rstl.repo](https://github.com/arozoid/rstl.repo)): file pickers open in lf
 
 ---
 

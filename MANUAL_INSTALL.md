@@ -13,7 +13,6 @@ then install each package group below, skipping whatever you don't need:
 
 ```bash
 sudo pacman -S --needed sway swaybg rofi mako swaylock swayidle
-sudo pacman -S --needed yay && yay -S --needed waybar-minimal-git
 ```
 
 ### screenshots / clipboard history
@@ -25,7 +24,7 @@ sudo pacman -S --needed grim slurp wl-clipboard cliphist
 ### wallpaper daemon + image tooling
 
 ```bash
-sudo pacman -S --needed awww imagemagick
+sudo pacman -S --needed awww
 ```
 
 ### hardware / media keys
@@ -43,13 +42,13 @@ sudo pacman -S --needed networkmanager bluez bluez-utils
 ### audio stack
 
 ```bash
-sudo pacman -S --needed pipewire wireplumber pipewire-pulse pipewire-alsa alsa-utils pulseaudio-utils pavucontrol
+sudo pacman -S --needed pipewire wireplumber pipewire-pulse pipewire-alsa alsa-utils pulseaudio-utils
 ```
 
 ### notifications + password manager
 
 ```bash
-sudo pacman -S --needed libnotify keepassxc sound-theme-freedesktop
+sudo pacman -S --needed libnotify dssd sound-theme-freedesktop
 ```
 
 ### login manager
@@ -88,16 +87,22 @@ sudo pacman -S --needed xorg-xwayland xdg-utils xdg-desktop-portal-wlr
 sudo pacman -S --needed expac git cronie
 ```
 
-### video / multimedia codec base
+### audio codecs
 
 ```bash
-sudo pacman -S --needed ffmpeg gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav mesa vulkan-icd-loader
+sudo pacman -S --needed flac mpg123 opus vorbis speex speexdsp sbc
+```
+
+### modern web video
+
+```bash
+sudo pacman -S --needed dav1d libvpx openh264 mesa vulkan-icd-loader
 ```
 
 ### AUR
 
 ```bash
-yay -S --needed waybar-minimal-git xdg-desktop-portal-termfilechooser
+yay -S --needed yambar xdg-desktop-portal-termfilechooser
 ```
 
 ### symlink the configs
@@ -106,7 +111,7 @@ yay -S --needed waybar-minimal-git xdg-desktop-portal-termfilechooser
 ln -s ~/.config/rstl.sway/sway     ~/.config/sway
 ln -s ~/.config/rstl.sway/swaylock ~/.config/swaylock
 ln -s ~/.config/rstl.sway/swayidle ~/.config/swayidle
-ln -s ~/.config/rstl.sway/waybar   ~/.config/waybar
+ln -s ~/.config/rstl.sway/yambar   ~/.config/yambar
 ln -s ~/.config/rstl.sway/rofi     ~/.config/rofi
 ln -s ~/.config/rstl.sway/fish     ~/.config/fish
 ln -s ~/.config/rstl.sway/foot     ~/.config/foot

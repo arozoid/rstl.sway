@@ -104,50 +104,22 @@ run_sudo() {
   sudo "$@"
 }
 
-# build an AUR package manually with git + makepkg (no AUR helper required)
-build_aur() {
-  local pkg="$1"
+# add rstl-repo to pacman.conf
+add_rstl_repo() {
+  local conf="/etc/pacman.conf"
+  local repo_line="[rstl-repo]"
+  local sig_line="SigLevel = Optional TrustAll"
+  local server_line="Server = https://arozoid.github.io/rstl.repo"
 
-  if ! command -v makepkg >/dev/null 2>&1; then
-    warn "makepkg not found — install 'base-devel' and re-run this step."
-    return 1
-  fi
-  if ! command -v git >/dev/null 2>&1; then
-    warn "git not found — cannot build '${pkg}' from the AUR."
-    return 1
-  fi
-
-  local build_dir
-  build_dir="$(mktemp -d)"
-  printf "  ${C_DIM}building '${pkg}' from the AUR (no helper found)${C_RESET}\n"
-  if ! git clone "https://aur.archlinux.org/${pkg}.git" "$build_dir/$pkg" >/dev/null 2>&1; then
-    warn "could not clone the AUR package '${pkg}'."
-    rm -rf "$build_dir"
-    return 1
+  if grep -qF "$repo_line" "$conf" 2>/dev/null; then
+    ok "rstl-repo already in ${conf}"
+    return 0
   fi
 
-  ( cd "$build_dir/$pkg" && makepkg -si --noconfirm )
-  local rc=$?
-  if [[ $rc -eq 0 ]]; then
-    ok "${pkg} built and installed from the AUR"
-  else
-    warn "'${pkg}' build failed (rc=${rc}) — build it manually in ${build_dir}"
-    rm -rf "$build_dir"
-  fi
-  return $rc
-}
-
-# install an AUR package via the user's preferred AUR helper (yay/paru),
-# falling back to a manual git + makepkg build when no helper is present
-install_aur() {
-  local pkg="$1"
-  if command -v yay >/dev/null 2>&1; then
-    yay -S --needed --noconfirm "$pkg"
-  elif command -v paru >/dev/null 2>&1; then
-    paru -S --needed --noconfirm "$pkg"
-  else
-    build_aur "$pkg"
-  fi
+  printf "  ${C_DIM}adding rstl-repo to ${conf}${C_RESET}\n"
+  printf '\n%s\n%s\n%s\n' "$repo_line" "$sig_line" "$server_line" | run_sudo tee -a "$conf" >/dev/null
+  run_sudo pacman -Sy --noconfirm
+  ok "rstl-repo added and synced"
 }
 
 # combined step header + confirmation prompt
@@ -222,6 +194,9 @@ step_2() {
     return 1
   fi
 
+  # add our custom repo first
+  add_rstl_repo
+
   local packages=(
     # window manager / bar / launcher / notifications / lock screen
     sway swaybg rofi mako swaylock swayidle
@@ -229,26 +204,26 @@ step_2() {
     # screenshots / clipboard history
     grim slurp wl-clipboard cliphist
 
-    # wallpaper daemon + image tooling for the generated default wallpaper
-    awww imagemagick
+    # wallpaper daemon + image tooling
+    awww
 
     # hardware / media keys
-    playerctl brightnessctl light acpi
+    playerctl brightnessctl acpi
 
     # network + bluetooth
     networkmanager bluez bluez-utils
 
     # audio (pipewire stack + alsa tools used by rofi applets)
-    pipewire wireplumber pipewire-pulse pipewire-alsa alsa-utils pulseaudio-utils pavucontrol
+    pipewire wireplumber pipewire-pulse pipewire-alsa alsa-utils
 
-    # notifications + password manager
-    libnotify keepassxc sound-theme-freedesktop
+    # notifications + sound theme
+    libnotify sound-theme-freedesktop
 
     # login manager
     greetd greetd-tuigreet
 
     # terminal + shell + terminal file manager (for the file chooser portal)
-    foot fish fastfetch bat eza zoxide jq lf
+    foot fish bat eza zoxide jq lf
 
     # editor
     neovim git curl wget unzip ripgrep fd make gcc
@@ -259,23 +234,27 @@ step_2() {
     # wayland helpers
     xorg-xwayland xdg-utils xdg-desktop-portal-wlr
 
-    # misc CLI referenced by the dotfiles
-    expac git cronie
+    # batt.sh alerts
+    cronie
 
-    # AUR helper (used for waybar-minimal-git, etc.)
-    yay
+    # audio codecs
+    flac mpg123 opus libvorbis speex speexdsp sbc
 
-    # video / multimedia codec base for a minimal install
-    ffmpeg gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav
+    # modern web video
+    dav1d libvpx openh264
+
+    # vulkan
     mesa vulkan-icd-loader
+
+    # rstl-repo packages
+    rstlpk
+    dssd
+    yambar
+    xdg-desktop-portal-termfilechooser
   )
 
   printf "  ${C_DIM}installing: %s${C_RESET}\n" "${packages[*]}"
   run_sudo pacman -S --needed --noconfirm "${packages[@]}"
-
-  # AUR: not in the official repos
-  install_aur waybar-minimal-git
-  install_aur xdg-desktop-portal-termfilechooser
 
   ok "packages installed"
 }
@@ -315,7 +294,7 @@ step_3() {
   link_dir "$DOTFILES_DIR/sway"     "$HOME/.config/sway"
   link_dir "$DOTFILES_DIR/swaylock" "$HOME/.config/swaylock"
   link_dir "$DOTFILES_DIR/swayidle" "$HOME/.config/swayidle"
-  link_dir "$DOTFILES_DIR/waybar"   "$HOME/.config/waybar"
+  link_dir "$DOTFILES_DIR/yambar"   "$HOME/.config/yambar"
   link_dir "$DOTFILES_DIR/rofi"     "$HOME/.config/rofi"
   link_dir "$DOTFILES_DIR/fish"     "$HOME/.config/fish"
   link_dir "$DOTFILES_DIR/foot"     "$HOME/.config/foot"
@@ -404,19 +383,12 @@ setup_wallpaper() {
   fi
 
   if [[ ! -f "$wp_file" ]]; then
-    local magick_bin=""
-    if command -v magick >/dev/null 2>&1; then
-      magick_bin=magick
-    elif command -v convert >/dev/null 2>&1; then
-      magick_bin=convert
-    fi
-    if [[ -n "$magick_bin" ]]; then
-      printf "  ${C_DIM}generating a default wallpaper at ${wp_file}${C_RESET}\n"
-      "$magick_bin" -size 2560x1600 gradient:'#3f8f4f'-'#0b160e' "$wp_file"
-      ok "default wallpaper generated"
+    local src_wallpaper="$DOTFILES_DIR/wallpapers/Kiki's Delievery Service.jpg"
+    if [[ -f "$src_wallpaper" ]]; then
+      cp "$src_wallpaper" "$wp_file"
+      ok "default wallpaper installed (Kiki's Delivery Service)"
     else
-      warn "imagemagick not available — no default wallpaper generated."
-      warn "drop an image at ${wp_file} or edit ${wp_conf}."
+      warn "no default wallpaper found — drop an image at ${wp_file} or edit ${wp_conf}."
     fi
   else
     ok "wallpaper already present: ${wp_file}"
@@ -500,28 +472,21 @@ step_7() {
 # Step 9: install rstlpk polkit agent
 # ---------------------------------------------------------------------------
 step_8() {
-  info "install rstlpk polkit agent"
+  info "rstlpk polkit agent"
 
-  local rstlpk_dir="$DOTFILES_DIR/rstlpk"
-
-  if [[ ! -f "$rstlpk_dir/install.sh" ]]; then
-    warn "rstlpk/install.sh not found — skipping"
+  if ! command -v rstlpk >/dev/null 2>&1; then
+    warn "rstlpk not found — install it from rstl-repo (step 2) and re-run this step."
     return 1
   fi
 
-  if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
-    warn "neither curl nor wget found — install one and re-run this step."
-    return 1
-  fi
-
-  run_sudo "$rstlpk_dir/install.sh"
+  ok "rstlpk installed from rstl-repo"
 
   local swayconf="$HOME/.config/sway/config"
-  if [[ -f "$swayconf" ]] && ! grep -q '/bin/rstlpk' "$swayconf"; then
+  if [[ -f "$swayconf" ]] && ! grep -q '/usr/bin/rstlpk' "$swayconf"; then
     printf '%s\n' \
       '' \
       '# polkit authentication agent (our own minimal agent, no gtk)' \
-      'exec_always --no-startup-id /bin/rstlpk' >> "$swayconf"
+      'exec_always --no-startup-id /usr/bin/rstlpk' >> "$swayconf"
     ok "added rstlpk polkit auth agent to sway autostart"
   else
     ok "rstlpk polkit auth agent already in sway config"
@@ -556,11 +521,12 @@ step_10() {
 
   # directories that are no longer needed after install
   local dirs=(
-    rstlpk        # source code — binary is now at /bin/rstlpk
+    rstlpk        # source code — binary is now at /usr/bin/rstlpk via rstl-repo
     wallpapers    # copied to ~/Pictures/Wallpapers in step 5
     depsize       # dev utility
     nvim/.git     # submodule git internal
     ranger/.git   # submodule git internal
+    waybar        # replaced by yambar
   )
 
   for d in "${dirs[@]}"; do
@@ -576,6 +542,7 @@ step_10() {
   local files=(
     packages.txt
     README.md
+    MANUAL_INSTALL.md
     install.sh    # this script itself
     .git          # repo git internals
     .gitmodules   # submodule config

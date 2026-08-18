@@ -1,0 +1,91 @@
+bar:
+  location: top
+  height: 35 
+  layer: overlay
+  margin: 0
+  spacing: 0
+  left-spacing: 0
+  right-spacing: 0
+
+  font: JetBrainsMono Nerd Font:pixelsize=23
+  foreground: ddddddff
+  background: 111111ff
+
+  left:
+    - label:
+        content: {string: {text: " "}}
+          
+    - backlight:
+        name: intel_backlight
+        content:
+          string: {text: "{percent}%"}
+
+    - label:
+        content: {string: {text: "   "}}
+
+    - i3:
+        sort: native
+        strip-workspace-numbers: true
+        left-spacing: 24 
+        right-spacing: 24
+        content:
+          "":
+            map:
+              default:
+                string: {text: "{name}", foreground: 666666ff}
+              conditions:
+                focused:
+                  string: {text: "{name}", foreground: ffffffff}
+
+  center:
+    - clock:
+        time-format: "%H:%M"
+        content:
+          string: {text: "{time}", foreground: ccccccff}
+
+  right:
+    - cpu:
+        poll-interval: 2500
+        content:
+          map:
+            conditions:
+              id < 0:
+                string: {text: "cpu {cpu}%", foreground: ccccccff}
+
+    - label:
+        content: {string: {text: "   "}}
+
+    - mem:
+        poll-interval: 2500
+        content:
+          string: {text: "ram {percent_used}%", foreground: ccccccff}
+
+    - label:
+        content: {string: {text: "   "}}
+
+    - pulse:
+        content:
+          map:
+            default:
+              string: {text: "vol {sink_percent}%", foreground: ccccccff}
+            conditions:
+              sink_muted:
+                string: {text: "vol {sink_percent}%", foreground: 666666ff}
+
+    - label:
+        content: {string: {text: "   "}}
+
+    - battery:
+        name: BAT0
+        poll-interval: 250
+        content:
+          map:
+            default:
+              string: {text: "bat {capacity}%", foreground: ccccccff}
+            conditions:
+              capacity < 20:
+                string: {text: "bat {capacity}%", foreground: ff6666ff}
+
+    - label:
+        content: {string: {text: " "}}
+

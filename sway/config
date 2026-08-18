@@ -162,11 +162,11 @@ exec --no-startup-id ~/.local/bin/nightlight.sh
 exec --no-startup-id ~/.config/rstl.sway/scripts/chime.sh
 exec --no-startup-id ~/.config/rstl.sway/scripts/usb-sound.sh
 
-exec_always --no-startup-id sh -c 'killall -q waybar; sleep 0.2; waybar'
+exec_always --no-startup-id sh -c 'killall -q yambar; sleep 0.2; yambar -c ~/.config/yambar/config.yml'
 exec_always --no-startup-id sh -c 'killall -q mako; sleep 0.2; mako'
 
-# polkit authentication agent (our own minimal agent, no gtk)
-exec_always --no-startup-id /bin/rstlpk
+# polkit authentication agent (my own minimal agent, no gtk)
+exec_always --no-startup-id /usr/bin/rstlpk
 
 ### cursor
 seat seat0 xcursor_theme Bibata-Modern-Classic 22

@@ -1,20 +1,36 @@
+# rstl.sway package list
+# desktop required
 sway swaybg rofi mako swaylock swayidle
 grim slurp wl-clipboard cliphist
-awww imagemagick
-playerctl brightnessctl light acpi
-networkmanager bluez bluez-utils
-pipewire wireplumber pipewire-pulse pipewire-alsa alsa-utils pulseaudio-utils pavucontrol
-libnotify keepassxc sound-theme-freedesktop
+awww
 greetd greetd-tuigreet
-foot fish fastfetch bat eza zoxide jq lf
-neovim git curl wget unzip ripgrep fd make gcc
-ttf-jetbrains-mono-nerd noto-fonts noto-fonts-emoji
-xorg-xwayland xdg-utils xdg-desktop-portal-wlr
-expac git cronie
-mesa vulkan-icd-loader
-ffmpeg gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav
-yay
 
-# AUR packages (installed via yay)
-waybar-minimal-git
+# dependencies for scripts/integration
+playerctl brightnessctl acpi
+cronie
+libnotify sound-theme-freedesktop
+
+# base networkmanager / bluetooth / audio
+networkmanager bluez bluez-utils
+pipewire wireplumber pipewire-pulse pipewire-alsa alsa-utils
+foot fish bat eza zoxide jq lf
+neovim git curl wget unzip ripgrep fd
+
+# explicitly required dependencies
+mesa vulkan-icd-loader
+
+# fonts
+ttf-jetbrains-mono-nerd noto-fonts-emoji
+
+# desktop support
+xorg-xwayland xdg-utils xdg-desktop-portal-wlr
+
+# codecs
+flac mpg123 opus libvorbis speex speexdsp sbc
+dav1d libvpx openh264 
+
+# AUR packages (installed via rstl.repo)
+rstlpk
+yambar
 xdg-desktop-portal-termfilechooser
+dssd

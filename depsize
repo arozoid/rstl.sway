@@ -1,54 +1,124 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
-
 file="${1:-packages.txt}"
 
-# extract package names from a shell-style package list
 mapfile -t packages < <(
-    sed \
-        -e 's/#.*//' \
-        -e 's/local packages=(//' \
-        -e 's/)//' \
-        "$file" |
+    sed 's/#.*//' "$file" |
     tr '[:space:]' '\n' |
-    sed '/^$/d'
-)
-
-# collect every transitive dependency
-mapfile -t deps < <(
-    for pkg in "${packages[@]}"; do
-        pactree -u "$pkg" 2>/dev/null
-    done |
+    sed '/^$/d' |
+    sed 's/[<>=].*//' |
     sort -u
 )
 
-total=0
+# one-shot official package list
+official_set=$(pacman -Sl 2>/dev/null | awk '{print $2}')
 
-for pkg in "${deps[@]}"; do
-    size=$(
-        pacman -Qi "$pkg" 2>/dev/null |
-        awk '
-            /^Installed Size/ {
-                size = $4
-                unit = $5
+# rstl-repo packages (from our custom repo)
+rstlrepo_set=$(pacman -Sl rstl-repo 2>/dev/null | awk '{print $2}')
 
-                if (unit == "KiB")
-                    size /= 1024
-                else if (unit == "GiB")
-                    size *= 1024
+is_official()  { echo "$official_set" | grep -qx "$1"; }
+is_rstlrepo()  { echo "$rstlrepo_set" | grep -qx "$1"; }
 
-                print size
-                exit
-            }
-        '
-    )
+clean_name() { echo "$1" | sed 's/[>=<].*//'; }
 
-    if [[ -n "$size" ]]; then
-        total=$(awk -v a="$total" -v b="$size" 'BEGIN { print a + b }')
+# classify explicit packages
+official=()
+rstlrepo=()
+aur=()
+for pkg in "${packages[@]}"; do
+    if is_official "$pkg"; then
+        official+=("$pkg")
+    elif is_rstlrepo "$pkg"; then
+        rstlrepo+=("$pkg")
+    else
+        aur+=("$pkg")
     fi
 done
 
-printf '%s packages in dependency tree\n' "${#deps[@]}"
-printf 'TOTAL INSTALLED SIZE: %.2f MiB\n' "$total"
-printf 'TOTAL INSTALLED SIZE: %.2f GiB\n' "$(awk -v x="$total" 'BEGIN { print x / 1024 }')"
+# resolve full dependency closure
+mapfile -t all_deps < <(
+    for pkg in "${packages[@]}"; do
+        pactree -s -u "$pkg" 2>/dev/null
+    done |
+    sed 's/^[^[:alnum:]_+.-]*//' |
+    sort -u
+)
+
+# classify deps using set (strip version constraints)
+mapfile -t dep_official < <(for pkg in "${all_deps[@]}"; do
+    c=$(clean_name "$pkg")
+    is_official "$c" && echo "$pkg"
+done)
+mapfile -t dep_rstlrepo < <(for pkg in "${all_deps[@]}"; do
+    c=$(clean_name "$pkg")
+    is_official "$c" || { is_rstlrepo "$c" && echo "$pkg"; }
+done)
+mapfile -t dep_aur < <(for pkg in "${all_deps[@]}"; do
+    c=$(clean_name "$pkg")
+    is_official "$c" || is_rstlrepo "$c" || echo "$pkg"
+done)
+
+# sum sizes in batches of 20
+sum_sizes() {
+    local pkgs=("$@") total=0 batch=() chunk
+    for pkg in "${pkgs[@]}"; do
+        batch+=("$pkg")
+        if [[ ${#batch[@]} -eq 20 ]]; then
+            chunk=$(pacman -Si "${batch[@]}" 2>/dev/null | awk '
+                /^Installed Size/ {
+                    s=$4; u=$5
+                    if(u=="KiB") sum+=s/1024; else if(u=="MiB") sum+=s; else if(u=="GiB") sum+=s*1024
+                } END { printf "%.4f", sum+0 }')
+            total=$(awk -v a="$total" -v b="$chunk" 'BEGIN{printf "%.4f",a+b}')
+            batch=()
+        fi
+    done
+    if [[ ${#batch[@]} -gt 0 ]]; then
+        chunk=$(pacman -Si "${batch[@]}" 2>/dev/null | awk '
+            /^Installed Size/ {
+                s=$4; u=$5
+                if(u=="KiB") sum+=s/1024; else if(u=="MiB") sum+=s; else if(u=="GiB") sum+=s*1024
+            } END { printf "%.4f", sum+0 }')
+        total=$(awk -v a="$total" -v b="$chunk" 'BEGIN{printf "%.4f",a+b}')
+    fi
+    printf "%.4f" "$total"
+}
+
+dep_official_mib=$(sum_sizes "${dep_official[@]}")
+dep_rstlrepo_mib=0
+for pkg in "${dep_rstlrepo[@]}"; do
+    pkg_size=$(pacman -Si "$pkg" 2>/dev/null | awk '
+        /^Installed Size/ {
+            s=$4; u=$5
+            if(u=="KiB") printf "%.4f",s/1024; else if(u=="MiB") printf "%.4f",s; else if(u=="GiB") printf "%.4f",s*1024; else printf "0"
+        }')
+    dep_rstlrepo_mib=$(awk -v a="$dep_rstlrepo_mib" -v b="${pkg_size:-0}" 'BEGIN{printf "%.4f",a+b}')
+done
+
+# AUR deps
+aur_mib=0
+for pkg in "${dep_aur[@]}"; do
+    pkg_size=$(yay -Si "$pkg" 2>/dev/null | awk '
+        /^Installed Size/ {
+            if(done)next; done=1
+            s=$4; u=$5
+            if(u=="KiB") printf "%.4f",s/1024; else if(u=="MiB") printf "%.4f",s; else if(u=="GiB") printf "%.4f",s*1024; else printf "0"
+        }')
+    aur_mib=$(awk -v a="$aur_mib" -v b="${pkg_size:-0}" 'BEGIN{printf "%.4f",a+b}')
+done
+
+grand_total=$(awk -v a="$dep_official_mib" -v b="$dep_rstlrepo_mib" -v c="$aur_mib" 'BEGIN{printf "%.2f",a+b+c}')
+
+printf '\n'
+printf 'explicit packages: %s\n' "${#packages[@]}"
+printf '  official:  %s\n' "${#official[@]}"
+printf '  rstl-repo: %s\n' "${#rstlrepo[@]}"
+printf '  AUR:       %s\n' "${#aur[@]}"
+printf '\n'
+printf 'total dependency tree: %s packages\n' "${#all_deps[@]}"
+printf '  official:  %s  (%.2f MiB)\n' "${#dep_official[@]}" "$dep_official_mib"
+printf '  rstl-repo: %s  (%.2f MiB)\n' "${#dep_rstlrepo[@]}" "$dep_rstlrepo_mib"
+printf '  AUR:       %s  (%.2f MiB)\n' "${#dep_aur[@]}" "$aur_mib"
+printf '\n'
+printf 'TOTAL INSTALLED SIZE: %s MiB\n' "$grand_total"
+printf 'TOTAL INSTALLED SIZE: %.2f GiB\n' "$(awk -v x="$grand_total" 'BEGIN{print x/1024}')"
