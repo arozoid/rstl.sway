@@ -1,4 +1,4 @@
-# xdg-desktop-portal-termfilechooser — pick files in lf (our lf config)
+# xdg-desktop-portal-termfilechooser — pick files in lf (my lf config)
 
 [filechooser]
 cmd=lf-wrapper.sh
