@@ -171,6 +171,9 @@ step_0() {
 # Step 1: copy dotfiles into ~/.config/rstl.sway
 # ---------------------------------------------------------------------------
 step_1() {
+  info "initializing nvim repo"
+  git submodule update --init
+  ok "nvim config updated"
   info "copying dotfiles to ${DOTFILES_DIR}"
   mkdir -p "${DOTFILES_DIR}"
   if [[ "$SOURCE_DIR" == "$DOTFILES_DIR" ]]; then
@@ -619,7 +622,7 @@ printf "  ${C_DIM}• The default shell change applies to new shells.${C_RESET}\
 printf "  ${C_DIM}• Edit ~/.config/rstl.sway/wallpaper to point at your own image.${C_RESET}\n"
 printf "  ${C_DIM}• Battery alerts fire via cronie (crontab) every minute.${C_RESET}\n"
 rule "$C_GREEN"
-printf "  ${C_DIM}Notes: 'nightlight.sh', 'fsh' and the Bibata cursor theme are${C_RESET}\n"
+printf "  ${C_DIM}Notes: 'nightlight.sh', 'fsh' and the GoogleDot cursor theme are${C_RESET}\n"
 printf "  ${C_DIM}personal extras and are NOT installed by this script. 'light'${C_RESET}\n"
 printf "  ${C_DIM}(rofi brightness applet) needs a udev rule or setuid to run${C_RESET}\n"
 printf "  ${C_DIM}without root; the sway keys already use brightnessctl.${C_RESET}\n"

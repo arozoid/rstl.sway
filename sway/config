@@ -162,14 +162,14 @@ exec --no-startup-id ~/.local/bin/nightlight.sh
 exec --no-startup-id ~/.config/rstl.sway/scripts/chime.sh
 exec --no-startup-id ~/.config/rstl.sway/scripts/usb-sound.sh
 
-exec_always --no-startup-id sh -c 'killall -q yambar; sleep 0.2; yambar -c ~/.config/yambar/config.yml'
+exec_always --no-startup-id sh -c 'killall -q yambar yambar-fullscreen.sh; sleep 0.2; ~/.config/rstl.sway/scripts/yambar-fullscreen.sh'
 exec_always --no-startup-id sh -c 'killall -q mako; sleep 0.2; mako'
 
 # polkit authentication agent (my own minimal agent, no gtk)
 exec_always --no-startup-id /usr/bin/rstlpk
 
 ### cursor
-seat seat0 xcursor_theme Bibata-Modern-Classic 22
+seat seat0 xcursor_theme GoogleDot-Black 22
 
 ### focus behavior
 focus_follows_mouse yes
