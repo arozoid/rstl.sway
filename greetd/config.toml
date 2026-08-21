@@ -15,7 +15,7 @@ command = "tuigreet --time --remember --cmd sway"
 # in the `video` group.
 user = "greeter"
 
-[initial_session]
-command = "tuigreet --time --remember --cmd sway"
-user = "greeter"
+# [initial_session]
+# command = "sway"
+# user = "rustle"
 
