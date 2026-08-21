@@ -111,10 +111,6 @@ alias egrep='egrep --color=auto'
 alias hw='hwinfo --short'                                   # Hardware Info
 alias big="expac -H M '%m\t%n' | sort -h | nl"              # Sort installed packages according to size in MB
 alias gitpkg='pacman -Q | grep -i "\-git" | wc -l'          # List amount of -git packages
-alias update='sudo cachyos-rate-mirrors && sudo pacman -Syu'
-
-# Get fastest mirrors
-alias mirror="sudo cachyos-rate-mirrors"
 
 # Help people new to Arch
 alias apt='man pacman'
@@ -142,3 +138,8 @@ function obipush
     and git commit -m "vault backup "(date "+%Y-%m-%d %H:%M:%S")
     and git push
 end
+
+# allow less to output ANSI escape codes and nerd fonts 
+export LESS=-R
+
+export LESSUTFCHARDEF=e000-e09f:w,e0a0-e0bf:p,e0c0-f8ff:w,f0001-fffff:w

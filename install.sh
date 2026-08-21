@@ -474,34 +474,9 @@ step_7() {
 }
 
 # ---------------------------------------------------------------------------
-# Step 9: install rstlpk polkit agent
+# Step 8: final preferences
 # ---------------------------------------------------------------------------
 step_8() {
-  info "rstlpk polkit agent"
-
-  if ! command -v rstlpk >/dev/null 2>&1; then
-    warn "rstlpk not found — install it from rstl-repo (step 2) and re-run this step."
-    return 1
-  fi
-
-  ok "rstlpk installed from rstl-repo"
-
-  local swayconf="$HOME/.config/sway/config"
-  if [[ -f "$swayconf" ]] && ! grep -q '/usr/bin/rstlpk' "$swayconf"; then
-    printf '%s\n' \
-      '' \
-      '# polkit authentication agent (our own minimal agent, no gtk)' \
-      'exec_always --no-startup-id /usr/bin/rstlpk' >> "$swayconf"
-    ok "added rstlpk polkit auth agent to sway autostart"
-  else
-    ok "rstlpk polkit auth agent already in sway config"
-  fi
-}
-
-# ---------------------------------------------------------------------------
-# Step 10: final preferences
-# ---------------------------------------------------------------------------
-step_9() {
   info "final preferences"
 
   printf "  ${C_DIM}enabling lingering + pipewire user services${C_RESET}\n"
@@ -517,16 +492,15 @@ step_9() {
 }
 
 # ---------------------------------------------------------------------------
-# Step 10: cleanup
+# Step 9: cleanup
 # ---------------------------------------------------------------------------
-step_10() {
+step_9() {
   info "cleanup"
 
   local removed=0
 
   # directories that are no longer needed after install
   local dirs=(
-    rstlpk        # source code — binary is now at /usr/bin/rstlpk via rstl-repo
     wallpapers    # copied to ~/Pictures/Wallpapers in step 5
     depsize       # dev utility
     nvim/.git     # submodule git internal
@@ -600,9 +574,8 @@ steps=(
   "5|wallpaper setup|Set up the wallpaper?|step_5"
   "6|battery alerts (40% / 80%)|Set up the 40% / 80% battery alerts (batt.sh)?|step_6"
   "7|fish default shell|Set fish as the default shell?|step_7"
-  "8|install rstlpk|Build and install the rstlpk polkit agent to /bin?|step_8"
-  "9|final preferences|Enable lingering, pipewire, network, bluetooth?|step_9"
-  "10|cleanup|Remove build artifacts and caches from the dotfiles?|step_10"
+  "8|final preferences|Enable lingering, pipewire, network, bluetooth?|step_8"
+  "9|cleanup|Remove build artifacts and caches from the dotfiles?|step_9"
 )
 
 for entry in "${steps[@]}"; do
@@ -623,8 +596,6 @@ printf "  ${C_DIM}• Edit ~/.config/rstl.sway/wallpaper to point at your own im
 printf "  ${C_DIM}• Battery alerts fire via cronie (crontab) every minute.${C_RESET}\n"
 rule "$C_GREEN"
 printf "  ${C_DIM}Notes: 'nightlight.sh', 'fsh' and the GoogleDot cursor theme are${C_RESET}\n"
-printf "  ${C_DIM}personal extras and are NOT installed by this script. 'light'${C_RESET}\n"
-printf "  ${C_DIM}(rofi brightness applet) needs a udev rule or setuid to run${C_RESET}\n"
-printf "  ${C_DIM}without root; the sway keys already use brightnessctl.${C_RESET}\n"
+printf "  ${C_DIM}personal extras and are NOT installed by this script.${C_RESET}\n"
 rule "$C_GREEN"
 echo
