@@ -155,6 +155,8 @@ bindsym $mod+Shift+s exec grim -g "$(slurp)" - | tee "$HOME/Pictures/Screenshots
 
 ### autostart
 exec_always --no-startup-id ~/.config/rstl.sway/scripts/wallpaper-restore.sh
+exec_always --no-startup-id ~/.config/rstl.sway/scripts/auto-scale.sh
+
 exec --no-startup-id swayidle -w -C ~/.config/swayidle/config
 exec --no-startup-id wl-paste --type text --watch cliphist store
 exec --no-startup-id wl-paste --type image --watch cliphist store
@@ -165,7 +167,7 @@ exec --no-startup-id ~/.config/rstl.sway/scripts/usb-sound.sh
 exec_always --no-startup-id sh -c 'killall -q yambar yambar-fullscreen.sh; sleep 0.2; ~/.config/rstl.sway/scripts/yambar-fullscreen.sh'
 exec_always --no-startup-id sh -c 'killall -q mako; sleep 0.2; mako'
 
-# polkit authentication agent (my own minimal agent, no gtk)
+# polkit authentication agent
 exec_always --no-startup-id /usr/bin/rstlpk
 
 ### cursor
