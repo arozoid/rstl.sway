@@ -229,7 +229,7 @@ step_2() {
     foot fish bat eza zoxide jq lf
 
     # editor
-    neovim git curl wget unzip ripgrep fd make gcc
+    neovim git curl wget unzip ripgrep fd
 
     # emoji support 
     noto-fonts-emoji
