@@ -23,13 +23,24 @@ set $menu fsh
 
 bindsym $mod+Return exec $term
 bindsym $mod+d exec rofi -show drun 
-bindsym $mod+o exec $term -e $menu 
+bindsym $mod+o exec $term --app-id=fsh -e $menu
 bindsym $mod+Backspace exec ~/.config/rstl.sway/rofi/powermenu/rstl-powermenu.sh
 bindsym $mod+Escape exec ~/.config/rstl.sway/scripts/lock.sh
+bindsym $mod+c exec foot --app-id=calpopup sh -c '~/.config/rstl.sway/scripts/ecal.sh; sleep 2'
 
 ### window rules
 for_window [app_id="termfilechooser"] floating enable, resize set width 1000 px height 600 px, move position center
 for_window [app_id="rstlpk"] floating enable, resize set width 650 px height 250 px, move position center
+
+for_window [app_id="calpopup"] floating enable
+for_window [app_id="calpopup"] resize set width 250 px height 250 px
+for_window [app_id="calpopup"] move position center
+for_window [app_id="calpopup"] border pixel 1
+
+for_window [app_id="fsh"] floating enable
+for_window [app_id="fsh"] border pixel 1
+for_window [app_id="fsh"] move position center
+for_window [app_id="fsh"] resize set width 670 px height 350 px
 
 ### session
 bindsym $mod+Shift+q kill

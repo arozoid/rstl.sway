@@ -41,8 +41,10 @@ bar:
     - clock:
         time-format: "%H:%M"
         content:
-          string: {text: "{time}", foreground: ccccccff}
-
+          string:
+            text: "{time}"
+            foreground: ccccccff
+  
   right:
     - cpu:
         poll-interval: 2500
