@@ -1,26 +1,25 @@
 #!/usr/bin/env bash
 
 wlr-randr | awk '
-/^[A-Za-z0-9-]+/ { out=$1 }
-
-/^[[:space:]]*[0-9]+x[0-9]+/ && /\*/ {
-    split($1, r, "x")
-    px = r[1]
+/^[A-Za-z0-9-]+ / {
+    out=$1
+    width=0
 }
 
 /Physical size:/ {
-    w = $3; h = $4
-    sub(/mm/, "", w)
-    sub(/mm/, "", h)
+    split($3, s, "x")
+    w=s[1]
+    h=s[2]
+    diag=sqrt(w*w+h*h)/25.4
+}
 
-    diagonal = sqrt(w*w + h*h) / 25.4
+/^[[:space:]]+[0-9]+x[0-9]+/ && /\(.*current.*\)/ {
+    split($1, r, "x")
+    width=r[1]
 
-    # baseline scale for a 1440p display
-    base = (diagonal < 20) ? 1.5 : 2
+    base = (diag < 20) ? 2 : 1.5
+    scale = base * (width / 2560)
 
-    # scale proportional to resolution (2560 is 1440p width)
-    scale = base * (px / 2560)
-
-    printf "setting %s: %.1f\" %dx -> scale %.2f\n", out, diagonal, px, scale
+    printf "setting %s: %.1f\" %dpx -> scale %.2f\n", out, diag, width, scale
     system("swaymsg output " out " scale " scale " >/dev/null")
 }'
