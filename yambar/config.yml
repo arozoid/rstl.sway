@@ -72,19 +72,18 @@ bar:
               sink_muted:
                 string: {text: "vol {sink_percent}%", foreground: 666666ff}
 
-    - label:
-        content: {string: {text: "   "}}
-
     - battery:
         name: BAT0
         poll-interval: 250
         content:
           map:
-            default:
-              string: {text: "bat {capacity}%", foreground: ccccccff}
             conditions:
+              capacity == 0:
+                empty: {}
               capacity < 20:
-                string: {text: "bat {capacity}%", foreground: ff6666ff}
+                string: {text: "   bat {capacity}%", foreground: ff6666ff}
+            default:
+              string: {text: "   bat {capacity}%", foreground: ccccccff}
 
     - label:
         content: {string: {text: " "}}
