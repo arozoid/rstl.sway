@@ -197,7 +197,7 @@ step_2() {
     return 1
   fi
 
-  # add our custom repo first
+  # add custom repo first
   add_rstl_repo
 
   local packages=(
@@ -250,12 +250,15 @@ step_2() {
     mesa vulkan-icd-loader
 
     # rstl-repo packages
-    rstlpk
-    dssd
-    yambar
-    xdg-desktop-portal-termfilechooser
     ttf-jetbrains-mono-nerd-min
     papirus-icon-theme-dark-only
+    googledot-black
+    
+    rstlpk
+    dssd
+    
+    xdg-desktop-portal-termfilechooser
+    yambar
   )
 
   printf "  ${C_DIM}installing: %s${C_RESET}\n" "${packages[*]}"
@@ -594,8 +597,5 @@ printf "  ${C_DIM}• Reboot (or log out) to start the greetd → sway session.$
 printf "  ${C_DIM}• The default shell change applies to new shells.${C_RESET}\n"
 printf "  ${C_DIM}• Edit ~/.config/rstl.sway/wallpaper to point at your own image.${C_RESET}\n"
 printf "  ${C_DIM}• Battery alerts fire via cronie (crontab) every minute.${C_RESET}\n"
-rule "$C_GREEN"
-printf "  ${C_DIM}Notes: 'nightlight.sh', 'fsh' and the GoogleDot cursor theme are${C_RESET}\n"
-printf "  ${C_DIM}personal extras and are NOT installed by this script.${C_RESET}\n"
 rule "$C_GREEN"
 echo

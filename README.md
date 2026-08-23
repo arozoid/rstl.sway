@@ -19,6 +19,7 @@ this setup includes but is not limited to:
 - network manager
 - login screen
 - papirus icon theme
+- [fsh](https://github.com/pingu-hq/fsh) menu
 
 and several more features, such as [polkit authentication](https://github.com/arozoid/rstlpk) + dssd secret service + xdg portal integration. (~0.72 GiB installed size on base arch linux install)
 
