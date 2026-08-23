@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 
 # scales outputs (and the bar/cursor) from each panel's real physical size.
-# calibration reference: 2560px-wide mode at scale 1.5 -> bar height 35,
-# font pixelsize 23, cursor 22. everything else is linear from that.
+# calibration reference: 2560px-wide mode at scale 1.5 -> bar height 23,
+# font pixelsize 15, cursor 15. everything else is linear from that.
 
 REF_WIDTH=2560
 REF_SCALE=1.5
-BAR_HEIGHT=35
-BAR_FONT=23
-CURSOR_SIZE=22
+BAR_HEIGHT=23
+BAR_FONT=15
+CURSOR_SIZE=15
 CURSOR_THEME="GoogleDot-Black"
 
 DOTFILES_DIR="$HOME/.config/rstl.sway"
