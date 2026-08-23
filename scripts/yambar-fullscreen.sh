@@ -4,7 +4,11 @@
 # again otherwise. Handles fullscreen toggles as well as workspace switches:
 # fullscreen windows on non-visible workspaces are ignored.
 
-YAMBAR_CFG="${XDG_CONFIG_HOME:-$HOME/.config}/rstl.sway/yambar/config.yml"
+YAMBAR_SRC="${XDG_CONFIG_HOME:-$HOME/.config}/rstl.sway/yambar/config.yml"
+# auto-scale.sh renders a DPI-sized copy at startup; fall back to the source
+RENDERED_CFG="${XDG_CACHE_HOME:-$HOME/.cache}/rstl.sway/yambar-config.yml"
+YAMBAR_CFG="$RENDERED_CFG"
+[ -f "$YAMBAR_CFG" ] || YAMBAR_CFG="$YAMBAR_SRC"
 
 is_fullscreen=0
 yambar_pid=""
