@@ -1,13 +1,28 @@
 #!/usr/bin/env bash
 
-# scales outputs (and the bar/cursor) from each panel's real physical size.
-# calibration reference: 2560px-wide mode at scale 1.5 -> bar height 23,
-# font pixelsize 15, cursor 15. everything else is linear from that.
+# ============================================================
+# rstl.sway auto scaling
+#
+# output scale:
+#   >= 20"  -> base 1.5
+#   <  20"  -> base 2.0
+#
+# output scale is based on horizontal resolution.
+#
+# yambar:
+#   scales directly with vertical resolution.
+#   1440p -> 36px bar / 24px font
+#
+# cursor:
+#   scales at half the rate of the bar.
+# ============================================================
 
 REF_WIDTH=2560
-REF_SCALE=1
-BAR_HEIGHT=27
-BAR_FONT=16
+REF_HEIGHT=1440
+
+BAR_HEIGHT=36
+BAR_FONT=24
+
 CURSOR_SIZE=15
 CURSOR_THEME="GoogleDot-Black"
 
@@ -15,91 +30,212 @@ DOTFILES_DIR="$HOME/.config/rstl.sway"
 YAMBAR_SRC="$DOTFILES_DIR/yambar/config.yml"
 YAMBAR_OUT="${XDG_CACHE_HOME:-$HOME/.cache}/rstl.sway/yambar-config.yml"
 
-calc() { awk "BEGIN{print ($1)}"; }
-round() { awk -v n="$1" 'BEGIN{s=n<0?-1:1; printf "%d", s*int(s*n+0.5)}'; }
 
-max_scale=0
+# ============================================================
+# helpers
+# ============================================================
 
-cur_out="" cur_diag=0 cur_width=0
+calc() {
+    awk "BEGIN { print ($1) }"
+}
 
-apply_out() {
-    [[ "$cur_width" -gt 0 ]] || return 0
-    [[ "$(calc "$cur_diag > 0")" -eq 1 ]] || return 0
+round() {
+    awk -v n="$1" '
+        BEGIN {
+            s = n < 0 ? -1 : 1
+            printf "%d", s * int(s * n + 0.5)
+        }
+    '
+}
 
-    local base scale
+
+# ============================================================
+# physical monitor sizes
+#
+# OUTPUT_DIAG[DP-1] = 31.5
+# ============================================================
+
+declare -A OUTPUT_DIAG
+
+current_output=""
+
+while IFS= read -r line; do
+    case "$line" in
+        [![:space:]]*)
+            current_output=${line%% *}
+            ;;
+
+        *"Physical size:"*)
+            ps=${line##*: }
+
+            ps_w=${ps%%x*}
+            rest=${ps#*x}
+            ps_h=${rest%% *}
+
+            OUTPUT_DIAG["$current_output"]=$(
+                calc "sqrt($ps_w*$ps_w+$ps_h*$ps_h)/25.4"
+            )
+            ;;
+    esac
+done < <(wlr-randr)
+
+
+# ============================================================
+# debug physical sizes
+# ============================================================
+
+for output in "${!OUTPUT_DIAG[@]}"; do
+    printf \
+        'detected physical size: %s -> %.1f"\n' \
+        "$output" \
+        "${OUTPUT_DIAG[$output]}"
+done
+
+
+# ============================================================
+# read current resolutions from sway
+# ============================================================
+
+while IFS=$'\t' read -r cur_out cur_width cur_height; do
+    [[ -n "$cur_out" ]] || continue
+
+    cur_diag=${OUTPUT_DIAG["$cur_out"]:-0}
+
+    printf \
+        'detected output: %s -> %sx%s, %.1f"\n' \
+        "$cur_out" \
+        "$cur_width" \
+        "$cur_height" \
+        "$cur_diag"
+
+    if [[ -z "$cur_diag" || "$cur_diag" == "0" ]]; then
+        echo "auto-scale: no physical size found for $cur_out" >&2
+        continue
+    fi
+
     if [[ "$(calc "$cur_diag < 20")" -eq 1 ]]; then
-        base=2      # small panel: denser pixels, needs a bigger scale
+        base=2
     else
         base=1.5
     fi
 
     scale=$(calc "$base * $cur_width / $REF_WIDTH")
-    printf 'setting %s: %.1f" %dpx -> scale %.2f\n' "$cur_out" "$cur_diag" "$cur_width" "$scale"
-    swaymsg output "$cur_out" scale "$scale" >/dev/null
 
-    # global ui sizing follows the densest display
-    if [[ "$(calc "$scale > $max_scale")" -eq 1 ]]; then
-        max_scale=$scale
+    printf \
+        'setting %s: %.1f" %dx%d -> scale %.2f\n' \
+        "$cur_out" \
+        "$cur_diag" \
+        "$cur_width" \
+        "$cur_height" \
+        "$scale"
+
+    swaymsg output "$cur_out" scale "$scale"
+
+    if (( cur_height > max_height )); then
+        max_height=$cur_height
     fi
-}
 
-while IFS= read -r line; do
-    case "$line" in
-        [![:space:]]*)
-            apply_out
-            cur_out=${line%% *}
-            cur_diag=0
-            cur_width=0
-            ;;
-        *"Physical size:"*)
-            ps=${line##*: }
-            ps_w=${ps%%x*}
-            rest=${ps#*x}
-            ps_h=${rest%% *}
-            cur_diag=$(calc "sqrt($ps_w*$ps_w+$ps_h*$ps_h)/25.4")
-            ;;
+done < <(
+    swaymsg -t get_outputs -r |
+    jq -r '
+        .[] |
+        [
+            .name,
+            .current_mode.width,
+            .current_mode.height
+        ] |
+        @tsv
+    '
+)
+# ============================================================
+# fallback
+# ============================================================
 
-        " "*)
-            if [[ $line == *current* && $line =~ [[:space:]]([0-9]+)x[0-9]+ ]]; then
-                cur_width=${BASH_REMATCH[1]}
-            fi
-            ;;
-    esac
-done < <(wlr-randr)
-apply_out
+if (( max_height <= 0 )); then
+    echo \
+        "auto-scale: could not read display height, keeping reference sizing" \
+        >&2
 
-if [[ "$(calc "$max_scale > 0")" -ne 1 ]]; then
-    echo "auto-scale: could not read display info, keeping reference sizing" >&2
-    max_scale=$REF_SCALE
+    max_height=$REF_HEIGHT
 fi
 
-bar_height=$(round "$(calc "$BAR_HEIGHT * $max_scale / $REF_SCALE")")
-bar_font=$(round "$(calc "$BAR_FONT * $max_scale / $REF_SCALE")")
-cursor_size=$(round "$(calc "$CURSOR_SIZE * $max_scale / $REF_SCALE")")
 
-printf 'ui sizing: scale %.2f -> bar %dpx, font %dpx, cursor %dpx\n' \
-    "$max_scale" "$bar_height" "$bar_font" "$cursor_size"
+# ============================================================
+# yambar scaling
+#
+# directly proportional to vertical resolution
+# ============================================================
 
-# render the yambar config with scaled dimensions (source stays pristine)
-if [[ -f $YAMBAR_SRC ]]; then
+bar_height=$(round \
+    "$(calc "$BAR_HEIGHT * $max_height / $REF_HEIGHT")")
+
+bar_font=$(round \
+    "$(calc "$BAR_FONT * $max_height / $REF_HEIGHT")")
+
+
+# ============================================================
+# cursor scaling
+#
+# half as aggressive as bar scaling
+# ============================================================
+
+cursor_size=$(round \
+    "$(calc "$CURSOR_SIZE * (1 + 0.5 * ($max_height / $REF_HEIGHT - 1))")")
+
+
+printf \
+    'ui sizing: height %dpx -> bar %dpx, font %dpx, cursor %dpx\n' \
+    "$max_height" \
+    "$bar_height" \
+    "$bar_font" \
+    "$cursor_size"
+
+
+# ============================================================
+# render yambar config
+# ============================================================
+
+if [[ -f "$YAMBAR_SRC" ]]; then
     mkdir -p "${YAMBAR_OUT%/*}"
+
     sed -E \
         -e "s/^([[:space:]]*height:[[:space:]]*)[0-9]+/\1$bar_height/" \
         -e "s/pixelsize=[0-9]+/pixelsize=$bar_font/" \
-        "$YAMBAR_SRC" > "${YAMBAR_OUT}.new" \
+        "$YAMBAR_SRC" \
+        > "${YAMBAR_OUT}.new" \
         && mv "${YAMBAR_OUT}.new" "$YAMBAR_OUT"
 else
-    echo "auto-scale: missing $YAMBAR_SRC, skipping bar render" >&2
+    echo \
+        "auto-scale: missing $YAMBAR_SRC, skipping bar render" \
+        >&2
 fi
 
-# cursor size for sway-managed clients...
-swaymsg seat seat0 xcursor_theme "$CURSOR_THEME" "$cursor_size" >/dev/null
-# ...and everything launched through dbus/systemd
-dbus-update-activation-environment XCURSOR_THEME="$CURSOR_THEME" XCURSOR_SIZE="$cursor_size" 2>/dev/null || true
 
-# bar already up? (manual or hotplug run) bounce it onto the new config
+# ============================================================
+# cursor
+# ============================================================
+
+swaymsg seat seat0 xcursor_theme \
+    "$CURSOR_THEME" \
+    "$cursor_size" \
+    >/dev/null
+
+dbus-update-activation-environment \
+    XCURSOR_THEME="$CURSOR_THEME" \
+    XCURSOR_SIZE="$cursor_size" \
+    2>/dev/null || true
+
+
+# ============================================================
+# restart yambar
+# ============================================================
+
 if pgrep -x yambar >/dev/null 2>&1; then
     killall -q yambar yambar-fullscreen.sh 2>/dev/null
+
     sleep 0.2
-    setsid "$DOTFILES_DIR/scripts/yambar-fullscreen.sh" >/dev/null 2>&1 &
+
+    setsid \
+        "$DOTFILES_DIR/scripts/yambar-fullscreen.sh" \
+        >/dev/null 2>&1 &
 fi
