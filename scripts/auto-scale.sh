@@ -5,7 +5,7 @@
 # font pixelsize 15, cursor 15. everything else is linear from that.
 
 REF_WIDTH=2560
-REF_SCALE=1.5
+REF_SCALE=1
 BAR_HEIGHT=27
 BAR_FONT=16
 CURSOR_SIZE=15
@@ -44,20 +44,21 @@ apply_out() {
 }
 
 while IFS= read -r line; do
-    case $line in
-        Output\ *)
+    case "$line" in
+        [![:space:]]*)
             apply_out
-            cur_out=${line#Output }
-            cur_out=${cur_out%% *}
+            cur_out=${line%% *}
             cur_diag=0
             cur_width=0
             ;;
         *"Physical size:"*)
-            ps=${line##*: }          # "600x340 mm"
+            ps=${line##*: }
             ps_w=${ps%%x*}
-            rest=${ps#*x}; ps_h=${rest%% *}
+            rest=${ps#*x}
+            ps_h=${rest%% *}
             cur_diag=$(calc "sqrt($ps_w*$ps_w+$ps_h*$ps_h)/25.4")
             ;;
+
         " "*)
             if [[ $line == *current* && $line =~ [[:space:]]([0-9]+)x[0-9]+ ]]; then
                 cur_width=${BASH_REMATCH[1]}
