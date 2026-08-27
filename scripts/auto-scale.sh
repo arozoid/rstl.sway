@@ -138,12 +138,11 @@ while IFS=$'\t' read -r cur_out cur_width cur_height; do
         echo "auto-scale: no physical size found for $cur_out" >&2
     fi
 
-    # use the current scale from wlr-randr (respects manual overrides)
+    # recompute scale from physical DPI every run. trusting the current
+    # wlr-randr value lets a stale/reset scale (e.g. 1.0 after a display
+    # re-plug or sway restart) stick, which breaks DPI scaling.
     cur_phys_h=${OUTPUT_PHYS_H["$cur_out"]:-0}
-    cur_scale=${OUTPUT_SCALE["$cur_out"]:-0}
-    if (( cur_phys_h > 0 )) && [[ "$(calc "$cur_scale > 0")" -eq 1 ]]; then
-        scale=$cur_scale
-    elif (( cur_phys_h > 0 )); then
+    if (( cur_phys_h > 0 )); then
         phys_dpi=$(calc "$cur_height * 25.4 / $cur_phys_h")
         scale=$(calc "$REF_DPI / $phys_dpi")
     else
@@ -160,13 +159,17 @@ while IFS=$'\t' read -r cur_out cur_width cur_height; do
 
     swaymsg output "$cur_out" scale "$scale"
 
-    # per-output sizing for constant physical bar/cursor across displays
+    # per-output sizing for constant physical bar/cursor across displays.
+    # large desktop panels (>20") look undersized at the notebook-calibrated
+    # physical targets, so scale the bar and cursor up 2x on those.
     if (( cur_phys_h > 0 )); then
         vppmm=$(calc "$cur_height / $cur_phys_h")
 
-        cur_bar=$(round "$(calc "$TARGET_BAR_MM * $vppmm / $scale")")
-        cur_fnt=$(round "$(calc "$TARGET_FONT_MM * $vppmm / $scale")")
-        cur_cur=$(round "$(calc "$TARGET_CURSOR_MM * $vppmm / $scale")")
+        size_boost=$(calc "$cur_diag > 20 ? 2 : 1")
+
+        cur_bar=$(round "$(calc "$size_boost * $TARGET_BAR_MM * $vppmm / $scale")")
+        cur_fnt=$(round "$(calc "$size_boost * $TARGET_FONT_MM * $vppmm / $scale")")
+        cur_cur=$(round "$(calc "$size_boost * $TARGET_CURSOR_MM * $vppmm / $scale")")
 
         (( cur_bar > bar_height )) && bar_height=$cur_bar
         (( cur_fnt > bar_font ))   && bar_font=$cur_fnt
