@@ -3,39 +3,44 @@
 # ============================================================
 # rstl.sway auto scaling
 #
-# output scale:
-#   computed from physical pixel density (DPI).
-#   higher-DPI panels get higher scale.
-#   falls back to proportional-to-width when physical size is unknown.
+# Every output is sized by interpolating (linearly) between two
+# calibrated plot points given its physical diagonal (inches).
+# Values extrapolate linearly below/above the anchor sizes too.
 #
-# yambar / cursor:
-#   constant physical size across all displays:
-#     config = target_mm * vertical_pixels_per_mm / scale
+#   anchor            diag   scale  bar  font  cursor
+#   12.5" 1440p laptop 12.5"   2.0    34   25     20
+#   32"   1440p monitor 32"    1.5    34   25     20
 #
-#   reference: 1440p 27" (336mm) at scale 1.5
-#     -> bar 36px / font 24px / cursor 20px
+# scale, bar, font and cursor are all linear in inch-size between
+# the anchors and beyond. (Bar/font/cursor happen to be equal at both
+# anchors, so they stay constant across all screen sizes.)
 #
-#   falls back to proportional-to-resolution when
-#   physical dimensions are unknown.
+# When physical size is unknown, falls back to proportional-to-width
+# for scale and proportional-to-resolution for bar/font/cursor.
 # ============================================================
 
 REF_WIDTH=2560
 REF_HEIGHT=1440
-REF_DPI=163.3  # scale * dpi: 1.5 * (1440 * 25.4 / 336)
 
-BAR_HEIGHT=36
-BAR_FONT=27
-
-CURSOR_SIZE=20
 CURSOR_THEME="GoogleDot-Black"
 
-# target physical sizes in mm, calibrated for
-# 1440p 27" (336mm) at scale 1.5 -> bar 36px, font 24px, cursor 20px
-#
-# physical_height = config_px * scale * physical_height_mm / mode_height
-TARGET_BAR_MM=7
-TARGET_FONT_MM=5
-TARGET_CURSOR_MM=4
+# fallback values (used only when physical size is unknown)
+BAR_HEIGHT=34
+BAR_FONT=25
+CURSOR_SIZE=20
+
+# --- anchor plot points: diag(in) -> (scale, bar, font, cursor) ---
+SCALE_ANCHOR_D1=12.5; SCALE_ANCHOR_V1=2.0
+SCALE_ANCHOR_D2=32.0; SCALE_ANCHOR_V2=1.5
+
+BAR_ANCHOR_D1=12.5;  BAR_ANCHOR_V1=34
+BAR_ANCHOR_D2=32.0;  BAR_ANCHOR_V2=34
+
+FONT_ANCHOR_D1=12.5; FONT_ANCHOR_V1=25
+FONT_ANCHOR_D2=32.0; FONT_ANCHOR_V2=25
+
+CURSOR_ANCHOR_D1=12.5; CURSOR_ANCHOR_V1=20
+CURSOR_ANCHOR_D2=32.0; CURSOR_ANCHOR_V2=20
 
 DOTFILES_DIR="$HOME/.config/rstl.sway"
 YAMBAR_SRC="$DOTFILES_DIR/yambar/config.yml"
@@ -59,6 +64,12 @@ round() {
     '
 }
 
+# linear interpolation/extrapolation between (x1,y1) and (x2,y2)
+lerp() {
+    awk -v x="$1" -v x1="$2" -v y1="$3" -v x2="$4" -v y2="$5" \
+        'BEGIN { print y1 + (y2 - y1) * (x - x1) / (x2 - x1) }'
+}
+
 
 # ============================================================
 # physical monitor sizes
@@ -68,7 +79,6 @@ round() {
 
 declare -A OUTPUT_DIAG
 declare -A OUTPUT_PHYS_H
-declare -A OUTPUT_SCALE
 
 current_output=""
 
@@ -89,11 +99,6 @@ while IFS= read -r line; do
                 calc "sqrt($ps_w*$ps_w+$ps_h*$ps_h)/25.4"
             )
             OUTPUT_PHYS_H["$current_output"]=$ps_h
-            ;;
-
-        *"Scale:"*)
-            scale_val=${line##*: }
-            OUTPUT_SCALE["$current_output"]=$scale_val
             ;;
     esac
 done < <(wlr-randr)
@@ -138,43 +143,43 @@ while IFS=$'\t' read -r cur_out cur_width cur_height; do
         echo "auto-scale: no physical size found for $cur_out" >&2
     fi
 
-    # recompute scale from physical DPI every run. trusting the current
-    # wlr-randr value lets a stale/reset scale (e.g. 1.0 after a display
-    # re-plug or sway restart) stick, which breaks DPI scaling.
+    # scale / bar / font / cursor are linear in screen diagonal (inches)
+    # between the calibrated anchor points; values extrapolate beyond them.
     cur_phys_h=${OUTPUT_PHYS_H["$cur_out"]:-0}
-    if (( cur_phys_h > 0 )); then
-        phys_dpi=$(calc "$cur_height * 25.4 / $cur_phys_h")
-        scale=$(calc "$REF_DPI / $phys_dpi")
+    if (( cur_phys_h > 0 )) && (( $(calc "$cur_diag > 0") == 1 )); then
+        scale=$(calc "$(lerp "$cur_diag" \
+            "$SCALE_ANCHOR_D1" "$SCALE_ANCHOR_V1" \
+            "$SCALE_ANCHOR_D2" "$SCALE_ANCHOR_V2")")
+
+        cur_bar=$(round "$(calc "$(lerp "$cur_diag" \
+            "$BAR_ANCHOR_D1" "$BAR_ANCHOR_V1" \
+            "$BAR_ANCHOR_D2" "$BAR_ANCHOR_V2")")")
+        cur_fnt=$(round "$(calc "$(lerp "$cur_diag" \
+            "$FONT_ANCHOR_D1" "$FONT_ANCHOR_V1" \
+            "$FONT_ANCHOR_D2" "$FONT_ANCHOR_V2")")")
+        cur_cur=$(round "$(calc "$(lerp "$cur_diag" \
+            "$CURSOR_ANCHOR_D1" "$CURSOR_ANCHOR_V1" \
+            "$CURSOR_ANCHOR_D2" "$CURSOR_ANCHOR_V2")")")
+
+        (( cur_bar > bar_height )) && bar_height=$cur_bar
+        (( cur_fnt > bar_font ))   && bar_font=$cur_fnt
+        (( cur_cur > cursor_size )) && cursor_size=$cur_cur
     else
         scale=$(calc "$cur_width / $REF_WIDTH")
     fi
 
     printf \
-        'setting %s: %.1f" %dx%d -> scale %.2f\n' \
+        'setting %s: %.1f" %dx%d -> scale %.2f, bar %dpx, font %dpx, cursor %dpx\n' \
         "$cur_out" \
         "$cur_diag" \
         "$cur_width" \
         "$cur_height" \
-        "$scale"
+        "$scale" \
+        "$cur_bar" \
+        "$cur_fnt" \
+        "$cur_cur"
 
     swaymsg output "$cur_out" scale "$scale"
-
-    # per-output sizing for constant physical bar/cursor across displays.
-    # large desktop panels (>20") look undersized at the notebook-calibrated
-    # physical targets, so scale the bar and cursor up 2x on those.
-    if (( cur_phys_h > 0 )); then
-        vppmm=$(calc "$cur_height / $cur_phys_h")
-
-        size_boost=$(calc "$cur_diag > 20 ? 2 : 1")
-
-        cur_bar=$(round "$(calc "$size_boost * $TARGET_BAR_MM * $vppmm / $scale")")
-        cur_fnt=$(round "$(calc "$size_boost * $TARGET_FONT_MM * $vppmm / $scale")")
-        cur_cur=$(round "$(calc "$size_boost * $TARGET_CURSOR_MM * $vppmm / $scale")")
-
-        (( cur_bar > bar_height )) && bar_height=$cur_bar
-        (( cur_fnt > bar_font ))   && bar_font=$cur_fnt
-        (( cur_cur > cursor_size )) && cursor_size=$cur_cur
-    fi
 
     if (( cur_height > max_height )); then
         max_height=$cur_height
@@ -219,11 +224,9 @@ fi
 # ============================================================
 # yambar / cursor sizing
 #
-# constant physical size across all displays:
-#   config = target_mm * vertical_pixels_per_mm / scale
-#
-# computed per-output above; falls back to proportional
-# sizing when physical dimensions are unknown
+# scale/bar/font/cursor interpolated from the anchor plot points
+# per output above; falls back to proportional sizing when
+# physical dimensions are unknown.
 # ============================================================
 
 
