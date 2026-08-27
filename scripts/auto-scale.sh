@@ -3,20 +3,22 @@
 # ============================================================
 # rstl.sway auto scaling
 #
-# Every output is sized by interpolating (linearly) between two
-# calibrated plot points given its physical diagonal (inches).
-# Values extrapolate linearly below/above the anchor sizes too.
+# Every output's scale, bar, font and cursor are sized by
+# interpolating (linearly) between two calibrated plot points,
+# keyed by the panel's PHYSICAL HEIGHT in mm (more reliable than
+# diagonal). Values extrapolate linearly below/above the anchors.
 #
-#   anchor            diag   scale  bar  font  cursor
-#   12.5" 1440p laptop 12.5"   2.0    34   25     20
-#   32"   1440p monitor 32"    1.5    34   25     20
+# anchor                     height    scale  bar  font  cursor
+# 12.5" 16:9 1440p laptop    155.7mm    2.0    34   25     20
+# 32"   16:9 1440p monitor   398.5mm    1.5    34   25     20
 #
-# scale, bar, font and cursor are all linear in inch-size between
-# the anchors and beyond. (Bar/font/cursor happen to be equal at both
-# anchors, so they stay constant across all screen sizes.)
+# scale slides 2.0 -> 1.5 as panels get taller; bar/font/cursor are
+# equal at both anchors, so they stay constant across all sizes
+# (the laptop bar matches the monitor's).
 #
-# When physical size is unknown, falls back to proportional-to-width
-# for scale and proportional-to-resolution for bar/font/cursor.
+# If physical height is unavailable, falls back to the same anchors
+# expressed as diagonal in inches (12.5"/32"), then to
+# proportional-to-width scale / proportional-to-resolution sizes.
 # ============================================================
 
 REF_WIDTH=2560
@@ -29,18 +31,33 @@ BAR_HEIGHT=34
 BAR_FONT=25
 CURSOR_SIZE=20
 
-# --- anchor plot points: diag(in) -> (scale, bar, font, cursor) ---
-SCALE_ANCHOR_D1=12.5; SCALE_ANCHOR_V1=2.0
-SCALE_ANCHOR_D2=32.0; SCALE_ANCHOR_V2=1.5
+# --- anchor plot points, keyed by physical height in mm ---
+SCALE_ANCHOR_X1=155.7; SCALE_ANCHOR_V1=2.0
+SCALE_ANCHOR_X2=398.5; SCALE_ANCHOR_V2=1.5
 
-BAR_ANCHOR_D1=12.5;  BAR_ANCHOR_V1=34
-BAR_ANCHOR_D2=32.0;  BAR_ANCHOR_V2=34
+BAR_ANCHOR_X1=155.7;  BAR_ANCHOR_V1=34
+BAR_ANCHOR_X2=398.5;  BAR_ANCHOR_V2=34
 
-FONT_ANCHOR_D1=12.5; FONT_ANCHOR_V1=25
-FONT_ANCHOR_D2=32.0; FONT_ANCHOR_V2=25
+FONT_ANCHOR_X1=155.7; FONT_ANCHOR_V1=25
+FONT_ANCHOR_X2=398.5; FONT_ANCHOR_V2=25
 
-CURSOR_ANCHOR_D1=12.5; CURSOR_ANCHOR_V1=20
-CURSOR_ANCHOR_D2=32.0; CURSOR_ANCHOR_V2=20
+CURSOR_ANCHOR_X1=155.7; CURSOR_ANCHOR_V1=20
+CURSOR_ANCHOR_X2=398.5; CURSOR_ANCHOR_V2=20
+
+# fallback anchors keyed by diagonal in inches (used when physical
+# height is unknown but diagonal was computed; values shared with the
+# mm anchors above via *_ANCHOR_V1/V2)
+SCALE_ANCHOR_D1=12.5
+SCALE_ANCHOR_D2=32.0
+
+BAR_ANCHOR_D1=12.5
+BAR_ANCHOR_D2=32.0
+
+FONT_ANCHOR_D1=12.5
+FONT_ANCHOR_D2=32.0
+
+CURSOR_ANCHOR_D1=12.5
+CURSOR_ANCHOR_D2=32.0
 
 DOTFILES_DIR="$HOME/.config/rstl.sway"
 YAMBAR_SRC="$DOTFILES_DIR/yambar/config.yml"
@@ -143,35 +160,45 @@ while IFS=$'\t' read -r cur_out cur_width cur_height; do
         echo "auto-scale: no physical size found for $cur_out" >&2
     fi
 
-    # scale / bar / font / cursor are linear in screen diagonal (inches)
-    # between the calibrated anchor points; values extrapolate beyond them.
+    # scale / bar / font / cursor are linear in PHYSICAL HEIGHT (mm)
+    # between the calibrated anchor points; values extrapolate beyond.
+    # Fall back to the same anchors keyed by diagonal (inches) when the
+    # physical height is unknown, then to proportional width scaling.
     cur_phys_h=${OUTPUT_PHYS_H["$cur_out"]:-0}
-    if (( cur_phys_h > 0 )) && (( $(calc "$cur_diag > 0") == 1 )); then
-        scale=$(calc "$(lerp "$cur_diag" \
-            "$SCALE_ANCHOR_D1" "$SCALE_ANCHOR_V1" \
-            "$SCALE_ANCHOR_D2" "$SCALE_ANCHOR_V2")")
+    if (( cur_phys_h > 0 )); then
+        x=$cur_phys_h
+        sa1=$SCALE_ANCHOR_X1;   sa2=$SCALE_ANCHOR_X2
+        ba1=$BAR_ANCHOR_X1;     ba2=$BAR_ANCHOR_X2
+        fa1=$FONT_ANCHOR_X1;    fa2=$FONT_ANCHOR_X2
+        ca1=$CURSOR_ANCHOR_X1;  ca2=$CURSOR_ANCHOR_X2
+        sizing_key="height ${cur_phys_h}mm"
+    elif (( $(calc "$cur_diag > 0") == 1 )); then
+        x=$cur_diag
+        sa1=$SCALE_ANCHOR_D1;   sa2=$SCALE_ANCHOR_D2
+        ba1=$BAR_ANCHOR_D1;     ba2=$BAR_ANCHOR_D2
+        fa1=$FONT_ANCHOR_D1;    fa2=$FONT_ANCHOR_D2
+        ca1=$CURSOR_ANCHOR_D1;  ca2=$CURSOR_ANCHOR_D2
+        sizing_key="diag ${cur_diag}\""
+    else
+        scale=$(calc "$cur_width / $REF_WIDTH")
+        sizing_key="proportional width"
+    fi
 
-        cur_bar=$(round "$(calc "$(lerp "$cur_diag" \
-            "$BAR_ANCHOR_D1" "$BAR_ANCHOR_V1" \
-            "$BAR_ANCHOR_D2" "$BAR_ANCHOR_V2")")")
-        cur_fnt=$(round "$(calc "$(lerp "$cur_diag" \
-            "$FONT_ANCHOR_D1" "$FONT_ANCHOR_V1" \
-            "$FONT_ANCHOR_D2" "$FONT_ANCHOR_V2")")")
-        cur_cur=$(round "$(calc "$(lerp "$cur_diag" \
-            "$CURSOR_ANCHOR_D1" "$CURSOR_ANCHOR_V1" \
-            "$CURSOR_ANCHOR_D2" "$CURSOR_ANCHOR_V2")")")
+    if [[ -n "${sizing_key:-}" && "$sizing_key" != "proportional width" ]]; then
+        scale=$(calc "$(lerp "$x" "$sa1" "$SCALE_ANCHOR_V1" "$sa2" "$SCALE_ANCHOR_V2")")
+        cur_bar=$(round "$(calc "$(lerp "$x" "$ba1" "$BAR_ANCHOR_V1" "$ba2" "$BAR_ANCHOR_V2")")")
+        cur_fnt=$(round "$(calc "$(lerp "$x" "$fa1" "$FONT_ANCHOR_V1" "$fa2" "$FONT_ANCHOR_V2")")")
+        cur_cur=$(round "$(calc "$(lerp "$x" "$ca1" "$CURSOR_ANCHOR_V1" "$ca2" "$CURSOR_ANCHOR_V2")")")
 
         (( cur_bar > bar_height )) && bar_height=$cur_bar
         (( cur_fnt > bar_font ))   && bar_font=$cur_fnt
         (( cur_cur > cursor_size )) && cursor_size=$cur_cur
-    else
-        scale=$(calc "$cur_width / $REF_WIDTH")
     fi
 
     printf \
-        'setting %s: %.1f" %dx%d -> scale %.2f, bar %dpx, font %dpx, cursor %dpx\n' \
+        'setting %s: %s %dx%d -> scale %.2f, bar %dpx, font %dpx, cursor %dpx\n' \
         "$cur_out" \
-        "$cur_diag" \
+        "$sizing_key" \
         "$cur_width" \
         "$cur_height" \
         "$scale" \
