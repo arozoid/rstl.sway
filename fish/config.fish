@@ -135,11 +135,15 @@ alias obi="obsidian-cli"
 # obsidian git push
 function obipush
     git add .
-    and git commit -m "vault backup "(date "+%Y-%m-%d %H:%M:%S")
-    and git push
+    git commit -m "vault backup "(date "+%Y-%m-%d %H:%M:%S")
+    git push
 end
+
+alias calc="~/.config/rstl.sway/scripts/calawk.sh"
 
 # allow less to output ANSI escape codes and nerd fonts 
 export LESS=-R
 
 export LESSUTFCHARDEF=e000-e09f:w,e0a0-e0bf:p,e0c0-f8ff:w,f0001-fffff:w
+
+
