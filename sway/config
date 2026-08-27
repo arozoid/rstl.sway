@@ -45,7 +45,7 @@ for_window [app_id="fsh"] resize set width 670 px height 350 px
 ### session
 bindsym $mod+Shift+q kill
 bindsym $mod+Shift+e exec swaymsg exit
-bindsym $mod+r reload
+bindsym $mod+Shift+c reload
 
 ### focus
 bindsym $mod+h focus left
@@ -131,10 +131,10 @@ mode "resize" {
 
     bindsym Return mode "default"
     bindsym Escape mode "default"
-    bindsym $mod+Shift+r mode "default"
+    bindsym $mod+r mode "default"
 }
 
-bindsym $mod+Shift+r mode "resize"
+bindsym $mod+r mode "resize"
 
 ### mouse
 floating_modifier $mod normal
