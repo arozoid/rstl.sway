@@ -2,32 +2,70 @@
 
 # ============================================================
 # rstl.sway auto scaling
+#
+# Configurable, size-band based scaling for sway output scale,
+# the yambar bar/font, and the cursor. Everything is expressed in
+# PHYSICAL MILLIMETERS so the bar/cursor are the same real size
+# regardless of resolution or display size, then scaled back into
+# pixels per output.
+#
+# reference ("on here"): 12.5" 2560x1440 @ scale 2.0, 280x160 mm
+#   bar 35px  -> 7.78 mm    bar_px * scale * phys_h_mm / height
+#   font 23px -> 5.11 mm
+#
+# display-size bands (by diagonal):
+#   < 17"  scale 2.00  yambar x1.0 (matches on-here mm)
+#   < 25"  scale 1.75  yambar x1.5
+#   >=25"  scale 1.50  yambar x2.0
+#
+# within a band, the base scale assumes a 1440p (2k) panel. lower
+# resolution -> lower physical dpi, so scale is corrected by the
+# resolution relative to 2k (see SCALE_HEIGHT_REF). height also
+# feeds the yambar/cursor pixel math.
 # ============================================================
 
-REF_HEIGHT=1440
+set -u
 
 CURSOR_THEME="GoogleDot-Black"
-
-SCALE_D1=232.2
-SCALE_V1=2.0
-SCALE_D2=91.9
-SCALE_V2=1.5
-
-TARGET_BAR_MM=7
-TARGET_FONT_MM=5
-TARGET_CURSOR_MM=5
 
 DOTFILES_DIR="$HOME/.config/rstl.sway"
 YAMBAR_SRC="$DOTFILES_DIR/yambar/config.yml"
 YAMBAR_OUT="${XDG_CACHE_HOME:-$HOME/.cache}/rstl.sway/yambar-config.yml"
 
+# ---------- reference ("on here") ----------
+REF_HEIGHT=1440
+# mm of the reference panel's physical height
+REF_PHYS_H_MM=160
+
+# reference pixels (at scale 2.0) that we consider "1.0x"
+REF_BAR_PX=35
+REF_FONT_PX=23
+REF_CURSOR_PX=20
+
+# ---------- size bands (by diagonal inches) ----------
+# each band: <diag|max> scale yambar_mult cursor_default
+# scale is the 2k baseline; yambar_mult scales the bar/font mm
+BAND_1_MAX=17
+BAND_1_SCALE=2.0
+BAND_1_YBAR=1.0
+BAND_1_CURSOR=20
+
+BAND_2_MAX=25
+BAND_2_SCALE=1.75
+BAND_2_YBAR=1.5
+BAND_2_CURSOR=20
+
+BAND_3_MAX=9999
+BAND_3_SCALE=1.5
+BAND_3_YBAR=2.0
+BAND_3_CURSOR=20
+
+
 # ============================================================
-# pure helpers
+# helpers
 # ============================================================
 
-calc() {
-    awk "BEGIN { print ($1) }"
-}
+calc() { awk "BEGIN { print ($1) }"; }
 
 round() {
     awk -v n="$1" '
@@ -38,156 +76,178 @@ round() {
     '
 }
 
-diag_from_size() {
-    calc "sqrt($1*$1+$2*$2)/25.4"
-}
+# derived physical mm of the reference UI (later multiplied by band yambar)
+REF_BAR_MM=$(calc           "$REF_BAR_PX * 2 * $REF_PHYS_H_MM / $REF_HEIGHT")    # 7.78
+REF_FONT_MM=$(calc          "$REF_FONT_PX * 2 * $REF_PHYS_H_MM / $REF_HEIGHT")   # 5.11
+REF_CURSOR_MM=$(calc        "$REF_CURSOR_PX * 2 * $REF_PHYS_H_MM / $REF_HEIGHT") # 4.44
 
-dpi_from_width() {
-    calc "$1 / ($2 / 25.4)"
-}
 
-scale_from_dpi() {
-    calc "$SCALE_V1 + ($SCALE_V2 - $SCALE_V1) * ($1 - $SCALE_D1) / ($SCALE_D2 - $SCALE_D1)"
-}
+# ============================================================
+# read physical sizes from wlr-randr
+# ============================================================
 
-physical_px() {
-    round "$(calc "$1 * $2 / ($3 * $4)")"
-}
+declare -A PHYS_W
+declare -A PHYS_H
+declare -A DIAG
 
-compute_output_settings() {
-    local width=$1 height=$2 phys_w=$3 phys_h=$4
+current_output=""
 
-    if (( phys_w > 0 && phys_h > 0 )); then
-        local dpi scale
-        dpi=$(dpi_from_width "$width" "$phys_w")
-        scale=$(scale_from_dpi "$dpi")
+while IFS= read -r line; do
+    case "$line" in
+        [![:space:]]*)
+            current_output=${line%% *}
+            ;;
+        *"Physical size:"*)
+            ps=${line##*: }
+            ps_w=${ps%%x*}
+            rest=${ps#*x}
+            ps_h=${rest%% *}
+            PHYS_W["$current_output"]=$ps_w
+            PHYS_H["$current_output"]=$ps_h
+            DIAG["$current_output"]=$(
+                calc "sqrt($ps_w*$ps_w+$ps_h*$ps_h)/25.4"
+            )
+            ;;
+    esac
+done < <(wlr-randr)
 
-        printf '%s\t%s\t%s\t%s\t%s\n' \
-            "$scale" \
-            "$(physical_px "$TARGET_BAR_MM" "$height" "$scale" "$phys_h")" \
-            "$(physical_px "$TARGET_FONT_MM" "$height" "$scale" "$phys_h")" \
-            "$(physical_px "$TARGET_CURSOR_MM" "$height" "$scale" "$phys_h")" \
-            "dpi $(printf '%.0f' "$dpi")"
-    else
-        printf '1\t34\t25\t20\tproportional\n'
+
+# ============================================================
+# per-output scaling
+# ============================================================
+
+max_height=0
+bar_height=0
+bar_font=0
+cursor_size=0
+
+while IFS=$'\t' read -r cur_out cur_width cur_height; do
+    [[ "$cur_out" =~ ^[a-zA-Z0-9_-]+$ ]] || continue
+
+    cur_w=${PHYS_W["$cur_out"]:-0}
+    cur_h=${PHYS_H["$cur_out"]:-0}
+    cur_diag=${DIAG["$cur_out"]:-0}
+
+    # physical dims unknown -> default sane 2k values
+    if (( cur_w == 0 || cur_h == 0 || cur_diag == 0 )); then
+        base_scale=1.0
+        ybar_mult=1.0
+        cur_cursor=$REF_CURSOR_PX
+        scale=$base_scale
+        cur_bar=$(round "$(calc "$REF_BAR_PX * $cur_height / $REF_HEIGHT")")
+        cur_fnt=$(round "$(calc "$REF_FONT_PX * $cur_height / $REF_HEIGHT")")
+        printf 'setting %s: unknown size -> scale %.2f, bar %dpx, font %dpx, cursor %dpx\n' \
+            "$cur_out" "$scale" "$cur_bar" "$cur_fnt" "$cur_cursor"
+        swaymsg output "$cur_out" scale "$scale"
+        (( cur_height > max_height )) && max_height=$cur_height
+        continue
     fi
-}
 
-# ============================================================
-# read display information (dishonest)
-# ============================================================
+    # ---- pick band by diagonal ----
+    if (( $(calc "$cur_diag < $BAND_1_MAX") == 1 )); then
+        band=1; base_scale=$BAND_1_SCALE; ybar_mult=$BAND_1_YBAR
+        cur_cursor=$BAND_1_CURSOR
+    elif (( $(calc "$cur_diag < $BAND_2_MAX") == 1 )); then
+        band=2; base_scale=$BAND_2_SCALE; ybar_mult=$BAND_2_YBAR
+        cur_cursor=$BAND_2_CURSOR
+    else
+        band=3; base_scale=$BAND_3_SCALE; ybar_mult=$BAND_3_YBAR
+        cur_cursor=$BAND_3_CURSOR
+    fi
 
-read_physical_displays() {
-    wlr-randr | awk '
-        /^[^[:space:]]/ { out=$1 }
-        /Physical size:/ {
-            split($3,a,"x")
-            printf "%s\t%s\t%s\n", out, a[1], a[2]
-        }
-    '
-}
+    # ---- resolution / dpi correction: base_scale assumes 1440p ----
+    res_corr=$(calc "$cur_height / $REF_HEIGHT")
+    scale=$(calc "$base_scale * $res_corr")
 
-read_current_outputs() {
+    # ---- yambar / cursor physical mm (band * reference) ----
+    bar_mm=$(calc "$REF_BAR_MM * $ybar_mult")
+    font_mm=$(calc "$REF_FONT_MM * $ybar_mult")
+
+    # convert back to pixels for this panel: px = mm * height / (scale * phys_h)
+    cur_bar=$(round "$(calc "$bar_mm * $cur_height / ($scale * $cur_h)")")
+    cur_fnt=$(round "$(calc "$font_mm * $cur_height / ($scale * $cur_h)")")
+
+    # cursor: band default at 2k baseline, corrected for resolution (dpi)
+    cur_cur=$(round "$(calc "$cur_cursor * $cur_height / $REF_HEIGHT")")
+
+    (( cur_bar > bar_height )) && bar_height=$cur_bar
+    (( cur_fnt > bar_font ))   && bar_font=$cur_fnt
+    (( cur_cur > cursor_size )) && cursor_size=$cur_cur
+
+    printf \
+        'setting %s: band%d %.1f" -> scale %.2f, bar %dpx (%.1fmm), font %dpx, cursor %dpx\n' \
+        "$cur_out" \
+        "$band" \
+        "$cur_diag" \
+        "$scale" \
+        "$cur_bar" \
+        "$bar_mm" \
+        "$cur_fnt" \
+        "$cur_cur"
+
+    swaymsg output "$cur_out" scale "$scale"
+
+    (( cur_height > max_height )) && max_height=$cur_height
+done < <(
     swaymsg -t get_outputs -r |
-    jq -r '.[] | [.name,.current_mode.width,.current_mode.height] | @tsv'
-}
+    jq -r '
+        .[] |
+        [
+            .name,
+            .current_mode.width,
+            .current_mode.height
+        ] |
+        @tsv
+    '
+)
+
 
 # ============================================================
-# apply settings (dishonest)
+# fallback sizing (nothing usable)
 # ============================================================
 
-apply_output_scale() {
-    swaymsg output "$1" scale "$2" >/dev/null
-}
+if (( max_height <= 0 )); then
+    max_height=$REF_HEIGHT
+fi
+(( bar_height > 0 )) || bar_height=$(round "$(calc "$REF_BAR_PX * $max_height / $REF_HEIGHT")")
+(( bar_font > 0 ))   || bar_font=$(round "$(calc "$REF_FONT_PX * $max_height / $REF_HEIGHT")")
+(( cursor_size > 0 )) || cursor_size=$REF_CURSOR_PX
 
-render_yambar() {
-    local bar=$1 font=$2
 
-    [[ -f "$YAMBAR_SRC" ]] || {
-        echo "auto-scale: missing $YAMBAR_SRC" >&2
-        return
-    }
+# ============================================================
+# render yambar config
+# ============================================================
 
+printf 'ui sizing: bar %dpx, font %dpx, cursor %dpx\n' \
+    "$bar_height" "$bar_font" "$cursor_size"
+
+if [[ -f "$YAMBAR_SRC" ]]; then
     mkdir -p "${YAMBAR_OUT%/*}"
-
     sed -E \
-        -e "s/^([[:space:]]*height:[[:space:]]*)[0-9]+/\1$bar/" \
-        -e "s/pixelsize=[0-9]+/pixelsize=$font/" \
-        "$YAMBAR_SRC" > "${YAMBAR_OUT}.new"
+        -e "s/^([[:space:]]*height:[[:space:]]*)[0-9]+/\1$bar_height/" \
+        -e "s/pixelsize=[0-9]+/pixelsize=$bar_font/" \
+        "$YAMBAR_SRC" > "${YAMBAR_OUT}.new" \
+        && mv "${YAMBAR_OUT}.new" "$YAMBAR_OUT"
+else
+    echo "auto-scale: missing $YAMBAR_SRC, skipping bar render" >&2
+fi
 
-    mv "${YAMBAR_OUT}.new" "$YAMBAR_OUT"
-}
 
-apply_cursor() {
-    local size=$1
+# ============================================================
+# cursor
+# ============================================================
 
-    swaymsg seat seat0 xcursor_theme "$CURSOR_THEME" "$size" >/dev/null
+swaymsg seat seat0 xcursor_theme "$CURSOR_THEME" "$cursor_size" >/dev/null
+dbus-update-activation-environment \
+    XCURSOR_THEME="$CURSOR_THEME" XCURSOR_SIZE="$cursor_size" 2>/dev/null || true
 
-    dbus-update-activation-environment \
-        XCURSOR_THEME="$CURSOR_THEME" \
-        XCURSOR_SIZE="$size" \
-        2>/dev/null || true
-}
 
-restart_yambar() {
-    pgrep -x yambar >/dev/null 2>&1 || return
+# ============================================================
+# restart yambar
+# ============================================================
 
+if pgrep -x yambar >/dev/null 2>&1; then
     killall -q yambar yambar-fullscreen.sh 2>/dev/null
     sleep 0.2
-
-    setsid "$DOTFILES_DIR/scripts/yambar-fullscreen.sh" \
-        >/dev/null 2>&1 &
-}
-
-# ============================================================
-# main
-# ============================================================
-
-main() {
-    declare -A PHYS_W PHYS_H DIAG
-
-    while IFS=$'\t' read -r out w h; do
-        PHYS_W["$out"]=$w
-        PHYS_H["$out"]=$h
-        DIAG["$out"]=$(diag_from_size "$w" "$h")
-
-        printf 'detected physical size: %s -> %.1f" (%smm high)\n' \
-            "$out" "${DIAG[$out]}" "$h"
-    done < <(read_physical_displays)
-
-    local max_height=0
-    local bar=0 font=0 cursor=0
-
-    while IFS=$'\t' read -r out width height; do
-        local pw=${PHYS_W[$out]:-0}
-        local ph=${PHYS_H[$out]:-0}
-        local diag=${DIAG[$out]:-0}
-
-        printf 'detected output: %s -> %sx%s, %.1f" (%sx%smm)\n' \
-            "$out" "$width" "$height" "$diag" "$pw" "$ph"
-
-        IFS=$'\t' read -r scale b f c key \
-            <<<"$(compute_output_settings "$width" "$height" "$pw" "$ph")"
-
-        printf 'setting %s: %s %dx%d -> scale %.2f, bar %dpx, font %dpx, cursor %dpx\n' \
-            "$out" "$key" "$width" "$height" "$scale" "$b" "$f" "$c"
-
-        apply_output_scale "$out" "$scale"
-
-        (( b > bar )) && bar=$b
-        (( f > font )) && font=$f
-        (( c > cursor )) && cursor=$c
-        (( height > max_height )) && max_height=$height
-    done < <(read_current_outputs)
-
-    (( max_height > 0 )) || max_height=$REF_HEIGHT
-
-    printf 'ui sizing: height %dpx -> bar %dpx, font %dpx, cursor %dpx\n' \
-        "$max_height" "$bar" "$font" "$cursor"
-
-    render_yambar "$bar" "$font"
-    apply_cursor "$cursor"
-    restart_yambar
-}
-
-main "$@"
+    setsid "$DOTFILES_DIR/scripts/yambar-fullscreen.sh" >/dev/null 2>&1 &
+fi
