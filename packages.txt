@@ -20,7 +20,7 @@ neovim git curl wget unzip ripgrep fd
 mesa vulkan-icd-loader
 
 # fonts
-ttf-jetbrains-mono-nerd noto-fonts-emoji
+noto-fonts-emoji
 
 # desktop support
 xorg-xwayland xdg-utils xdg-desktop-portal-wlr
@@ -29,8 +29,13 @@ xorg-xwayland xdg-utils xdg-desktop-portal-wlr
 flac mpg123 opus libvorbis speex speexdsp sbc
 dav1d libvpx openh264 
 
-# AUR packages (installed via rstl.repo)
+# AUR/custom packages (installed via rstl.repo)
+ttf-jetbrains-mono-nerd-min
+papirus-icon-theme-dark-only
+googledot-black
+
 rstlpk
-yambar
-xdg-desktop-portal-termfilechooser
 dssd
+
+xdg-desktop-portal-termfilechooser
+yambar
