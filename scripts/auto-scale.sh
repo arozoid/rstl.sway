@@ -19,9 +19,11 @@
 #   >=25"  scale 1.50  yambar x2.0
 #
 # within a band, the base scale assumes a 1440p (2k) panel. lower
-# resolution -> lower physical dpi, so scale is corrected by the
-# resolution relative to 2k (see SCALE_HEIGHT_REF). height also
-# feeds the yambar/cursor pixel math.
+# resolution -> lower physical dpi, so output scale is corrected down,
+# but the yambar/cursor mm are corrected UP: readability matters, and
+# the same physical mm that looks good on 2k is hard to read on a
+# 1366x768 display. so lower-res panels get a bigger bar/cursor
+# (inverse-of-height factor, clamped to never go tiny).
 # ============================================================
 
 set -u
@@ -155,20 +157,25 @@ while IFS=$'\t' read -r cur_out cur_width cur_height; do
         cur_cursor=$BAND_3_CURSOR
     fi
 
-    # ---- resolution / dpi correction: base_scale assumes 1440p ----
+    # ---- resolution / dpi correction ----
+    # base scale assumes a 1440p panel; lower res -> lower scale.
     res_corr=$(calc "$cur_height / $REF_HEIGHT")
     scale=$(calc "$base_scale * $res_corr")
 
-    # ---- yambar / cursor physical mm (band * reference) ----
-    bar_mm=$(calc "$REF_BAR_MM * $ybar_mult")
-    font_mm=$(calc "$REF_FONT_MM * $ybar_mult")
+    # ---- yambar / cursor READABILITY factor ----
+    # lower resolution = harder to read the same physical mm, so bump
+    # the yambar/cursor mm up as resolution drops (inverse of height).
+    # 2k baseline -> 1.0x; 1080p -> ~1.33x; 1366x768 -> ~1.88x.
+    # higher res (e.g. 4k) renders crisply, so it shrinks below 1.0.
+    dpi_k=$(calc "$REF_HEIGHT / $cur_height")
+
+    bar_mm=$(calc "$REF_BAR_MM * $ybar_mult * $dpi_k")
+    font_mm=$(calc "$REF_FONT_MM * $ybar_mult * $dpi_k")
+    cur_cur=$(round "$(calc "$cur_cursor * $dpi_k")")
 
     # convert back to pixels for this panel: px = mm * height / (scale * phys_h)
     cur_bar=$(round "$(calc "$bar_mm * $cur_height / ($scale * $cur_h)")")
     cur_fnt=$(round "$(calc "$font_mm * $cur_height / ($scale * $cur_h)")")
-
-    # cursor: band default at 2k baseline, corrected for resolution (dpi)
-    cur_cur=$(round "$(calc "$cur_cursor * $cur_height / $REF_HEIGHT")")
 
     (( cur_bar > bar_height )) && bar_height=$cur_bar
     (( cur_fnt > bar_font ))   && bar_font=$cur_fnt
