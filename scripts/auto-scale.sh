@@ -171,7 +171,9 @@ while IFS=$'\t' read -r cur_out cur_width cur_height; do
 
     bar_mm=$(calc "$REF_BAR_MM * $ybar_mult * $dpi_k")
     font_mm=$(calc "$REF_FONT_MM * $ybar_mult * $dpi_k")
-    cur_cur=$(round "$(calc "$cur_cursor * $dpi_k")")
+    # cursor bumps gentler than the bar on lower res so it doesn't
+    # overwhelm; uses the cube-root of the readability factor.
+    cur_cur=$(round "$(calc "$cur_cursor * ($REF_HEIGHT / $cur_height) ^ (1/3)")")
 
     # convert back to pixels for this panel: px = mm * height / (scale * phys_h)
     cur_bar=$(round "$(calc "$bar_mm * $cur_height / ($scale * $cur_h)")")
