@@ -164,10 +164,10 @@ while IFS=$'\t' read -r cur_out cur_width cur_height; do
 
     # ---- yambar / cursor READABILITY factor ----
     # lower resolution = harder to read the same physical mm, so bump
-    # the yambar/cursor mm up as resolution drops (inverse of height).
-    # 2k baseline -> 1.0x; 1080p -> ~1.33x; 1366x768 -> ~1.88x.
-    # higher res (e.g. 4k) renders crisply, so it shrinks below 1.0.
-    dpi_k=$(calc "$REF_HEIGHT / $cur_height")
+    # the yambar/cursor mm up as resolution drops. use the SQUARE ROOT
+    # of the inverse-of-height so the bump is gentle (1366 ~= x1.37,
+    # 1080p ~= x1.15, 2k = x1.0) rather than a full inverse (x1.88).
+    dpi_k=$(calc "sqrt($REF_HEIGHT / $cur_height)")
 
     bar_mm=$(calc "$REF_BAR_MM * $ybar_mult * $dpi_k")
     font_mm=$(calc "$REF_FONT_MM * $ybar_mult * $dpi_k")
