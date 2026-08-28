@@ -18,7 +18,7 @@ client.urgent            #9aff9a #9aff9a #ffffff #9aff9a #9aff9a
 set $mod Mod4 
 
 ### terminal / launcher
-set $term ~/.config/rstl.sway/scripts/foot-smart
+set $term ~/.config/rstl.sway/scripts/foot-smart.sh
 set $menu fsh
 
 bindsym $mod+Return exec $term
