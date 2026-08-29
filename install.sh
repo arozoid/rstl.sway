@@ -237,6 +237,7 @@ eza
 zoxide
 jq
 lf
+fastfetch
 neovim
 git
 curl
@@ -309,17 +310,18 @@ link_dir() {
 step_3() {
   info "symlinking dotfile directories"
 
-  link_dir "$DOTFILES_DIR/sway"     "$HOME/.config/sway"
-  link_dir "$DOTFILES_DIR/swaylock" "$HOME/.config/swaylock"
-  link_dir "$DOTFILES_DIR/swayidle" "$HOME/.config/swayidle"
-  link_dir "$DOTFILES_DIR/yambar"   "$HOME/.config/yambar"
-  link_dir "$DOTFILES_DIR/rofi"     "$HOME/.config/rofi"
-  link_dir "$DOTFILES_DIR/fish"     "$HOME/.config/fish"
-  link_dir "$DOTFILES_DIR/foot"     "$HOME/.config/foot"
-  link_dir "$DOTFILES_DIR/nvim"     "$HOME/.config/nvim"
-  link_dir "$DOTFILES_DIR/mako"     "$HOME/.config/mako"
-  link_dir "$DOTFILES_DIR/lf"       "$HOME/.config/lf"
-  link_dir "$DOTFILES_DIR/greetd"   "/etc/greetd" yes
+  link_dir "$DOTFILES_DIR/sway"      "$HOME/.config/sway"
+  link_dir "$DOTFILES_DIR/swaylock"  "$HOME/.config/swaylock"
+  link_dir "$DOTFILES_DIR/swayidle"  "$HOME/.config/swayidle"
+  link_dir "$DOTFILES_DIR/yambar"    "$HOME/.config/yambar"
+  link_dir "$DOTFILES_DIR/rofi"      "$HOME/.config/rofi"
+  link_dir "$DOTFILES_DIR/fish"      "$HOME/.config/fish"
+  link_dir "$DOTFILES_DIR/foot"      "$HOME/.config/foot"
+  link_dir "$DOTFILES_DIR/nvim"      "$HOME/.config/nvim"
+  link_dir "$DOTFILES_DIR/mako"      "$HOME/.config/mako"
+  link_dir "$DOTFILES_DIR/lf"        "$HOME/.config/lf"
+  link_dir "$DOTFILES_DIR/fastfetch" "$HOME/.config/fastfetch"
+  link_dir "$DOTFILES_DIR/greetd"    "/etc/greetd" yes
 
   # xdg-desktop-portal-termfilechooser: prefer it for file pickers
   portal_dir="$HOME/.config/xdg-desktop-portal-termfilechooser"

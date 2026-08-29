@@ -251,7 +251,10 @@ step_8() {
         "$DOTFILES_DIR/install.sh" \
         "$DOTFILES_DIR/install-min.sh" \
         "$DOTFILES_DIR/.git" \
-        "$DOTFILES_DIR/.gitmodules"
+        "$DOTFILES_DIR/.gitmodules" \
+        "$DOTFILES_DIR/fastfetch" \
+        "$DOTFILES_DIR/fish"
+
     find "$DOTFILES_DIR" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
 
     run_sudo pacman -Rns --noconfirm $(pacman -Qdtq 2>/dev/null) >/dev/null 2>&1 || true
