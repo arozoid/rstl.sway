@@ -7,6 +7,12 @@ git clone https://github.com/arozoid/rstl.sway.git/ ~/.config/rstl.sway/
 cd ~/.config/rstl.sway/
 ```
 
+upgrade your system:
+
+```bash
+sudo pacman -Syu
+```
+
 then install each package group below, skipping whatever you don't need:
 
 ### window manager / bar / launcher / notifications / lock screen
@@ -72,7 +78,7 @@ sudo pacman -S --needed neovim git curl wget unzip ripgrep fd make gcc
 ### fonts
 
 ```bash
-sudo pacman -S --needed ttf-jetbrains-mono-nerd noto-fonts noto-fonts-emoji
+sudo pacman -S --needed noto-fonts-emoji
 ```
 
 ### wayland helpers
@@ -84,7 +90,7 @@ sudo pacman -S --needed xorg-xwayland xdg-utils xdg-desktop-portal-wlr
 ### misc CLI referenced by the dotfiles
 
 ```bash
-sudo pacman -S --needed expac git cronie
+sudo pacman -S --needed git cronie
 ```
 
 ### audio codecs
@@ -99,10 +105,12 @@ sudo pacman -S --needed flac mpg123 opus vorbis speex speexdsp sbc
 sudo pacman -S --needed dav1d libvpx openh264 mesa vulkan-icd-loader
 ```
 
-### AUR
+### rstl.repo 
 
 ```bash
-yay -S --needed yambar xdg-desktop-portal-termfilechooser
+printf '\n[rstl-repo]\nSigLevel = Optional TrustAll\nServer = https://arozoid.github.io/rstl.repo\n' \
+| run_sudo tee -a "$conf" >/dev/null
+sudo pacman -Sy --needed yambar xdg-desktop-portal-termfilechooser ttf-jetbrains-mono-nerd-min papirus-icon-theme-dark-only googledot-black dssd
 ```
 
 ### symlink the configs
