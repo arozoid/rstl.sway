@@ -423,6 +423,13 @@ step_5() {
 # ---------------------------------------------------------------------------
 # Step 6: battery alerts (scripts/batt.sh) via cronie / crontab
 # ---------------------------------------------------------------------------
+install_cron_entry() {
+    pattern="$1"; cron="$2"
+    existing="$(crontab -l 2>/dev/null || true)"
+    merged="$(printf '%s\n' "$existing" | grep -vE "$pattern" || true)"
+    printf '%s\n%s' "$merged" "$cron" | crontab -
+}
+
 step_6() {
   info "battery alerts setup (40% / 80%)"
 
@@ -452,14 +459,7 @@ DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${uid}/bus
 * * * * * ${DOTFILES_DIR}/scripts/batt.sh >/dev/null 2>&1
 "
 
-  # crontab - replaces the whole file, so merge with anything already there
-  existing="$(crontab -l 2>/dev/null || true)"
-  if [ -n "$existing" ]; then
-    merged="$(printf '%s\n' "$existing" | grep -vE 'batt\.sh' || true)"
-    printf '%s\n%s' "$merged" "$cron_content" | crontab -
-  else
-    printf '%s\n' "$cron_content" | crontab -
-  fi
+  install_cron_entry 'batt\.sh' "$cron"
 
   ok "battery alerts enabled in crontab (every minute, notify at ≤40% and ≥80%)"
 }
@@ -502,6 +502,12 @@ step_8() {
   run_sudo systemctl enable bluetooth.service >/dev/null 2>&1
 
   ok "final preferences applied"
+
+  cron="# foot --server standby killer
+* * * * * ${DOTFILES_DIR}/scripts/foot-idle.sh >/dev/null 2>&1
+  "
+  install_cron_entry 'foot-idle\.sh' "$cron"
+  ok "foot-idle.sh enabled"
 }
 
 # ---------------------------------------------------------------------------

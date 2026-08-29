@@ -235,6 +235,11 @@ step_7() {
     run_sudo systemctl enable NetworkManager.service >/dev/null 2>&1 || true
     run_sudo systemctl enable bluetooth.service >/dev/null 2>&1 || true
     echo "services enabled"
+    cron="# foot --server standby killer
+* * * * * ${DOTFILES_DIR}/scripts/foot-idle.sh >/dev/null 2>&1
+    "
+    install_cron_entry 'foot-idle\.sh' "$cron"
+    echo "foot-idle.sh enabled"
 }
 
 step_8() {
