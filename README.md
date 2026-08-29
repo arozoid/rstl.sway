@@ -108,4 +108,4 @@ prefer doing everything by hand? see [MANUAL_INSTALL.md](MANUAL_INSTALL.md)
 
 ## credits
 
-[melatonia/meloworld-dotfiles](https://github.com/melatonia/meloworld-dotfiles) for various desktop sounds (usb connect/remove and chime startup) and the cozy wallpaper selection :3
+[melatonia/meloworld-dotfiles](https://github.com/melatonia/meloworld-dotfiles) for the chime startup desktop sound and the default wallpaper :3 

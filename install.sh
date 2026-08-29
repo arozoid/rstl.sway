@@ -390,10 +390,10 @@ setup_wallpaper() {
   mkdir -p "$wp_dir"
 
   # copy bundled wallpapers from the dotfiles repo, if any
-  if [ -d "$DOTFILES_DIR/wallpapers" ] && [ -n "$(ls -A "$DOTFILES_DIR/wallpapers" 2>/dev/null)" ]; then
-    cp -a "$DOTFILES_DIR"/wallpapers/. "$wp_dir"/
-    ok "copied wallpapers from ${DOTFILES_DIR}/wallpapers to ${wp_dir}"
-  fi
+  # if [ -d "$DOTFILES_DIR/wallpapers" ] && [ -n "$(ls -A "$DOTFILES_DIR/wallpapers" 2>/dev/null)" ]; then
+  #   cp -a "$DOTFILES_DIR"/wallpapers/. "$wp_dir"/
+  #   ok "copied wallpapers from ${DOTFILES_DIR}/wallpapers to ${wp_dir}"
+  # fi
 
   if [ ! -f "$wp_conf" ]; then
     printf '%s\n' "~/Pictures/Wallpapers/wallpaper.jpg" > "$wp_conf"
