@@ -21,6 +21,15 @@
 
 set -eu
 
+SELF_BIND=0
+cleanup() {
+    if [ "$SELF_BIND" -eq 1 ]; then
+        echo "simple-rootfs: unmounting '$target'"
+        umount "$target" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
+
 usage() {
     cat <<'EOF'
 simple-rootfs.sh - build a minimal rstl.sway rootfs with pacstrap
@@ -95,6 +104,11 @@ chmod +x "$install_dir"/install-min.sh "$install_dir"/scripts/*.sh 2>/dev/null |
 
 # ---- 3. run install-min.sh inside the rootfs ----
 echo "simple-rootfs: entering rootfs to run install-min.sh"
+if ! mountpoint -q "$target"; then
+    echo "simple-rootfs: bind-mounting '$target' onto itself (pacman needs a root mountpoint)"
+    mount --bind "$target" "$target"
+    SELF_BIND=1
+fi
 arch-chroot "$target" /bin/sh /root/rstl.sway/install-min.sh
 
 echo "simple-rootfs: done."
