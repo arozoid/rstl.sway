@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
 ## Author : Aditya Shakya (adi1090x)
 ## Github : @adi1090x
@@ -50,34 +50,34 @@ confirm_cmd() {
 
 # Ask for confirmation
 confirm_exit() {
-	echo -e "$yes\n$no" | confirm_cmd
+	printf '%b\n' "$yes\n$no" | confirm_cmd
 }
 
 # Pass variables to rofi dmenu
 run_rofi() {
-	echo -e "$lock\n$suspend\n$logout\n$reboot\n$shutdown" | rofi_cmd
+	printf '%b\n' "$lock\n$suspend\n$logout\n$reboot\n$shutdown" | rofi_cmd
 }
 
 # Execute Command
 run_cmd() {
 	selected="$(confirm_exit)"
-	if [[ "$selected" == "$yes" ]]; then
-		if [[ $1 == '--shutdown' ]]; then
+	if [ "$selected" = "$yes" ]; then
+		if [ "$1" = '--shutdown' ]; then
 			systemctl poweroff
-		elif [[ $1 == '--reboot' ]]; then
+		elif [ "$1" = '--reboot' ]; then
 			systemctl reboot
-		elif [[ $1 == '--suspend' ]]; then
+		elif [ "$1" = '--suspend' ]; then
 			mpc -q pause
 			amixer set Master mute
 			systemctl suspend
-		elif [[ $1 == '--logout' ]]; then
-			if [[ "$DESKTOP_SESSION" == 'openbox' ]]; then
+		elif [ "$1" = '--logout' ]; then
+			if [ "$DESKTOP_SESSION" = 'openbox' ]; then
 				openbox --exit
-			elif [[ "$DESKTOP_SESSION" == 'bspwm' ]]; then
+			elif [ "$DESKTOP_SESSION" = 'bspwm' ]; then
 				bspc quit
-			elif [[ "$DESKTOP_SESSION" == 'i3' ]]; then
+			elif [ "$DESKTOP_SESSION" = 'i3' ]; then
 				i3-msg exit
-			elif [[ "$DESKTOP_SESSION" == 'plasma' ]]; then
+			elif [ "$DESKTOP_SESSION" = 'plasma' ]; then
 				qdbus org.kde.ksmserver /KSMServer logout 0 0 0
 			fi
 		fi
@@ -96,9 +96,9 @@ case ${chosen} in
 		run_cmd --reboot
         ;;
     $lock)
-		if [[ -x '/usr/bin/betterlockscreen' ]]; then
+		if [ -x '/usr/bin/betterlockscreen' ]; then
 			betterlockscreen -l
-		elif [[ -x '/usr/bin/i3lock' ]]; then
+		elif [ -x '/usr/bin/i3lock' ]; then
 			i3lock
 		fi
         ;;

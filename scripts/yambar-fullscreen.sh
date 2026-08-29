@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Hide yambar while a fullscreen window is on a *visible* workspace, show it
 # again otherwise. Handles fullscreen toggles as well as workspace switches:
@@ -30,10 +30,11 @@ stop_yambar() {
     [ -n "$yambar_pid" ] || return
     kill "$yambar_pid" 2>/dev/null
     # wait for it to die so a following start can't race the teardown
-    local i
-    for i in $(seq 1 50); do
+    i=1
+    while [ "$i" -le 50 ]; do
         kill -0 "$yambar_pid" 2>/dev/null || break
         sleep 0.02
+        i=$((i + 1))
     done
     yambar_pid=""
 }
@@ -42,7 +43,6 @@ stop_yambar() {
 # note: workspace nodes themselves always report fullscreen_mode == 1
 # (i3 compat quirk), so only con/floating_con nodes count.
 check_fullscreen() {
-    local vis
     vis=$(swaymsg -t get_workspaces | jq -c '[.[] | select(.visible) | .name]') || return 1
     [ "$vis" != "[]" ] || return 1
     swaymsg -t get_tree | jq -e --argjson vis "$vis" '
@@ -60,7 +60,8 @@ if check_fullscreen; then
     stop_yambar
 fi
 
-while read -r _event; do
+# subscribe to window/workspace events and react until the pipe closes
+swaymsg -t subscribe -m '["window", "workspace"]' | while read -r _event; do
     if check_fullscreen; then fs=1; else fs=0; fi
 
     if [ "$fs" -eq 1 ] && [ "$is_fullscreen" -eq 0 ]; then
@@ -70,4 +71,4 @@ while read -r _event; do
         is_fullscreen=0
         start_yambar
     fi
-done < <(swaymsg -t subscribe -m '["window", "workspace"]')
+done

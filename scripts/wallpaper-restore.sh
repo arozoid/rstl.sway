@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # Start awww-daemon and apply the configured wallpaper.
 #
 # The wallpaper path is read from ${WALLPAPER_CONF} (default
@@ -9,7 +9,8 @@
 WALLPAPER_CONF="${WALLPAPER_CONF:-$HOME/.config/rstl.sway/wallpaper}"
 
 # wait until the compositor is actually up (wayland socket present)
-while [[ -z "${WAYLAND_DISPLAY:-}" || ! -S "${XDG_RUNTIME_DIR:-/tmp}/${WAYLAND_DISPLAY:-}" ]]; do
+while [ -z "${WAYLAND_DISPLAY:-}" ] ||
+      [ ! -S "${XDG_RUNTIME_DIR:-/tmp}/${WAYLAND_DISPLAY:-}" ]; do
     sleep 0.2
 done
 
@@ -20,12 +21,18 @@ awww-daemon &
 sleep 0.5
 
 wallpaper=""
-if [[ -r "$WALLPAPER_CONF" ]]; then
+if [ -r "$WALLPAPER_CONF" ]; then
     wallpaper="$(head -n1 "$WALLPAPER_CONF")"
 fi
 
-if [[ -n "$wallpaper" && -f "${wallpaper/#\~/$HOME}" ]]; then
-    awww img "${wallpaper/#\~/$HOME}"
+# expand a leading ~ to $HOME
+: "${wallpaper:=}"
+if [ "${wallpaper#\~}" != "$wallpaper" ]; then
+    wallpaper="$HOME${wallpaper#\~}"
+fi
+
+if [ -n "$wallpaper" ] && [ -f "$wallpaper" ]; then
+    awww img "$wallpaper"
 else
     # fall back to whatever was cached last (a no-op on the first run)
     awww restore 2>/dev/null || true

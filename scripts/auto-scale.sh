@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
 # ============================================================
 # rstl.sway auto scaling
@@ -85,15 +85,20 @@ REF_CURSOR_MM=$(calc        "$REF_CURSOR_PX * 2 * $REF_PHYS_H_MM / $REF_HEIGHT")
 
 
 # ============================================================
-# read physical sizes from wlr-randr
+# read physical sizes from wlr-randr into a temp file
+# (line: "NAME W H DIAG"); kept outside the shell loop so the
+# per-output variables survive (no subshell).
 # ============================================================
 
-declare -A PHYS_W
-declare -A PHYS_H
-declare -A DIAG
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+physfile="$tmpdir/phys"
+outfile="$tmpdir/out"
+randrfile="$tmpdir/randr"
 
 current_output=""
 
+wlr-randr > "$randrfile"
 while IFS= read -r line; do
     case "$line" in
         [![:space:]]*)
@@ -104,14 +109,11 @@ while IFS= read -r line; do
             ps_w=${ps%%x*}
             rest=${ps#*x}
             ps_h=${rest%% *}
-            PHYS_W["$current_output"]=$ps_w
-            PHYS_H["$current_output"]=$ps_h
-            DIAG["$current_output"]=$(
-                calc "sqrt($ps_w*$ps_w+$ps_h*$ps_h)/25.4"
-            )
+            diag=$(calc "sqrt($ps_w*$ps_w+$ps_h*$ps_h)/25.4")
+            printf '%s %s %s %s\n' "$current_output" "$ps_w" "$ps_h" "$diag" >> "$physfile"
             ;;
     esac
-done < <(wlr-randr)
+done < "$randrfile"
 
 
 # ============================================================
@@ -123,15 +125,29 @@ bar_height=0
 bar_font=0
 cursor_size=0
 
-while IFS=$'\t' read -r cur_out cur_width cur_height; do
-    [[ "$cur_out" =~ ^[a-zA-Z0-9_-]+$ ]] || continue
+swaymsg -t get_outputs -r | jq -r '
+    .[] |
+    [
+        .name,
+        .current_mode.width,
+        .current_mode.height
+    ] |
+    @tsv
+' > "$outfile"
 
-    cur_w=${PHYS_W["$cur_out"]:-0}
-    cur_h=${PHYS_H["$cur_out"]:-0}
-    cur_diag=${DIAG["$cur_out"]:-0}
+while IFS="$(printf '\t')" read -r cur_out cur_width cur_height; do
+    case "$cur_out" in
+        ""|*[!a-zA-Z0-9_-]*) continue ;;
+    esac
+
+    # looks up physical size by output name; sets $1/$2/$3 (w h diag)
+    set -- $(awk -v n="$cur_out" '$1 == n { print $2, $3, $4; exit }' "$physfile")
+    cur_w=${1:-0}
+    cur_h=${2:-0}
+    cur_diag=${3:-0}
 
     # physical dims unknown -> default sane 2k values
-    if (( cur_w == 0 || cur_h == 0 || cur_diag == 0 )); then
+    if [ "$cur_w" -eq 0 ] || [ "$cur_h" -eq 0 ] || [ "$(calc "$cur_diag < 1")" -eq 1 ]; then
         base_scale=1.0
         ybar_mult=1.0
         cur_cursor=$REF_CURSOR_PX
@@ -141,15 +157,15 @@ while IFS=$'\t' read -r cur_out cur_width cur_height; do
         printf 'setting %s: unknown size -> scale %.2f, bar %dpx, font %dpx, cursor %dpx\n' \
             "$cur_out" "$scale" "$cur_bar" "$cur_fnt" "$cur_cursor"
         swaymsg output "$cur_out" scale "$scale"
-        (( cur_height > max_height )) && max_height=$cur_height
+        [ "$cur_height" -gt "$max_height" ] && max_height=$cur_height
         continue
     fi
 
     # ---- pick band by diagonal ----
-    if (( $(calc "$cur_diag < $BAND_1_MAX") == 1 )); then
+    if [ "$(calc "$cur_diag < $BAND_1_MAX")" -eq 1 ]; then
         band=1; base_scale=$BAND_1_SCALE; ybar_mult=$BAND_1_YBAR
         cur_cursor=$BAND_1_CURSOR
-    elif (( $(calc "$cur_diag < $BAND_2_MAX") == 1 )); then
+    elif [ "$(calc "$cur_diag < $BAND_2_MAX")" -eq 1 ]; then
         band=2; base_scale=$BAND_2_SCALE; ybar_mult=$BAND_2_YBAR
         cur_cursor=$BAND_2_CURSOR
     else
@@ -179,9 +195,9 @@ while IFS=$'\t' read -r cur_out cur_width cur_height; do
     cur_bar=$(round "$(calc "$bar_mm * $cur_height / ($scale * $cur_h)")")
     cur_fnt=$(round "$(calc "$font_mm * $cur_height / ($scale * $cur_h)")")
 
-    (( cur_bar > bar_height )) && bar_height=$cur_bar
-    (( cur_fnt > bar_font ))   && bar_font=$cur_fnt
-    (( cur_cur > cursor_size )) && cursor_size=$cur_cur
+    [ "$cur_bar" -gt "$bar_height" ] && bar_height=$cur_bar
+    [ "$cur_fnt" -gt "$bar_font" ]   && bar_font=$cur_fnt
+    [ "$cur_cur" -gt "$cursor_size" ] && cursor_size=$cur_cur
 
     printf \
         'setting %s: band%d %.1f" -> scale %.2f, bar %dpx (%.1fmm), font %dpx, cursor %dpx\n' \
@@ -196,31 +212,20 @@ while IFS=$'\t' read -r cur_out cur_width cur_height; do
 
     swaymsg output "$cur_out" scale "$scale"
 
-    (( cur_height > max_height )) && max_height=$cur_height
-done < <(
-    swaymsg -t get_outputs -r |
-    jq -r '
-        .[] |
-        [
-            .name,
-            .current_mode.width,
-            .current_mode.height
-        ] |
-        @tsv
-    '
-)
+    [ "$cur_height" -gt "$max_height" ] && max_height=$cur_height
+done < "$outfile"
 
 
 # ============================================================
 # fallback sizing (nothing usable)
 # ============================================================
 
-if (( max_height <= 0 )); then
+if [ "$max_height" -le 0 ]; then
     max_height=$REF_HEIGHT
 fi
-(( bar_height > 0 )) || bar_height=$(round "$(calc "$REF_BAR_PX * $max_height / $REF_HEIGHT")")
-(( bar_font > 0 ))   || bar_font=$(round "$(calc "$REF_FONT_PX * $max_height / $REF_HEIGHT")")
-(( cursor_size > 0 )) || cursor_size=$REF_CURSOR_PX
+[ "$bar_height" -gt 0 ] || bar_height=$(round "$(calc "$REF_BAR_PX * $max_height / $REF_HEIGHT")")
+[ "$bar_font" -gt 0 ]   || bar_font=$(round "$(calc "$REF_FONT_PX * $max_height / $REF_HEIGHT")")
+[ "$cursor_size" -gt 0 ] || cursor_size=$REF_CURSOR_PX
 
 
 # ============================================================
@@ -230,7 +235,7 @@ fi
 printf 'ui sizing: bar %dpx, font %dpx, cursor %dpx\n' \
     "$bar_height" "$bar_font" "$cursor_size"
 
-if [[ -f "$YAMBAR_SRC" ]]; then
+if [ -f "$YAMBAR_SRC" ]; then
     mkdir -p "${YAMBAR_OUT%/*}"
     sed -E \
         -e "s/^([[:space:]]*height:[[:space:]]*)[0-9]+/\1$bar_height/" \

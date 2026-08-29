@@ -1,5 +1,5 @@
-#!/bin/bash
-while ! pw-cli info 0 &>/dev/null; do
+#!/bin/sh
+while ! pw-cli info 0 >/dev/null 2>&1; do
     sleep 0.3
 done
 

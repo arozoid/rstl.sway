@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # rstl.sway dotfiles installer for Arch Linux
 #
 # Usage:
@@ -11,16 +11,16 @@
 set -u
 
 ASSUME_YES=0
-[[ "${1:-}" == "--yes" || "${1:-}" == "-y" ]] && ASSUME_YES=1
-[[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && {
+[ "${1:-}" = "--yes" ] || [ "${1:-}" = "-y" ] && ASSUME_YES=1
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   sed -n '2,7p' "$0"
   exit 0
-}
+fi
 
 # ---------------------------------------------------------------------------
 # Colors / styling
 # ---------------------------------------------------------------------------
-if [[ -t 1 ]]; then
+if [ -t 1 ]; then
   C_RESET='\033[0m'
   C_BOLD='\033[1m'
   C_DIM='\033[2m'
@@ -39,18 +39,21 @@ BOX_W=$(( COLS > 74 ? 74 : COLS ))
 # ---------------------------------------------------------------------------
 # Locations
 # ---------------------------------------------------------------------------
-SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
 DOTFILES_DIR="${HOME}/.config/rstl.sway"
 
 # ---------------------------------------------------------------------------
-# ASCII art (sourced from nvim/init.lua's dashboard header)
+# temp dir for the ASCII art (kept outside the loop so data survives)
 # ---------------------------------------------------------------------------
-ascii_lines=()
-if [[ -f "$SOURCE_DIR/nvim/init.lua" ]]; then
-  while IFS= read -r line; do ascii_lines+=("$line"); done < <(
-    sed -n "/local header_ascii = {/,/^      }$/p" "$SOURCE_DIR/nvim/init.lua" \
-      | sed -E "/local header_ascii = \{/d; /^ *}$/d; s/^ *'(.*)',?$/\1/"
-  )
+GCDIR="$(mktemp -d)"
+trap 'rm -rf "$GCDIR"' EXIT
+ASCII_FILE="$GCDIR/ascii"
+
+# ASCII art (sourced from nvim/init.lua's dashboard header)
+if [ -f "$SOURCE_DIR/nvim/init.lua" ]; then
+  sed -n "/local header_ascii = {/,/^      }$/p" "$SOURCE_DIR/nvim/init.lua" \
+    | sed -E "/local header_ascii = \{/d; /^ *}$/d; s/^ *'(.*)',?$/\1/" \
+    > "$ASCII_FILE"
 fi
 
 rule() {
@@ -58,22 +61,22 @@ rule() {
 }
 
 print_art() {
-  local color="$1" line indent
-  for line in "${ascii_lines[@]}"; do
-    if [[ -n "$line" ]]; then
+  color="$1"
+  while IFS= read -r line; do
+    if [ -n "$line" ]; then
       indent=$(( (COLS - ${#line}) / 2 ))
-      [[ $indent -lt 0 ]] && indent=0
+      [ "$indent" -lt 0 ] && indent=0
       printf "%b%*s%s%b\n" "$color" "$indent" "" "$line" "$C_RESET"
     else
       printf "%b\n" "$color"
     fi
-  done
+  done < "$ASCII_FILE"
 }
 
 center() {
-  local text="$1" color="$2"
-  local indent=$(( (COLS - ${#text}) / 2 ))
-  [[ $indent -lt 0 ]] && indent=0
+  text="$1" color="$2"
+  indent=$(( (COLS - ${#text}) / 2 ))
+  [ "$indent" -lt 0 ] && indent=0
   printf "%b%*s%s%b\n" "$color" "$indent" "" "$text" "$C_RESET"
 }
 
@@ -106,10 +109,10 @@ run_sudo() {
 
 # add rstl-repo to pacman.conf
 add_rstl_repo() {
-  local conf="/etc/pacman.conf"
-  local repo_line="[rstl-repo]"
-  local sig_line="SigLevel = Optional TrustAll"
-  local server_line="Server = https://arozoid.github.io/rstl.repo"
+  conf="/etc/pacman.conf"
+  repo_line="[rstl-repo]"
+  sig_line="SigLevel = Optional TrustAll"
+  server_line="Server = https://arozoid.github.io/rstl.repo"
 
   if grep -qF "$repo_line" "$conf" 2>/dev/null; then
     ok "rstl-repo already in ${conf}"
@@ -124,11 +127,11 @@ add_rstl_repo() {
 
 # combined step header + confirmation prompt
 ask_step() {
-  local idx="$1" label="$2" question="$3"
-  local ans=""
+  idx="$1" label="$2" question="$3"
+  ans=""
   rule "$C_MAGENTA"
   printf "  ${C_BOLD}${C_CYAN}STEP %s · ${C_CYAN}%s${C_RESET}\n" "$idx" "$label"
-  if [[ "$ASSUME_YES" -eq 1 ]]; then
+  if [ "$ASSUME_YES" -eq 1 ]; then
     printf "  ${C_BOLD}%s${C_RESET}  ${C_DIM}[auto-yes]${C_RESET}\n" "$question"
     rule "$C_MAGENTA"
     printf "  ${C_GREEN}${C_BOLD}✓ proceeding${C_RESET}\n"
@@ -136,10 +139,10 @@ ask_step() {
   fi
   printf "  ${C_BOLD}%s${C_RESET}  ${C_DIM}[Y/n]${C_RESET}  " "$question"
   read -r ans
-  [[ -t 0 ]] || printf "\n"
+  [ -t 0 ] || printf "\n"
   rule "$C_MAGENTA"
-  case "${ans,,}" in
-    ""|y|yes)
+  case "$ans" in
+    ""|[yY]|[yY][eE][sS])
       printf "  ${C_GREEN}${C_BOLD}✓ proceeding${C_RESET}\n"
       return 0
       ;;
@@ -176,7 +179,7 @@ step_1() {
   ok "nvim config updated"
   info "copying dotfiles to ${DOTFILES_DIR}"
   mkdir -p "${DOTFILES_DIR}"
-  if [[ "$SOURCE_DIR" == "$DOTFILES_DIR" ]]; then
+  if [ "$SOURCE_DIR" = "$DOTFILES_DIR" ]; then
     ok "dotfiles are already at ${DOTFILES_DIR}"
     return 0
   fi
@@ -192,7 +195,7 @@ step_1() {
 step_2() {
   info "installing required packages"
 
-  if [[ ! -x /usr/bin/pacman ]]; then
+  if [ ! -x /usr/bin/pacman ]; then
     warn "pacman not found — skipping (this script targets Arch Linux)."
     return 1
   fi
@@ -200,69 +203,76 @@ step_2() {
   # add custom repo first
   add_rstl_repo
 
-  local packages=(
-    # window manager / bar / launcher / notifications / lock screen
-    sway swaybg rofi mako swaylock swayidle
+  { cat > "$GCDIR/packages" <<'PKGS'
+sway
+swaybg
+rofi
+mako
+swaylock
+swayidle
+grim
+slurp
+wl-clipboard
+cliphist
+awww
+playerctl
+brightnessctl
+acpi
+networkmanager
+bluez
+bluez-utils
+pipewire
+wireplumber
+pipewire-pulse
+pipewire-alsa
+alsa-utils
+libnotify
+sound-theme-freedesktop
+greetd
+greetd-tuigreet
+foot
+fish
+bat
+eza
+zoxide
+jq
+lf
+neovim
+git
+curl
+wget
+unzip
+ripgrep
+fd
+noto-fonts-emoji
+xorg-xwayland
+xdg-utils
+xdg-desktop-portal-wlr
+cronie
+flac
+mpg123
+opus
+libvorbis
+speex
+speexdsp
+sbc
+dav1d
+libvpx
+openh264
+mesa
+vulkan-icd-loader
+ttf-jetbrains-mono-nerd-min
+papirus-icon-theme-dark-only
+googledot-black
+rstlpk
+dssd
+xdg-desktop-portal-termfilechooser
+yambar
+PKGS
+} > /dev/null
 
-    # screenshots / clipboard history
-    grim slurp wl-clipboard cliphist
-
-    # wallpaper daemon + image tooling
-    awww
-
-    # hardware / media keys
-    playerctl brightnessctl acpi
-
-    # network + bluetooth
-    networkmanager bluez bluez-utils
-
-    # audio (pipewire stack + alsa tools used by rofi applets)
-    pipewire wireplumber pipewire-pulse pipewire-alsa alsa-utils
-
-    # notifications + sound theme
-    libnotify sound-theme-freedesktop
-
-    # login manager
-    greetd greetd-tuigreet
-
-    # terminal + shell + terminal file manager (for the file chooser portal)
-    foot fish bat eza zoxide jq lf
-
-    # editor
-    neovim git curl wget unzip ripgrep fd
-
-    # emoji support 
-    noto-fonts-emoji
-
-    # wayland helpers
-    xorg-xwayland xdg-utils xdg-desktop-portal-wlr
-
-    # batt.sh alerts
-    cronie
-
-    # audio codecs
-    flac mpg123 opus libvorbis speex speexdsp sbc
-
-    # modern web video
-    dav1d libvpx openh264
-
-    # vulkan
-    mesa vulkan-icd-loader
-
-    # rstl-repo packages
-    ttf-jetbrains-mono-nerd-min
-    papirus-icon-theme-dark-only
-    googledot-black
-    
-    rstlpk
-    dssd
-    
-    xdg-desktop-portal-termfilechooser
-    yambar
-  )
-
-  printf "  ${C_DIM}installing: %s${C_RESET}\n" "${packages[*]}"
-  run_sudo pacman -S --needed --noconfirm "${packages[@]}"
+  printf "  ${C_DIM}installing: %s${C_RESET}\n" "$(tr '\n' ' ' < "$GCDIR/packages")"
+  run_sudo pacman -S --needed --noconfirm $(cat "$GCDIR/packages")
 
   ok "packages installed"
 }
@@ -271,16 +281,16 @@ step_2() {
 # Step 3: symlink dotfile directories to their proper paths
 # ---------------------------------------------------------------------------
 link_dir() {
-  local src="$1" dest="$2" use_sudo="${3:-no}"
+  src="$1" dest="$2" use_sudo="${3:-no}"
 
-  if [[ -L "$dest" ]] && [[ "$(readlink "$dest")" == "$src" ]]; then
+  if [ -L "$dest" ] && [ "$(readlink "$dest")" = "$src" ]; then
     ok "already linked ${dest} -> ${src}"
     return 0
   fi
 
-  if [[ -e "$dest" || -L "$dest" ]]; then
-    local backup="${dest}.bak.$(date +%s)"
-    if [[ "$use_sudo" == "yes" ]]; then
+  if [ -e "$dest" ] || [ -L "$dest" ]; then
+    backup="${dest}.bak.$(date +%s)"
+    if [ "$use_sudo" = "yes" ]; then
       run_sudo mv "$dest" "$backup"
     else
       mv "$dest" "$backup"
@@ -288,7 +298,7 @@ link_dir() {
     warn "moved existing ${dest} to ${backup}"
   fi
 
-  if [[ "$use_sudo" == "yes" ]]; then
+  if [ "$use_sudo" = "yes" ]; then
     run_sudo ln -s "$src" "$dest"
   else
     ln -s "$src" "$dest"
@@ -312,9 +322,9 @@ step_3() {
   link_dir "$DOTFILES_DIR/greetd"   "/etc/greetd" yes
 
   # xdg-desktop-portal-termfilechooser: prefer it for file pickers
-  local portal_dir="$HOME/.config/xdg-desktop-portal-termfilechooser"
+  portal_dir="$HOME/.config/xdg-desktop-portal-termfilechooser"
   mkdir -p "$portal_dir"
-  if [[ -e "$portal_dir/config" ]] && ! diff -q "$DOTFILES_DIR/portal/config" "$portal_dir/config" >/dev/null 2>&1; then
+  if [ -e "$portal_dir/config" ] && ! diff -q "$DOTFILES_DIR/portal/config" "$portal_dir/config" >/dev/null 2>&1; then
     mv "$portal_dir/config" "$portal_dir/config.bak"
     warn "moved existing ${portal_dir}/config to config.bak"
   fi
@@ -323,9 +333,9 @@ step_3() {
   chmod +x "$portal_dir/lf-wrapper.sh"
   ok "configured ${portal_dir}/config (lf file chooser)"
 
-  local portals_conf="$HOME/.config/xdg-desktop-portal/portals.conf"
+  portals_conf="$HOME/.config/xdg-desktop-portal/portals.conf"
   mkdir -p "$(dirname "$portals_conf")"
-  if [[ ! -f "$portals_conf" ]]; then
+  if [ ! -f "$portals_conf" ]; then
     printf '%s\n' \
       '[preferred]' \
       'org.freedesktop.impl.portal.FileChooser=termfilechooser' > "$portals_conf"
@@ -341,7 +351,7 @@ step_3() {
 step_4() {
   info "greetd + tuigreet setup"
 
-  if ! [[ -e /etc/greetd/config.toml ]]; then
+  if [ ! -e /etc/greetd/config.toml ]; then
     warn "/etc/greetd/config.toml missing — did step 3 run?"
     return 1
   fi
@@ -371,28 +381,28 @@ step_4() {
 # Step 5: wallpaper setup
 # ---------------------------------------------------------------------------
 setup_wallpaper() {
-  local wp_dir="$HOME/Pictures/Wallpapers"
-  local wp_conf="$DOTFILES_DIR/wallpaper"
-  local wp_file="$wp_dir/wallpaper.jpg"
+  wp_dir="$HOME/Pictures/Wallpapers"
+  wp_conf="$DOTFILES_DIR/wallpaper"
+  wp_file="$wp_dir/wallpaper.jpg"
 
   mkdir -p "$wp_dir"
 
   # copy bundled wallpapers from the dotfiles repo, if any
-  if [[ -d "$DOTFILES_DIR/wallpapers" ]] && compgen -G "$DOTFILES_DIR/wallpapers/*" >/dev/null; then
+  if [ -d "$DOTFILES_DIR/wallpapers" ] && [ -n "$(ls -A "$DOTFILES_DIR/wallpapers" 2>/dev/null)" ]; then
     cp -a "$DOTFILES_DIR"/wallpapers/. "$wp_dir"/
     ok "copied wallpapers from ${DOTFILES_DIR}/wallpapers to ${wp_dir}"
   fi
 
-  if [[ ! -f "$wp_conf" ]]; then
+  if [ ! -f "$wp_conf" ]; then
     printf '%s\n' "~/Pictures/Wallpapers/wallpaper.jpg" > "$wp_conf"
     ok "wrote wallpaper config ${wp_conf}"
   else
     ok "wallpaper config already present: $(cat "$wp_conf")"
   fi
 
-  if [[ ! -f "$wp_file" ]]; then
-    local src_wallpaper="$DOTFILES_DIR/wallpapers/Kiki's Delievery Service.jpg"
-    if [[ -f "$src_wallpaper" ]]; then
+  if [ ! -f "$wp_file" ]; then
+    src_wallpaper="$DOTFILES_DIR/wallpapers/Kiki's Delievery Service.jpg"
+    if [ -f "$src_wallpaper" ]; then
       cp "$src_wallpaper" "$wp_file"
       ok "default wallpaper installed (Kiki's Delivery Service)"
     else
@@ -430,10 +440,9 @@ step_6() {
   run_sudo systemctl enable --now cronie.service >/dev/null 2>&1 || \
     warn "could not enable cronie.service — start it manually (systemctl enable --now cronie)"
 
-  local uid
   uid="$(id -u)"
 
-  local cron_content="# rstl.sway battery alerts (40% / 80%)
+  cron_content="# rstl.sway battery alerts (40% / 80%)
 SHELL=/bin/bash
 XDG_RUNTIME_DIR=/run/user/${uid}
 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${uid}/bus
@@ -442,9 +451,8 @@ DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${uid}/bus
 "
 
   # crontab - replaces the whole file, so merge with anything already there
-  local existing merged
   existing="$(crontab -l 2>/dev/null || true)"
-  if [[ -n "$existing" ]]; then
+  if [ -n "$existing" ]; then
     merged="$(printf '%s\n' "$existing" | grep -vE 'batt\.sh' || true)"
     printf '%s\n%s' "$merged" "$cron_content" | crontab -
   else
@@ -455,7 +463,7 @@ DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${uid}/bus
 }
 
 # ---------------------------------------------------------------------------
-# Step 8: fish as default shell
+# Step 7: fish as default shell
 # ---------------------------------------------------------------------------
 step_7() {
   info "fish default shell"
@@ -469,8 +477,8 @@ step_7() {
   fi
 
   # fish config sourced a CachyOS-only file; guard it so vanilla Arch works
-  local fishconf="$HOME/.config/fish/config.fish"
-  if [[ -f "$fishconf" ]] && ! grep -q 'if test -f /usr/share/cachyos-fish-config' "$fishconf"; then
+  fishconf="$HOME/.config/fish/config.fish"
+  if [ -f "$fishconf" ] && ! grep -q 'if test -f /usr/share/cachyos-fish-config' "$fishconf"; then
     sed -i 's|^source /usr/share/cachyos-fish-config/conf.d/done.fish$|if test -f /usr/share/cachyos-fish-config/conf.d/done.fish\n    source /usr/share/cachyos-fish-config/conf.d/done.fish\nend|' "$fishconf"
     ok "guarded cachyos-fish-config source in ${fishconf}"
   fi
@@ -500,50 +508,49 @@ step_8() {
 step_9() {
   info "cleanup"
 
-  local removed=0
+  removed=0
 
   # directories that are no longer needed after install
-  local dirs=(
-    wallpapers    # copied to ~/Pictures/Wallpapers in step 5
-    depsize       # dev utility
-    nvim/.git     # submodule git internal
-    ranger/.git   # submodule git internal
-    waybar        # replaced by yambar
-  )
-
-  for d in "${dirs[@]}"; do
-    local full="$DOTFILES_DIR/$d"
-    if [[ -e "$full" || -L "$full" ]]; then
+  while IFS= read -r d; do
+    [ -n "$d" ] || continue
+    full="$DOTFILES_DIR/$d"
+    if [ -e "$full" ] || [ -L "$full" ]; then
       rm -rf "$full"
       ok "removed ${d}"
       removed=1
     fi
-  done
+  done <<EOF
+wallpapers
+depsize
+nvim/.git
+ranger/.git
+waybar
+EOF
 
   # files that are no longer needed after install
-  local files=(
-    packages.txt
-    README.md
-    MANUAL_INSTALL.md
-    install.sh    # this script itself
-    .git          # repo git internals
-    .gitmodules   # submodule config
-  )
-
-  for f in "${files[@]}"; do
-    local full="$DOTFILES_DIR/$f"
-    if [[ -e "$full" || -L "$full" ]]; then
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    full="$DOTFILES_DIR/$f"
+    if [ -e "$full" ] || [ -L "$full" ]; then
       rm -f "$full"
       ok "removed ${f}"
       removed=1
     fi
-  done
+  done <<EOF
+packages.txt
+README.md
+MANUAL_INSTALL.md
+install.sh
+install-min.sh
+.git
+.gitmodules
+EOF
 
   # python bytecache
-  while IFS= read -r -d '' pycache; do
-    rm -rf "$pycache"
+  if find "$DOTFILES_DIR" -type d -name '__pycache__' -print -quit 2>/dev/null | grep -q .; then
+    find "$DOTFILES_DIR" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null
     removed=1
-  done < <(find "$DOTFILES_DIR" -type d -name '__pycache__' -print0 2>/dev/null)
+  fi
 
   # remove orphaned make dependencies
   printf "  ${C_DIM}removing orphaned packages...${C_RESET}\n"
@@ -554,13 +561,13 @@ step_9() {
   run_sudo pacman -Scc --noconfirm 2>/dev/null || true
   run_sudo rm -rf /var/cache/pacman/pkg/* 2>/dev/null || true
 
-  [[ $removed -eq 1 ]] && ok "cleaned up" || ok "nothing to clean"
+  if [ "$removed" -eq 1 ]; then ok "cleaned up"; else ok "nothing to clean"; fi
 }
 
 # ---------------------------------------------------------------------------
 # Run
 # ---------------------------------------------------------------------------
-if [[ "${EUID}" -eq 0 ]]; then
+if [ "${EUID:-}" -eq 0 ]; then
   printf "${C_RED}${C_BOLD}Error:${C_RESET} ${C_BOLD}do not run as root.${C_RESET}\n" >&2
   printf "${C_DIM}Run as your normal user (sudo is used when needed).${C_RESET}\n" >&2
   exit 1
@@ -568,26 +575,23 @@ fi
 
 banner_start
 
-steps=(
-  "0|ensure sudo privileges|Ensure sudo privileges for a smooth installation?|step_0"
-  "1|copy dotfiles to ~/.config/rstl.sway|Copy dotfiles into ~/.config/rstl.sway?|step_1"
-  "2|install required packages|Install all required packages?|step_2"
-  "3|symlink dotfile directories|Symlink dotfile directories to their proper paths?|step_3"
-  "4|greetd + tuigreet setup|Set up greetd + tuigreet as the login manager?|step_4"
-  "5|wallpaper setup|Set up the wallpaper?|step_5"
-  "6|battery alerts (40% / 80%)|Set up the 40% / 80% battery alerts (batt.sh)?|step_6"
-  "7|fish default shell|Set fish as the default shell?|step_7"
-  "8|final preferences|Enable lingering, pipewire, network, bluetooth?|step_8"
-  "9|cleanup|Remove build artifacts and caches from the dotfiles?|step_9"
-)
-
-for entry in "${steps[@]}"; do
-  IFS='|' read -r idx label question func <<< "$entry"
+while IFS='|' read -r idx label question func <&3; do
   if ask_step "$idx" "$label" "$question"; then
     "$func"
   fi
   echo
-done
+done 3<<'EOF'
+0|ensure sudo privileges|Ensure sudo privileges for a smooth installation?|step_0
+1|copy dotfiles to ~/.config/rstl.sway|Copy dotfiles into ~/.config/rstl.sway?|step_1
+2|install required packages|Install all required packages?|step_2
+3|symlink dotfile directories|Symlink dotfile directories to their proper paths?|step_3
+4|greetd + tuigreet setup|Set up greetd + tuigreet as the login manager?|step_4
+5|wallpaper setup|Set up the wallpaper?|step_5
+6|battery alerts (40% / 80%)|Set up the 40% / 80% battery alerts (batt.sh)?|step_6
+7|fish default shell|Set fish as the default shell?|step_7
+8|final preferences|Enable lingering, pipewire, network, bluetooth?|step_8
+9|cleanup|Remove build artifacts and caches from the dotfiles?|step_9
+EOF
 
 banner_end
 

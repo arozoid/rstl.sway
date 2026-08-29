@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Battery charge reminder. Single-shot: cronie invokes it every minute
 # (see install.sh step 6). Throttle state survives across invocations via a
@@ -24,7 +24,7 @@ now=$(date +%s)
 
 # Low battery reminder
 if [ "$capacity" -le "$LOW" ] && [ "$status" = "Discharging" ]; then
-    if (( now - last_low >= INTERVAL )); then
+    if [ $((now - last_low)) -ge "$INTERVAL" ]; then
         notify-send -u critical "Plug in Charger!" "Battery is at ${capacity}%"
         paplay /usr/share/sounds/freedesktop/stereo/suspend-error.oga
         last_low=$now
@@ -35,7 +35,7 @@ fi
 
 # High battery reminder
 if [ "$capacity" -ge "$HIGH" ] && [ "$status" = "Charging" ]; then
-    if (( now - last_high >= INTERVAL )); then
+    if [ $((now - last_high)) -ge "$INTERVAL" ]; then
         notify-send -u critical "Unplug Charger!" "Battery reached ${capacity}%"
         paplay /usr/share/sounds/freedesktop/stereo/suspend-error.oga
         last_high=$now
