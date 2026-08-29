@@ -172,9 +172,9 @@ exec_always --no-startup-id sh -c 'killall -q yambar yambar-fullscreen.sh; ~/.co
 exec --no-startup-id swayidle -w -C ~/.config/swayidle/config
 exec --no-startup-id wl-paste --type text --watch cliphist store
 exec --no-startup-id wl-paste --type image --watch cliphist store
-exec --no-startup-id ~/.local/bin/nightlight.sh
+#exec --no-startup-id ~/.local/bin/nightlight.sh
 exec --no-startup-id ~/.config/rstl.sway/scripts/chime.sh
-exec --no-startup-id ~/.config/rstl.sway/scripts/usb-sound.sh
+#exec --no-startup-id ~/.config/rstl.sway/scripts/usb-sound.sh
 
 exec_always --no-startup-id sh -c 'killall -q mako; sleep 0.2; mako'
 
