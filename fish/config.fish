@@ -6,7 +6,7 @@ end
 ## Set values
 ## Run fastfetch as welcome message
 function fish_greeting
-  echo ""; fastfetch --pipe false --logo none | sed 's/^/   /'
+  echo ""; fastfetch --pipe false --logo none | sed 's/^/   /'; echo ""
 end
 
 # editor = nvim
