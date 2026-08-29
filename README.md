@@ -1,4 +1,4 @@
-# rstl.sway ⋅ ~0.45 GiB desktop
+# rstl.sway ⋅ 458 MiB desktop
 
 ultra lean & minimalistic sway config (based on arch linux) for those who want to make the most of their screen space while keeping all the features and storage space (optimized for laptops)
 
@@ -21,7 +21,7 @@ this setup includes but is not limited to:
 - papirus icon theme
 - [fsh](https://github.com/pingu-hq/fsh) menu
 
-and several more features, such as [polkit authentication](https://github.com/arozoid/rstlpk) + dssd secret service + xdg portal integration. (~0.99 GiB full size on base arch linux install)
+and several more features, such as [polkit authentication](https://github.com/arozoid/rstlpk) + dssd secret service + xdg portal integration. (~0.93 GiB full size on base arch linux install)
 
 ## installation
 
