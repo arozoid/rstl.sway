@@ -3,8 +3,11 @@ name: Build Archiso
 on:
   push:
     branches: [main, master]
-  workflow_dispatch:
   pull_request:
+  workflow_dispatch:
+  # Daily build at 12:00 UTC (schedules are always UTC).
+  schedule:
+    - cron: "0 12 * * *"
 
 jobs:
   build-iso:
@@ -19,13 +22,27 @@ jobs:
             base-devel \
             sudo \
             git \
+            rust \
             archiso
-      - name: Checkout
+
+      - name: Checkout (with submodules)
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build and inject rstl-inst TUI
+        run: |
+          cd rstl-inst
+          cargo build --release
+          install -Dm755 target/release/rstl-inst \
+            "$GITHUB_WORKSPACE/archiso/airootfs/usr/local/bin/rstl-inst"
+          "$GITHUB_WORKSPACE/archiso/airootfs/usr/local/bin/rstl-inst" --version || true
+
       - name: Build ISO
         run: |
           chmod +x build-iso.sh
           ./build-iso.sh -o "$GITHUB_WORKSPACE/dist"
+
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
         with:

@@ -8,3 +8,6 @@
 [submodule "rstlpk"]
 	path = rstlpk
 	url = https://github.com/arozoid/rstlpk
+[submodule "rstl-inst"]
+	path = rstl-inst
+	url = https://github.com/arozoid/rstl-inst.git

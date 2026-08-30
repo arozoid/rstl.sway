@@ -16,6 +16,7 @@ set -eu
 REPO="$(cd "$(dirname "$0")" && pwd)"
 PROFILE="$REPO/archiso"
 ARCH="$REPO/archiso/airootfs/root"
+AIROOT="$REPO/archiso/airootfs"
 
 WORK="$REPO/build_work"
 OUT="$REPO/build_output"
@@ -62,19 +63,44 @@ fi
 
 CFG="$ARCH/.config/rstl.sway"
 
+# ---- fetch submodules (nvim, ranger, rstlpk, rstl-inst) ----
+git submodule update --init --recursive
+
+# ---- build the rstl-inst submodule into the airootfs ----
+build_rstl_inst() {
+    BIN="$AIROOT/usr/local/bin/rstl-inst"
+    echo "build-iso: building rstl-inst"
+    if command -v cargo >/dev/null 2>&1 && [ -d "$REPO/rstl-inst" ]; then
+        (
+            cd "$REPO/rstl-inst"
+            cargo build --release
+        ) && {
+            mkdir -p "$(dirname "$BIN")"
+            cp "$REPO/rstl-inst/target/release/rstl-inst" "$BIN"
+            chmod 755 "$BIN"
+            echo "build-iso: injected $BIN"
+        }
+    else
+        echo "build-iso: WARN cargo unavailable or no rstl-inst checkout; skipping TUI build" >&2
+    fi
+}
+build_rstl_inst
+
 # ---- stage the dotfiles into the profile airootfs ----
 echo "build-iso: staging dotfiles into $CFG"
 rm -rf "$CFG"
 mkdir -p "$CFG"
 # copy this repo, minus anything generated during the build
 # (keeps install.sh / install-min.sh / simple-rootfs.sh available in the live
-# image so one can install to disk straight from the ISO)
+# image so one can install to disk straight from the ISO). The rstl-inst
+# submodule source is staged, but not its build artifacts.
 tar \
     -C "$REPO" \
     --exclude=.git \
     --exclude=archiso \
     --exclude=build_work \
     --exclude=build_output \
+    --exclude=rstl-inst/target \
     -cf - . \
   | tar -C "$CFG" -xf -
 

@@ -2,6 +2,9 @@
 build_work/
 build_output/
 
+# rstl-inst binary injected by build-iso.sh
+archiso/airootfs/usr/local/bin/rstl-inst
+
 # The build stage-copies the dotfiles repo into the airootfs; never track
 # those generated copies. Ignore everything staged under root/ except the
 # hand-written dotfiles we keep in the profile (.bash_profile,
