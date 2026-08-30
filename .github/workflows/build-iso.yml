@@ -38,6 +38,11 @@ jobs:
             "$GITHUB_WORKSPACE/archiso/airootfs/usr/local/bin/rstl-inst"
           "$GITHUB_WORKSPACE/archiso/airootfs/usr/local/bin/rstl-inst" --version || true
 
+      - name: Trust git checkout (dubious ownership)
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/rstl-inst"
+
       - name: Build ISO
         run: |
           chmod +x build-iso.sh
