@@ -1,0 +1,107 @@
+# rstl.sway live/install medium - base system
+base
+linux
+linux-firmware
+mkinitcpio
+mkinitcpio-archiso
+arch-install-scripts
+pacman
+sudo
+reflector
+git
+curl
+wget
+unzip
+
+# boot / filesystem / archiso tooling
+syslinux
+squashfs-tools
+dosfstools
+e2fsprogs
+mtools
+parted
+gptfdisk
+efibootmgr
+edk2-shell
+openssh
+
+# networking
+networkmanager
+wireless-regdb
+iw
+iwd
+wpa_supplicant
+inetutils
+iproute2
+
+# console / locale
+terminus-font
+man-db
+man-pages
+less
+sed
+gawk
+
+# rstl.sway window manager / display (Wayland, sway)
+sway
+swaybg
+rofi
+mako
+swaylock
+swayidle
+grim
+slurp
+wl-clipboard
+cliphist
+fastfetch
+xdg-utils
+xorg-xwayland
+xdg-desktop-portal-wlr
+
+# audio / media
+pipewire
+wireplumber
+pipewire-pulse
+pipewire-alsa
+alsa-utils
+libnotify
+sound-theme-freedesktop
+flac
+mpg123
+opus
+libvorbis
+speex
+speexdsp
+sbc
+dav1d
+libvpx
+openh264
+
+# hardware / graphics
+playerctl
+brightnessctl
+mesa
+vulkan-icd-loader
+bluez
+bluez-utils
+
+# terminal / editor / file management
+foot
+lf
+neovim
+ripgrep
+fd
+cronie
+
+# login manager (target install uses greetd + tuigreet)
+greetd
+greetd-tuigreet
+
+# rstl-repo packages (fonts, icons, themes, rstl tools)
+ttf-jetbrains-mono-nerd-min
+papirus-icon-theme-dark-only
+googledot-black
+rstlpk
+dssd
+xdg-desktop-portal-termfilechooser
+yambar

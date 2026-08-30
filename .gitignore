@@ -1,0 +1,7 @@
+# build-iso.sh artifacts
+build_work/
+build_output/
+
+# archivediso puts nothing in the repo, but the build stage-copies the
+# dotfiles into the airootfs; don't track those generated copies
+archiso/airootfs/root/.config/rstl.sway/

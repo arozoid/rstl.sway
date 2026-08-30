@@ -1,0 +1,10 @@
+Welcome to the rstl.sway live environment.
+
+Windows: Super/Logo key + Enter = terminal, Super + D = app launcher.
+Install to disk with:  install-min.sh   (or the full: install.sh)
+Configure dotfiles:    ~/.config/rstl.sway
+
+  .--.      .--.      .--.      .--.
+ : (  \----/  ( \    / (  \----/  ( \
+```
+

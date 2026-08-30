@@ -1,0 +1,39 @@
+#!/bin/sh
+# rstl-live - set up the rstl.sway live environment and start sway.
+# Idempotent: safe to run repeatedly at each boot on tty1.
+
+set -u
+
+CFG="$HOME/.config/rstl.sway"
+DEST="$HOME/.config"
+
+# optional dotfile dirs to symlink into ~/.config
+for d in sway swaylock swayidle yambar rofi foot nvim mako lf; do
+    if [ -e "$CFG/$d" ] && [ ! -e "$DEST/$d" ]; then
+        ln -s "$CFG/$d" "$DEST/$d"
+    fi
+done
+
+# xdg-desktop-portal termfilechooser config
+if [ -d "$CFG/portal" ]; then
+    mkdir -p "$DEST/xdg-desktop-portal-termfilechooser"
+    cp -a "$CFG/portal/." "$DEST/xdg-desktop-portal-termfilechooser/" 2>/dev/null || true
+    chmod +x "$DEST/xdg-desktop-portal-termfilechooser/lf-wrapper.sh" 2>/dev/null || true
+    mkdir -p "$DEST/xdg-desktop-portal"
+    printf '[preferred]\norg.freedesktop.impl.portal.FileChooser=termfilechooser\n' \
+        > "$DEST/xdg-desktop-portal/portals.conf"
+fi
+
+# services for the live session
+systemctl start NetworkManager.service 2>/dev/null || true
+systemctl start systemd-resolved.service 2>/dev/null || true
+
+# sway needs an XDG_RUNTIME_DIR on the root live login
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+[ -d "$XDG_RUNTIME_DIR" ] || mkdir -p "$XDG_RUNTIME_DIR"
+chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null || true
+
+# wlroots refuses to run as root on some setups; allow it on the live ISO
+export WLR_ALLOW_ROOT=1
+
+exec sway
