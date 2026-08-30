@@ -64,8 +64,8 @@ CFG="$ARCH/.config/rstl.sway"
 
 # ---- stage the dotfiles into the profile airootfs ----
 echo "build-iso: staging dotfiles into $CFG"
-mkdir -p "$CFG"
 rm -rf "$CFG"
+mkdir -p "$CFG"
 # copy this repo, minus anything generated during the build
 # (keeps install.sh / install-min.sh / simple-rootfs.sh available in the live
 # image so one can install to disk straight from the ISO)
@@ -76,7 +76,7 @@ tar \
     --exclude=build_work \
     --exclude=build_output \
     -cf - . \
-  | tar -C "$ARCH" -xf -
+  | tar -C "$CFG" -xf -
 
 cleanup() {
     echo "build-iso: cleaning staged dotfiles"

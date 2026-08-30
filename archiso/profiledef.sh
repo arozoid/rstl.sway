@@ -20,4 +20,5 @@ file_permissions=(
   ["/root"]="0:0:750"
   ["/root/.automated_script.sh"]="0:0:755"
   ["/usr/local/bin/rstl-live"]="0:0:755"
+  ["/etc/shadow"]="0:0:400"
 )
