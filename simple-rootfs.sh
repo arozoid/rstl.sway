@@ -89,7 +89,7 @@ repo_root="$(cd "$(dirname "$0")" && pwd)"
 
 echo "simple-rootfs: bootstrapping base system into '$target'"
 mkdir -p "$target"
-pacstrap -K "$target" base sudo git
+pacstrap -C "/home/rustle/.config/rstl.sway/pacman.conf" -K "$target" base sudo git
 
 # marker so install-min.sh knows it is running inside a rootfs and may run
 # as root (it otherwise refuses to run as root on a normal host).
