@@ -459,7 +459,7 @@ DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${uid}/bus
 * * * * * ${DOTFILES_DIR}/scripts/batt.sh >/dev/null 2>&1
 "
 
-  install_cron_entry 'batt\.sh' "$cron"
+  install_cron_entry 'batt\.sh' "$cron_content"
 
   ok "battery alerts enabled in crontab (every minute, notify at ≤40% and ≥80%)"
 }

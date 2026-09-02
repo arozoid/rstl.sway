@@ -15,6 +15,7 @@ unzip
 
 # boot / filesystem / archiso tooling
 syslinux
+grub
 squashfs-tools
 dosfstools
 e2fsprogs
