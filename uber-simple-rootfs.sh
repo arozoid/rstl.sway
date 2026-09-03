@@ -225,16 +225,27 @@ bootstrap_cachyos
 cp -a "$repo_root/$pacman_conf_name" "$target/etc/pacman.conf"
 
 # ---- 2. copy this repository into the rootfs ----
+# Copy only the runtime dotfiles; skip the Archiso build tree and build
+# artifacts (they are not needed inside the rootfs).
+copy_repo() {
+    local dest="$1"
+    mkdir -p "$dest"
+    tar --exclude='./build_work' \
+        --exclude='./build_output' \
+        --exclude='./archiso' \
+        --exclude='./rstl-inst/target' \
+        -C "$repo_root" -cf - . | tar -C "$dest" -xf -
+}
+
 install_dir="$target/root/.config/rstl.sway"
 info "copying dotfiles into '$install_dir'"
-mkdir -p "$install_dir"
-cp -a "$repo_root"/. "$install_dir"/
+copy_repo "$install_dir"
 chmod +x "$install_dir"/install-uber-min.sh "$install_dir"/scripts/*.sh 2>/dev/null || true
 
-# also add to /etc/skel
-info "copying dotfiles into /etc/skel/.config/rstl.sway"
-mkdir -p "/etc/skel/.config/rstl.sway"
-cp -a "$repo_root"/. "/etc/skel/.config/rstl.sway"
+# also add to the target's /etc/skel so newly created users inherit the dotfiles
+skel_dir="$target/etc/skel/.config/rstl.sway"
+info "copying dotfiles into '$skel_dir'"
+copy_repo "$skel_dir"
 
 # ---- 3. run install-uber-min.sh inside the rootfs ----
 header "Entering rootfs to run install-uber-min.sh"

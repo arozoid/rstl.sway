@@ -107,6 +107,17 @@ run_sudo() {
   sudo "$@"
 }
 
+# install $1 if it exists in the (synced) repos, otherwise install the $2 fallback
+install_or_fallback() {
+  pkg="$1"; fallback="$2"
+  if run_sudo pacman -Ssq "^${pkg}$" 2>/dev/null | grep -qx "$pkg"; then
+    run_sudo pacman -S --needed --noconfirm "$pkg"
+  else
+    printf "  ${C_DIM}%s not found, using %s${C_RESET}\n" "$pkg" "$fallback"
+    run_sudo pacman -S --needed --noconfirm "$fallback"
+  fi
+}
+
 # add rstl-repo to pacman.conf
 add_rstl_repo() {
   conf="/etc/pacman.conf"
@@ -262,9 +273,10 @@ libvpx
 openh264
 mesa
 vulkan-icd-loader
+ ttf-jetbrains-mono-nerd-min
+ rstlpk
+ dssd
 ttf-jetbrains-mono-nerd-min
-papirus-icon-theme-dark-only
-googledot-black
 rstlpk
 dssd
 xdg-desktop-portal-termfilechooser
@@ -274,6 +286,11 @@ PKGS
 
   printf "  ${C_DIM}installing: %s${C_RESET}\n" "$(tr '\n' ' ' < "$GCDIR/packages")"
   run_sudo pacman -S --needed --noconfirm $(cat "$GCDIR/packages")
+
+  # theme/cursor packages with official-repo fallbacks (kept separate so a
+  # missing AUR package cannot fail the whole install)
+  install_or_fallback googledot-black xcursor-themes
+  install_or_fallback papirus-icon-theme-dark-only adwaita-icon-theme
 
   ok "packages installed"
 }

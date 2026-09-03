@@ -88,6 +88,17 @@ run_sudo() {
     fi
 }
 
+# install $1 if it exists in the (synced) repos, otherwise install the $2 fallback
+install_or_fallback() {
+    pkg="$1"; fallback="$2"
+    if run_sudo pacman -Ssq "^${pkg}$" 2>/dev/null | grep -qx "$pkg"; then
+        run_sudo pacman -S --needed --noconfirm "$pkg"
+    else
+        echo "  ${pkg} not found in repos, using ${fallback}"
+        run_sudo pacman -S --needed --noconfirm "$fallback"
+    fi
+}
+
 confirm() {
     if [ "$ASSUME_YES" -eq 1 ]; then
         echo "  [auto-yes] $1"
@@ -147,9 +158,13 @@ step_2() {
         flac mpg123 opus libvorbis speex speexdsp sbc \
         dav1d libvpx openh264 \
         mesa vulkan-icd-loader \
-        ttf-jetbrains-mono-nerd-min papirus-icon-theme-dark-only xcursor-themes \
+        ttf-jetbrains-mono-nerd-min adwaita-icon-theme \
         rstlpk dssd xdg-desktop-portal-termfilechooser yambar \
         util-linux file less
+
+    # cursor package with optional fallback (kept separate so a missing AUR
+    # package cannot fail the whole install)
+    install_or_fallback googledot-black xcursor-themes
 
     echo "packages installed"
 }
@@ -264,6 +279,33 @@ step_8() {
     run_sudo pacman -Rns --noconfirm $(pacman -Qdtq 2>/dev/null) >/dev/null 2>&1 || true
     run_sudo pacman -Scc --noconfirm >/dev/null 2>&1 || true
     run_sudo rm -rf /var/cache/pacman/pkg/* 2>/dev/null || true
+
+    # ---- optional size purge (drops dev/tooling; keeps a working desktop) ----
+    # Safe because it runs after every package is installed and nothing is
+    # compiled in this rootfs anymore.
+    purge_trim() {
+        # C/C++ headers (dev only)
+        rm -rf /usr/include 2>/dev/null || true
+        # static libraries (rarely needed at runtime)
+        find /usr/lib -type f -name "*.a" -delete 2>/dev/null || true
+        # pkg-config / linker data (dev only)
+        rm -rf /usr/lib/pkgconfig /usr/lib/ldscripts /usr/share/pkgconfig 2>/dev/null || true
+        # sanitizer libraries (dev/debug only)
+        rm -f /usr/lib/libasan.so* /usr/lib/libtsan.so* 2>/dev/null || true
+        # performance profiling tooling
+        rm -rf /usr/lib/gprofng* 2>/dev/null || true
+        # dev schemas/docs/licenses (functionally safe to drop)
+        rm -rf /usr/share/gir-1.0 /usr/share/gtk-doc /usr/share/vala /usr/share/licenses 2>/dev/null || true
+        # glibc i18n source; compiled en_US/C locales live in /usr/lib/locale
+        #rm -rf /usr/share/i18n 2>/dev/null || true
+        # strip debug/unused symbols from binaries and shared libs
+        if command -v strip >/dev/null 2>&1; then
+            find /usr/bin /usr/lib -type f \( -executable -o -name "*.so*" \) \
+                -exec strip --strip-unneeded {} + 2>/dev/null || true
+        fi
+    }
+    run_sudo purge_trim
+
     echo "cleaned up"
 }
 
