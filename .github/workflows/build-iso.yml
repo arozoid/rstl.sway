@@ -23,7 +23,8 @@ jobs:
             sudo \
             git \
             rust \
-            archiso
+            archiso \
+            grub
 
       - name: Checkout (with submodules)
         uses: actions/checkout@v4
