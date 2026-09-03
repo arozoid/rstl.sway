@@ -12,5 +12,11 @@
     "disk",
     "battery",
     "localip"
-  ]
+  ],
+  "display": {
+      "color": {
+          "keys": "1;38;5;108",
+          "title": "1;38;5;65"
+      }
+  }
 }
