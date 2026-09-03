@@ -1,34 +1,34 @@
 # rstl — deep forest-green colorscheme for lf
 # matching the nvim dashboard / rstl.sway rice palette
-# format: xx=code (same as LS_COLORS / LF_COLORS)
+# format: xx code (same as LS_COLORS / LF_COLORS)
 
 # directories — bold sage green (dashboard header)
-di=1;38;5;108
+di 1;38;5;108
 
 # links — dusty teal
-ln=38;5;109
-or=38;5;167    # broken links — muted red
+ln 38;5;109
+or 38;5;167    # broken links — muted red
 
 # special files
-pi=38;5;132    # pipes — muted berry
-so=38;5;132    # sockets — muted berry
-bd=38;5;143    # block devices — olive
-cd=38;5;143    # char devices — olive
+pi 38;5;132    # pipes — muted berry
+so 38;5;132    # sockets — muted berry
+bd 38;5;143    # block devices — olive
+cd 38;5;143    # char devices — olive
 
 # permissions
-su=38;5;167    # setuid — muted red
-sg=38;5;167    # setgid — muted red
-st=38;5;108    # sticky — sage green
-ex=38;5;65     # executable — forest green
-tw=38;5;65     # sticky other-writable — forest green
-ow=38;5;65     # other-writable — forest green
+su 38;5;167    # setuid — muted red
+sg 38;5;167    # setgid — muted red
+st 38;5;108    # sticky — sage green
+ex 38;5;65     # executable — forest green
+tw 38;5;65     # sticky other-writable — forest green
+ow 38;5;65     # other-writable — forest green
 
 # regular files — pale gray (dashboard desc)
-fi=38;5;252
+fi 38;5;252
 
 # selection — muted green highlight
-sn=38;5;102;48;5;59
-sb=38;5;102;48;5;59
+sn 38;5;245;48;5;236
+sb 38;5;245;48;5;236
 
 # cursor line
-da=38;5;252
+da 38;5;252

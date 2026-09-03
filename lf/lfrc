@@ -13,7 +13,7 @@ set borderstyle separators
 set borderfmt "\033[38;5;65m"
 
 # cursor styling (muted green highlight)
-set cursoractivefmt "\033[38;5;108m\033[48;5;65m"
+# set cursoractivefmt "\033[38;5;108m\033[48;5;65m"
 
 # use the foresty green colors
 source ~/.config/lf/colors
