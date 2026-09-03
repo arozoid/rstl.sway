@@ -169,17 +169,59 @@ pacman_conf_name="pacman-v${arch_level}.conf"
 if [ ! -f "$repo_root/$pacman_conf_name" ]; then
     die "missing $pacman_conf_name for x86-64-v$arch_level"
 fi
+if [ ! -f "$repo_root/pacman-base.conf" ]; then
+    die "missing pacman-base.conf"
+fi
 
 info "detected/selected x86-64-v$arch_level -> using $pacman_conf_name"
 header "Bootstrapping base system into '$target'"
 mkdir -p "$target"
-pacstrap -C "$repo_root/$pacman_conf_name" -K "$target" base sudo git
+
+# Bootstrap with a plain Arch config (no CachyOS repos): pacstrap copies the
+# -C config into the chroot as /etc/pacman.conf, and the CachyOS config includes
+# /etc/pacman.d/cachyos*-mirrorlist which do not exist yet. The CachyOS
+# keyring+mirrorlists are installed by bootstrap_cachyos below before we swap
+# in the architecture-specific config.
+pacstrap -C "$repo_root/pacman-base.conf" -K "$target" base sudo git
 
 # marker so install-min.sh knows it is running inside a rootfs and may run
 # as root (it otherwise refuses to run as root on a normal host).
 touch "$target/etc/.rstl-sway-rootfs"
 
-# add the matching cachyos pacman.conf
+# The base pacstrap above does NOT pull in the CachyOS keyring/mirrorlists.
+# Install them (dynamically, latest versions) BEFORE switching /etc/pacman.conf
+# to the CachyOS variant, so pacman never chokes on missing mirrorlist files.
+# A self bind-mount gives arch-chroot a clean mountpoint + keyring access.
+bootstrap_cachyos() {
+    info "installing CachyOS keyring + mirrorlists into '$target'"
+    if ! mountpoint -q "$target"; then
+        mount --bind "$target" "$target"
+        SELF_BIND=1
+    fi
+
+    local base="https://mirror.cachyos.org/repo/x86_64/cachyos"
+    local listing pkgs=
+    listing="$(curl -fsSL "$base/")" || die "cannot fetch $base/ (is curl installed / network up?)"
+    for stem in cachyos-keyring cachyos-mirrorlist cachyos-v3-mirrorlist cachyos-v4-mirrorlist; do
+        local pkg
+        pkg="$(printf '%s\n' "$listing" | grep -oE "${stem}-[0-9]+[^\"<]*?-any\.pkg\.tar\.zst" | sort -V | tail -1)"
+        [ -n "$pkg" ] || die "could not find $stem package on mirror"
+        pkgs="$pkgs $base/$pkg"
+    done
+
+    # (re)initialize + populate the keyring, then trust the CachyOS admin key
+    arch-chroot "$target" pacman-key --init
+    arch-chroot "$target" pacman-key --populate archlinux
+    arch-chroot "$target" pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com
+    arch-chroot "$target" pacman-key --lsign-key F3B607488DB35A47
+    arch-chroot "$target" pacman -U --noconfirm $pkgs
+    arch-chroot "$target" pacman-key --populate cachyos 2>/dev/null || true
+    info "CachyOS keyring + mirrorlists installed"
+}
+
+bootstrap_cachyos
+
+# add the matching cachyos pacman.conf (after the mirrorlists exist)
 cp -a "$repo_root/$pacman_conf_name" "$target/etc/pacman.conf"
 
 # ---- 2. copy this repository into the rootfs ----
