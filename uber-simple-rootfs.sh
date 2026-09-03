@@ -12,8 +12,8 @@
 #
 # Steps:
 #   1. pacstrap a minimal base system (base + sudo + git) into the target.
-#   2. Copy this dotfiles repository (and install-min.sh) into the rootfs.
-#   3. arch-chroot into it and run install-min.sh as root to set up the
+#   2. Copy this dotfiles repository (and install-uber-min.sh) into the rootfs.
+#   3. arch-chroot into it and run install-uber-min.sh as root to set up the
 #      rstl.sway environment.
 #
 # Requires: root privileges, pacstrap + arch-chroot (arch-install-scripts),
@@ -45,8 +45,8 @@ Usage:
 
 Steps:
   1. pacstrap a minimal base system (base + sudo + git) into the target.
-  2. Copy this dotfiles repository (and install-min.sh) into the rootfs.
-  3. arch-chroot into it and run install-min.sh as root to set up the
+  2. Copy this dotfiles repository (and install-uber-min.sh) into the rootfs.
+  3. arch-chroot into it and run install-uber-min.sh as root to set up the
      rstl.sway environment.
 
 Requires: root privileges, pacstrap + arch-chroot (arch-install-scripts),
@@ -91,7 +91,7 @@ echo "simple-rootfs: bootstrapping base system into '$target'"
 mkdir -p "$target"
 pacstrap -C "pacman.conf" -K "$target" base sudo git
 
-# marker so install-min.sh knows it is running inside a rootfs and may run
+# marker so install-uber-min.sh knows it is running inside a rootfs and may run
 # as root (it otherwise refuses to run as root on a normal host).
 touch "$target/etc/.rstl-sway-rootfs"
 
@@ -100,20 +100,20 @@ install_dir="$target/root/.config/rstl.sway"
 echo "simple-rootfs: copying dotfiles into '$install_dir'"
 mkdir -p "$install_dir"
 cp -a "$repo_root"/. "$install_dir"/
-chmod +x "$install_dir"/install-min.sh "$install_dir"/scripts/*.sh 2>/dev/null || true
+chmod +x "$install_dir"/install-uber-min.sh "$install_dir"/scripts/*.sh 2>/dev/null || true
 
 # also add to /etc/skel
 echo "simple-rootfs: copying dotfiles into /etc/skel/.config/rstl.sway"
 mkdir -p "/etc/skel/.config/rstl.sway"
 cp -a "$repo_root"/. "/etc/skel/.config/rstl.sway"
 
-# ---- 3. run install-min.sh inside the rootfs ----
-echo "simple-rootfs: entering rootfs to run install-min.sh"
+# ---- 3. run install-uber-min.sh inside the rootfs ----
+echo "simple-rootfs: entering rootfs to run install-uber-min.sh"
 if ! mountpoint -q "$target"; then
     echo "simple-rootfs: bind-mounting '$target' onto itself (pacman needs a root mountpoint)"
     mount --bind "$target" "$target"
     SELF_BIND=1
 fi
-arch-chroot "$target" /bin/sh /root/rstl.sway/install-min.sh
+arch-chroot "$target" /bin/sh /root/rstl.sway/install-uber-min.sh
 
 echo "simple-rootfs: done."

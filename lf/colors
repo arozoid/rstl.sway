@@ -27,8 +27,8 @@ ow=38;5;65     # other-writable — forest green
 fi=38;5;252
 
 # selection — muted green highlight
-sn=38;5;108;48;5;65
-sb=38;5;108;48;5;65
+sn=38;5;102;48;5;59
+sb=38;5;102;48;5;59
 
 # cursor line
 da=38;5;252

@@ -9,6 +9,7 @@ set dirfirst
 
 # foresty green borders
 set drawbox
+set borderstyle separators 
 set borderfmt "\033[38;5;65m"
 
 # cursor styling (muted green highlight)
