@@ -468,7 +468,7 @@ swayidle
 grim
 slurp
 wl-clipboard
-cliphist
+clipse
 awww
 playerctl
 brightnessctl

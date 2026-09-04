@@ -146,7 +146,7 @@ step_2() {
 
     run_sudo pacman -S --needed --noconfirm \
         sway swaybg rofi mako swaylock swayidle \
-        grim slurp wl-clipboard cliphist \
+        grim slurp wl-clipboard clipse \
         playerctl brightnessctl \
         networkmanager bluez bluez-utils \
         pipewire wireplumber pipewire-pulse pipewire-alsa alsa-utils \

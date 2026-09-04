@@ -40,10 +40,7 @@ for_window [app_id="calpopup"] border pixel 1
 for_window [app_id="rstl-pick"] floating enable
 for_window [app_id="rstl-pick"] border pixel 1
 for_window [app_id="rstl-pick"] move position center
-# Size as a % of the output so the window fits and centers even on narrow
-# (<1000px) displays; an absolute px width overflows small screens and gets
-# clamped, breaking centering.
-for_window [app_id="rstl-pick"] resize set width 50 ppt height 60 ppt
+for_window [app_id="rstl-pick"] resize set width 450 px height 400 px
 
 ### session
 bindsym $mod+Shift+q kill
@@ -173,8 +170,7 @@ exec_always --no-startup-id ~/.config/rstl.sway/scripts/wallpaper-restore.sh
 exec_always --no-startup-id sh -c 'killall -q yambar yambar-fullscreen.sh; ~/.config/rstl.sway/scripts/auto-scale.sh; sleep 0.2; ~/.config/rstl.sway/scripts/yambar-fullscreen.sh'
 
 exec --no-startup-id swayidle -w -C ~/.config/swayidle/config
-exec --no-startup-id wl-paste --type text --watch cliphist store
-exec --no-startup-id wl-paste --type image --watch cliphist store
+exec --no-startup-id clipse -listen
 #exec --no-startup-id ~/.local/bin/nightlight.sh
 exec --no-startup-id ~/.config/rstl.sway/scripts/chime.sh
 #exec --no-startup-id ~/.config/rstl.sway/scripts/usb-sound.sh

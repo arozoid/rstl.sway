@@ -1,7 +1,7 @@
 # rstl.sway package list
 # desktop required
 sway swaybg rofi mako swaylock swayidle
-grim slurp wl-clipboard cliphist
+grim slurp wl-clipboard clipse
 awww
 greetd greetd-tuigreet
 

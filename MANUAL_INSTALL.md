@@ -24,7 +24,7 @@ sudo pacman -S --needed sway swaybg rofi mako swaylock swayidle
 ### screenshots / clipboard history
 
 ```bash
-sudo pacman -S --needed grim slurp wl-clipboard cliphist
+sudo pacman -S --needed grim slurp wl-clipboard clipse
 ```
 
 ### wallpaper daemon + image tooling

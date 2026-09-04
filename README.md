@@ -50,7 +50,7 @@ prefer doing everything by hand? see [MANUAL_INSTALL.md](MANUAL_INSTALL.md)
 ---
 
 - grim/slurp: screenshot tools
-- wl-clipboard/cliphist: wayland clipboard
+- wl-clipboard/clipse: wayland clipboard manager
 - greetd/tuigreet: ultra minimal greet program
 - ttf-jetbrains-mono-nerd-min ([rstl.repo](https://github.com/arozoid/rstl.repo))/noto-fonts-emoji: for terminal and other apps
 - papirus-icon-theme-dark-only ([rstl.repo](https://github.com/arozoid/rstl.repo)): for rofi launcher and other utilities
