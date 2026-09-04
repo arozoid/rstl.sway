@@ -40,7 +40,10 @@ for_window [app_id="calpopup"] border pixel 1
 for_window [app_id="rstl-pick"] floating enable
 for_window [app_id="rstl-pick"] border pixel 1
 for_window [app_id="rstl-pick"] move position center
-for_window [app_id="rstl-pick"] resize set width 670 px height 420 px
+# Size as a % of the output so the window fits and centers even on narrow
+# (<1000px) displays; an absolute px width overflows small screens and gets
+# clamped, breaking centering.
+for_window [app_id="rstl-pick"] resize set width 50 ppt height 60 ppt
 
 ### session
 bindsym $mod+Shift+q kill
