@@ -1,5 +1,6 @@
 # rstl.sway live/install medium - base system
 base
+shadow
 linux
 linux-firmware
 mkinitcpio

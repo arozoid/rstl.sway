@@ -7,8 +7,8 @@ archiso/airootfs/usr/local/bin/rstl-inst
 
 # The build stage-copies the dotfiles repo into the airootfs; never track
 # those generated copies. Ignore everything staged under root/ except the
-# hand-written dotfiles we keep in the profile (.bash_profile,
-# .automated_script.sh).
+# hand-written files we keep in the profile.
 archiso/airootfs/root/*
 !archiso/airootfs/root/.bash_profile
 !archiso/airootfs/root/.automated_script.sh
+!archiso/airootfs/root/customize_airootfs.sh

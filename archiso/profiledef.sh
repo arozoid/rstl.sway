@@ -21,5 +21,4 @@ file_permissions=(
   ["/root/.automated_script.sh"]="0:0:755"
   ["/usr/local/bin/rstl-live"]="0:0:755"
   ["/usr/local/bin/rstl-inst"]="0:0:755"
-  ["/etc/shadow"]="0:0:400"
 )

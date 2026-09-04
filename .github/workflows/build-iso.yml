@@ -24,7 +24,17 @@ jobs:
             git \
             rust \
             archiso \
-            grub
+            arch-install-scripts \
+            squashfs-tools \
+            dosfstools \
+            mtools \
+            e2fsprogs \
+            libarchive \
+            gptfdisk \
+            syslinux \
+            grub \
+            intel-ucode \
+            amd-ucode
 
       - name: Checkout (with submodules)
         uses: actions/checkout@v4
@@ -44,14 +54,15 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git config --global --add safe.directory "$GITHUB_WORKSPACE/rstl-inst"
 
-      - name: Build ISO
+      - name: Build ISOs (v1..v4, in parallel)
+        timeout-minutes: 90
         run: |
           chmod +x build-iso.sh
           ./build-iso.sh -o "$GITHUB_WORKSPACE/dist"
 
-      - name: Upload ISO artifact
+      - name: Upload ISO artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: rstlsway-iso
+          name: rstlsway-isos
           path: dist/*.iso
           if-no-files-found: error
