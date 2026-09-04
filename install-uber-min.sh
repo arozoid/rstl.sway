@@ -160,7 +160,11 @@ step_2() {
         mesa vulkan-icd-loader \
         ttf-jetbrains-mono-nerd-min adwaita-icon-theme \
         rstlpk dssd xdg-desktop-portal-termfilechooser yambar \
+        bluetuith clipse wiremix rstl-pick \
         util-linux file less
+
+    # note: latuicon (icon picker) is intentionally omitted from this
+    # uber-min variant; it is only installed by the full/min installers.
 
     # cursor package with optional fallback (kept separate so a missing AUR
     # package cannot fail the whole install)
@@ -262,6 +266,7 @@ step_8() {
         "$DOTFILES_DIR/depsize" \
         "$DOTFILES_DIR/nvim" \
         "$DOTFILES_DIR/rstl-inst" \
+        "$DOTFILES_DIR/rstl-pick" \
         "$DOTFILES_DIR/ranger/.git" \
         "$DOTFILES_DIR/waybar" \
         "$DOTFILES_DIR/packages.txt" \

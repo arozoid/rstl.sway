@@ -119,7 +119,7 @@ step_0() {
 
 step_1() {
     echo "== copy dotfiles =="
-    git submodule update --init
+    git submodule update --init nvim ranger rstlpk
     mkdir -p "$DOTFILES_DIR"
     if [ "$SOURCE_DIR" != "$DOTFILES_DIR" ]; then
         cp -a "$SOURCE_DIR"/. "$DOTFILES_DIR"/
@@ -160,7 +160,8 @@ step_2() {
         dav1d libvpx openh264 \
         mesa vulkan-icd-loader \
         ttf-jetbrains-mono-nerd-min \
-        rstlpk dssd xdg-desktop-portal-termfilechooser yambar
+        rstlpk dssd xdg-desktop-portal-termfilechooser yambar \
+        bluetuith latuicon clipse wiremix rstl-pick
 
     # theme/cursor packages with official-repo fallbacks (kept separate so a
     # missing AUR package cannot fail the whole install)

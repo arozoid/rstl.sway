@@ -185,9 +185,11 @@ step_0() {
 # Step 1: copy dotfiles into ~/.config/rstl.sway
 # ---------------------------------------------------------------------------
 step_1() {
-  info "initializing nvim repo"
-  git submodule update --init
-  ok "nvim config updated"
+  info "initializing config submodules"
+  # Only the submodules needed on the installed desktop are checked out here;
+  # rstl-inst and rstl-pick are build/ISO artifacts and are left uninitialized.
+  git submodule update --init nvim ranger rstlpk
+  ok "config submodules updated"
   info "copying dotfiles to ${DOTFILES_DIR}"
   mkdir -p "${DOTFILES_DIR}"
   if [ "$SOURCE_DIR" = "$DOTFILES_DIR" ]; then
@@ -281,6 +283,11 @@ rstlpk
 dssd
 xdg-desktop-portal-termfilechooser
 yambar
+bluetuith
+latuicon
+clipse
+wiremix
+rstl-pick
 PKGS
 } > /dev/null
 

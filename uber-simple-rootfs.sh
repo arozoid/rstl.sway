@@ -234,6 +234,7 @@ copy_repo() {
         --exclude='./build_output' \
         --exclude='./archiso' \
         --exclude='./rstl-inst/target' \
+        --exclude='./rstl-pick/target' \
         -C "$repo_root" -cf - . | tar -C "$dest" -xf -
 }
 

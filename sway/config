@@ -19,11 +19,11 @@ set $mod Mod4
 
 ### terminal / launcher
 set $term ~/.config/rstl.sway/scripts/foot-smart.sh
-set $menu fsh
+set $menu rstl-pick
 
 bindsym $mod+Return exec $term
 bindsym $mod+d exec rofi -show drun 
-bindsym $mod+o exec $term --app-id=fsh -e $menu
+bindsym $mod+o exec $term --app-id=rstl-pick -e $menu
 bindsym $mod+Backspace exec ~/.config/rstl.sway/rofi/powermenu/rstl-powermenu.sh
 bindsym $mod+Escape exec ~/.config/rstl.sway/scripts/lock.sh
 bindsym $mod+c exec $term --app-id=calpopup sh -c '~/.config/rstl.sway/scripts/ecal.sh; sleep 500'
@@ -37,10 +37,10 @@ for_window [app_id="calpopup"] resize set width 250 px height 250 px
 for_window [app_id="calpopup"] move position center
 for_window [app_id="calpopup"] border pixel 1
 
-for_window [app_id="fsh"] floating enable
-for_window [app_id="fsh"] border pixel 1
-for_window [app_id="fsh"] move position center
-for_window [app_id="fsh"] resize set width 670 px height 350 px
+for_window [app_id="rstl-pick"] floating enable
+for_window [app_id="rstl-pick"] border pixel 1
+for_window [app_id="rstl-pick"] move position center
+for_window [app_id="rstl-pick"] resize set width 670 px height 420 px
 
 ### session
 bindsym $mod+Shift+q kill

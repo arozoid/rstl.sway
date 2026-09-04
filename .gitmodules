@@ -11,3 +11,6 @@
 [submodule "rstl-inst"]
 	path = rstl-inst
 	url = https://github.com/arozoid/rstl-inst.git
+[submodule "rstl-pick"]
+	path = rstl-pick
+	url = https://github.com/arozoid/rstl-pick.git

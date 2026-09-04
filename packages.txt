@@ -39,3 +39,8 @@ dssd
 
 xdg-desktop-portal-termfilechooser
 yambar
+bluetuith
+latuicon
+clipse
+wiremix
+rstl-pick

@@ -177,10 +177,22 @@ gen_profile() {
     #     which exists on the host via pacman-mirrorlist.
     #   o append the rstl.repo custom repo (absent from pacman-vN.conf), which
     #     provides rstlpk, dssd, yambar, googledot-black, ...
+    # Note on CachyOS URL layout: the generic [cachyos] repo lives under
+    # /repo/x86_64/, but the optimized v3/v4 repos live under /repo/x86_64_v3/
+    # and /repo/x86_64_v4/ respectively. The arch path is derived from the
+    # repo section name (cachyos / cachyos-v3 / cachyos-v4 ...).
+    # Us.cachyos.org is used because mirror.cachyos.org only hosts the generic
+    # x86_64 repos and returns an HTML placeholder (=> GPGME: No data) for the
+    # x86_64_v3/x86_64_v4 paths.
     awk -v cache="$vcache" '
         /^\[options\]/ { print; print "CacheDir = " cache; next }
-        /^\[cachyos/ { print; print "SigLevel = Optional TrustAll"; inserver=1; next }
-        inserver && /^Include = / && $3 ~ /cachyos/ { print "Server = https://mirror.cachyos.org/repo/x86_64/$repo"; inserver=0; next }
+        /^\[cachyos/ {
+            repo=$0; gsub(/^\[|\]$/, "", repo)
+            arch="x86_64"
+            if (repo ~ /v3/) arch="x86_64_v3"
+            else if (repo ~ /v4/) arch="x86_64_v4"
+            print; print "SigLevel = Optional TrustAll"; print "Server = https://us.cachyos.org/repo/" arch "/" repo; inserver=1; next }
+        inserver && /^Include = / && $3 ~ /cachyos/ { inserver=0; next }
         { inserver=0; print }
     ' "$REPO/pacman-v${num}.conf" > "$dst/pacman.conf"
     printf '%b\n' "$RSTL_REPO_CONF" >> "$dst/pacman.conf"
