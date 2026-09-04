@@ -16,7 +16,7 @@ set borderfmt "\033[1;38;5;65m"
 # set cursoractivefmt "\033[38;5;108m\033[48;5;65m"
 
 # use the foresty green colors
-source ~/.config/lf/colors
+%export LF_COLORS=$(cat ~/.config/lf/colors)
 
 # open highlighted file/folder on enter
 map <enter> open
@@ -30,6 +30,9 @@ map gd cd ~/Documents
 map gl cd ~/Pictures
 map gD cd ~/Downloads
 map gs cd ~/.config/rstl.sway
+
+# commands
+cmd q quit
 
 # preview
 set previewer scope.sh

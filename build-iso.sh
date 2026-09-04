@@ -153,7 +153,8 @@ fi
 gen_profile() {
     v="$1"; dst="$2"
     num="${v#v}"
-    mkdir -p "$dst"
+    vcache="$WORK/$v/cache"
+    mkdir -p "$dst" "$vcache"
     # symlink the heavy/directory resources that are identical across variants
     ln -sfn "$PROFILE/airootfs" "$dst/airootfs"
     ln -sfn "$PROFILE/grub"     "$dst/grub"
@@ -165,14 +166,19 @@ gen_profile() {
         -e "s/^iso_label=\"RSTLSWAY_/iso_label=\"RSTLSWAY_${num}_/" \
         "$PROFILE/profiledef.sh" > "$dst/profiledef.sh"
     # Tailor the variant pacman.conf for the ISO build:
-    #   o [cachyos*] repos get SigLevel = Optional TrustAll (no host keyring
-    #     seeded before pacstrap) and an inline Server (so pacman-conf on the
-    #     build HOST does not fail on a missing cachyos-mirrorlist Include).
+    #   o A per-variant CacheDir so parallel variant builds never race on the
+    #     shared host /var/cache/pacman/pkg (a truncation race is what corrupts
+    #     .db/.db.sig mid-sync and shows up as "GPGME error: No data").
+    #   o [cachyos*] repos get SigLevel = Optional TrustAll (a deterministic
+    #     fallback if the CachyOS key is not yet trusted) and an inline Server
+    #     (so pacman-conf on the build HOST does not fail on a missing
+    #     cachyos-mirrorlist Include).
     #   o [core]/[extra]/[multilib] keep Include=/etc/pacman.d/mirrorlist,
     #     which exists on the host via pacman-mirrorlist.
     #   o append the rstl.repo custom repo (absent from pacman-vN.conf), which
     #     provides rstlpk, dssd, yambar, googledot-black, ...
-    awk '
+    awk -v cache="$vcache" '
+        /^\[options\]/ { print; print "CacheDir = " cache; next }
         /^\[cachyos/ { print; print "SigLevel = Optional TrustAll"; inserver=1; next }
         inserver && /^Include = / && $3 ~ /cachyos/ { print "Server = https://mirror.cachyos.org/repo/x86_64/$repo"; inserver=0; next }
         { inserver=0; print }
@@ -201,6 +207,34 @@ build_variant() {
 }
 
 mkdir -p "$WORK" "$OUT"
+
+# ---- seed the CachyOS admin key into the airootfs pacman keyring ----
+# The chroot's pacman verifies the cachyos .db/.db.sig against
+# /etc/pacman.d/gnupg during pacstrap. It starts with only the Arch key, so
+# import + locally sign the CachyOS key here (best-effort; the generated
+# configs also use SigLevel = Optional TrustAll as a fallback, so a failure
+# here must not abort the build).
+seed_cachyos_key() {
+    gdir="$AIROOT/etc/pacman.d/gnupg"
+    if [ -d "$gdir" ]; then
+        echo "build-iso: cachyos key already seeded in $gdir"
+        return 0
+    fi
+    if ! command -v gpg >/dev/null 2>&1; then
+        echo "build-iso: WARN gpg absent; skipping cachyos key seed" >&2
+        return 0
+    fi
+    echo "build-iso: seeding CachyOS admin key into $gdir"
+    mkdir -p "$gdir" && chmod 700 "$gdir"
+    if GNUPGHOME="$gdir" gpg --batch --keyserver keyserver.ubuntu.com --recv-keys F3B607488DB35A47 2>/dev/null \
+        && GNUPGHOME="$gdir" gpg --batch --lsign-key F3B607488DB35A47 2>/dev/null; then
+        echo "build-iso: cachyos key seeded"
+    else
+        echo "build-iso: WARN could not seed cachyos key (relying on SigLevel=Optional TrustAll)" >&2
+        rm -rf "$gdir"
+    fi
+}
+seed_cachyos_key
 
 # ---- launch the requested variants in parallel ----
 pids=""
