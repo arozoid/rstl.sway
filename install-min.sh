@@ -161,7 +161,7 @@ step_2() {
         mesa vulkan-icd-loader \
         ttf-jetbrains-mono-nerd-min \
         rstlpk dssd xdg-desktop-portal-termfilechooser yambar \
-        bluetuith latuicon clipse wiremix rstl-pick
+        bluetui latuicon clipse wiremix rstl-pick
 
     # theme/cursor packages with official-repo fallbacks (kept separate so a
     # missing AUR package cannot fail the whole install)

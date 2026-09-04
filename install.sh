@@ -283,7 +283,7 @@ rstlpk
 dssd
 xdg-desktop-portal-termfilechooser
 yambar
-bluetuith
+bluetui
 latuicon
 clipse
 wiremix

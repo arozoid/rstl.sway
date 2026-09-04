@@ -160,7 +160,7 @@ step_2() {
         mesa vulkan-icd-loader \
         ttf-jetbrains-mono-nerd-min adwaita-icon-theme \
         rstlpk dssd xdg-desktop-portal-termfilechooser yambar \
-        bluetuith clipse wiremix rstl-pick \
+        bluetui clipse wiremix rstl-pick \
         util-linux file less
 
     # note: latuicon (icon picker) is intentionally omitted from this
