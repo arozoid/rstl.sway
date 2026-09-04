@@ -5,9 +5,6 @@ build_output/
 # rstl-inst binary injected by build-iso.sh
 archiso/airootfs/usr/local/bin/rstl-inst
 
-# CachyOS admin key seeded into the airootfs pacman keyring at build time
-archiso/airootfs/etc/pacman.d/gnupg/
-
 # The build stage-copies the dotfiles repo into the airootfs; never track
 # those generated copies. Ignore everything staged under root/ except the
 # hand-written files we keep in the profile.
