@@ -394,6 +394,10 @@ step_4() {
 
   run_sudo chmod -R go+r /etc/greetd
 
+  # Comments out pam_securetty.so in greetd's PAM config so the greeter can
+  # authenticate outside of a physical secure tty (e.g. over SSH / serial).
+  run_sudo sed -i 's/^auth.*pam_securetty.so/# &/' /etc/pam.d/greetd
+
   printf "  ${C_DIM}enabling greetd.service${C_RESET}\n"
   run_sudo systemctl enable greetd.service
 
