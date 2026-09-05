@@ -28,7 +28,7 @@
 
 set -u
 
-CURSOR_THEME="GoogleDot-Black"
+CURSOR_THEME="phinger-cursors-dark"
 
 DOTFILES_DIR="$HOME/.config/rstl.sway"
 YAMBAR_SRC="$DOTFILES_DIR/yambar/config.yml"
@@ -42,7 +42,7 @@ REF_PHYS_H_MM=160
 # reference pixels (at scale 2.0) that we consider "1.0x"
 REF_BAR_PX=35
 REF_FONT_PX=23
-REF_CURSOR_PX=20
+REF_CURSOR_PX=24
 
 # ---------- size bands (by diagonal inches) ----------
 # each band: <diag|max> scale yambar_mult cursor_default
@@ -50,17 +50,17 @@ REF_CURSOR_PX=20
 BAND_1_MAX=17
 BAND_1_SCALE=2.0
 BAND_1_YBAR=1.0
-BAND_1_CURSOR=20
+BAND_1_CURSOR=24
 
 BAND_2_MAX=25
 BAND_2_SCALE=1.75
 BAND_2_YBAR=1.5
-BAND_2_CURSOR=20
+BAND_2_CURSOR=24
 
 BAND_3_MAX=9999
 BAND_3_SCALE=1.5
 BAND_3_YBAR=2.0
-BAND_3_CURSOR=20
+BAND_3_CURSOR=24
 
 
 # ============================================================
@@ -85,35 +85,45 @@ REF_CURSOR_MM=$(calc        "$REF_CURSOR_PX * 2 * $REF_PHYS_H_MM / $REF_HEIGHT")
 
 
 # ============================================================
-# read physical sizes from wlr-randr into a temp file
-# (line: "NAME W H DIAG"); kept outside the shell loop so the
-# per-output variables survive (no subshell).
+# outputs + physical sizes
+#   - name / mode WxH come from swaymsg (no wlr-randr needed)
+#   - physical mm come from each connector's EDID base block
+#     (bytes 0x15-0x16 carry the max image size in cm); that is
+#     exactly what wlr-randr used to report as "Physical size".
 # ============================================================
+
+# $1 = sway output name ("eDP-1"); echoes "W H" (mm) or nothing
+phys_mm() {
+    out="$1"
+    for edid in /sys/class/drm/card*/card*-${out}/edid; do
+        [ -f "$edid" ] || continue
+        set -- $(dd if="$edid" bs=1 skip=21 count=2 2>/dev/null | od -An -v -tu1)
+        w_cm=${1:-0}
+        h_cm=${2:-0}
+        # trust whatever the kernel parsed out of the EDID (this is exactly
+        # what wlr-randr reported); just sanity-check for a real size
+        if [ "$w_cm" -gt 0 ] && [ "$w_cm" -lt 255 ] && [ "$h_cm" -gt 0 ] && [ "$h_cm" -lt 255 ]; then
+            printf '%s %s\n' "$((w_cm * 10))" "$((h_cm * 10))"
+            return 0
+        fi
+        return 1
+    done
+    return 1
+}
 
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
-physfile="$tmpdir/phys"
 outfile="$tmpdir/out"
-randrfile="$tmpdir/randr"
 
-current_output=""
-
-wlr-randr > "$randrfile"
-while IFS= read -r line; do
-    case "$line" in
-        [![:space:]]*)
-            current_output=${line%% *}
-            ;;
-        *"Physical size:"*)
-            ps=${line##*: }
-            ps_w=${ps%%x*}
-            rest=${ps#*x}
-            ps_h=${rest%% *}
-            diag=$(calc "sqrt($ps_w*$ps_w+$ps_h*$ps_h)/25.4")
-            printf '%s %s %s %s\n' "$current_output" "$ps_w" "$ps_h" "$diag" >> "$physfile"
-            ;;
-    esac
-done < "$randrfile"
+swaymsg -t get_outputs -r | jq -r '
+    .[] |
+    [
+        .name,
+        .current_mode.width,
+        .current_mode.height
+    ] |
+    @tsv
+' > "$outfile"
 
 
 # ============================================================
@@ -140,11 +150,11 @@ while IFS="$(printf '\t')" read -r cur_out cur_width cur_height; do
         ""|*[!a-zA-Z0-9_-]*) continue ;;
     esac
 
-    # looks up physical size by output name; sets $1/$2/$3 (w h diag)
-    set -- $(awk -v n="$cur_out" '$1 == n { print $2, $3, $4; exit }' "$physfile")
+    # physical mm from EDID (empty/0 -> unknown, goes to the fallback path)
+    set -- $(phys_mm "$cur_out")
     cur_w=${1:-0}
     cur_h=${2:-0}
-    cur_diag=${3:-0}
+    cur_diag=$(calc "sqrt($cur_w*$cur_w+$cur_h*$cur_h)/25.4")
 
     # physical dims unknown -> default sane 2k values
     if [ "$cur_w" -eq 0 ] || [ "$cur_h" -eq 0 ] || [ "$(calc "$cur_diag < 1")" -eq 1 ]; then

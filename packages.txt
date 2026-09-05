@@ -32,7 +32,7 @@ dav1d libvpx openh264
 # AUR/custom packages (installed via rstl.repo)
 ttf-jetbrains-mono-nerd-min
 papirus-icon-theme-dark-only
-googledot-black
+phinger-cursors
 
 rstlpk
 dssd

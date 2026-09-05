@@ -182,7 +182,7 @@ mkdir -p "$target"
 # /etc/pacman.d/cachyos*-mirrorlist which do not exist yet. The CachyOS
 # keyring+mirrorlists are installed by bootstrap_cachyos below before we swap
 # in the architecture-specific config.
-pacstrap -C "$repo_root/pacman-base.conf" -K "$target" base sudo git
+pacstrap -C "$repo_root/pacman-base.conf" -K "$target" --noconfirm base sudo git
 
 # marker so install-min.sh knows it is running inside a rootfs and may run
 # as root (it otherwise refuses to run as root on a normal host).

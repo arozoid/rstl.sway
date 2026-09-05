@@ -1,0 +1,6 @@
+/* rstl — deep forest-green borders to match the rice palette.
+   Thematic border colors (same sage/mint as the old lf drawbox):      */
+
+$border: #6bbf86;
+$border-blurred: #5f875f;
+$border-style: round;

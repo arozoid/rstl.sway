@@ -1,7 +1,8 @@
-# xdg-desktop-portal-termfilechooser — pick files in lf (my lf config)
+# xdg-desktop-portal-termfilechooser — picks files in the first terminal file
+# manager installed: superfile (spf) -> rovr -> lf (see fm-wrapper.sh)
 
 [filechooser]
-cmd=lf-wrapper.sh
+cmd=fm-wrapper.sh
 default_dir=$HOME
 env=TERMCMD='foot -a termfilechooser -T "terminal filechooser"'
 open_mode=suggested

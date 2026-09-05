@@ -1,68 +1,135 @@
-name: Build Archiso
+# Build rstl.sway frugal ISOs for every flavor x microarchitecture combo
+# (12 matrix jobs), then tag the build (YYYYMMDD) and publish a GitHub
+# release holding the ISOs.
+#
+# Only runs on push (no scheduled/publishing cadence).
+#
+# linux-cachyos is used as the kernel. --arch vN selects pacman-vN.conf so the
+# rootfs is installed against the matching CachyOS repo tier (v1/v2 -> generic
+# [cachyos], v3/v4 -> the x86_64_v3/v4 optimized repos), and --kernel
+# linux-cachyos makes mkfrugal-rstl.sh drop the vanilla kernel, bake the
+# CachyOS kernel modules into the initrd (mkFRkernel) and ship the full module
+# tree in 00modules.sfs.
+name: Build Frugal ISOs
 
 on:
   push:
     branches: [main, master]
-  pull_request:
   workflow_dispatch:
-  # Daily build at 12:00 UTC (schedules are always UTC).
-  schedule:
-    - cron: "0 12 * * *"
+
+concurrency:
+  group: frugal-iso-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # create the YYYYMMDD tag + release
+  actions: read   # download the ISO artifacts for the release
 
 jobs:
-  build-iso:
+  build-frugal-iso:
+    name: ${{ matrix.flavor }}-${{ matrix.arch }}
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
       options: --privileged
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [install, install-min, install-uber-min]
+        arch: [v1, v2, v3, v4]
     steps:
       - name: Update system and install tooling
         run: |
           pacman -Syu --noconfirm \
-            base-devel \
-            sudo \
-            git \
-            rust \
-            archiso \
-            arch-install-scripts \
-            squashfs-tools \
-            dosfstools \
-            mtools \
-            e2fsprogs \
-            libarchive \
-            gptfdisk \
-            syslinux \
-            grub \
-            intel-ucode \
-            amd-ucode
+            base-devel sudo git rust wget xorriso mtools dosfstools \
+            squashfs-tools arch-install-scripts grub kmod cpio gzip xz zstd
 
-      - name: Checkout (with submodules)
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
-      - name: Build and inject rstl-inst TUI
-        run: |
-          cd rstl-inst
-          cargo build --release
-          install -Dm755 target/release/rstl-inst \
-            "$GITHUB_WORKSPACE/archiso/airootfs/usr/local/bin/rstl-inst"
-          "$GITHUB_WORKSPACE/archiso/airootfs/usr/local/bin/rstl-inst" --version || true
-
       - name: Trust git checkout (dubious ownership)
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git config --global --add safe.directory "$GITHUB_WORKSPACE/rstl-inst"
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      - name: Build ISOs (v1..v4, in parallel)
-        timeout-minutes: 90
-        run: |
-          chmod +x build-iso.sh
-          ./build-iso.sh -o "$GITHUB_WORKSPACE/dist"
-
-      - name: Upload ISO artifacts
-        uses: actions/upload-artifact@v4
+      - name: Cache huge-kernel firmware
+        uses: actions/cache@v4
         with:
-          name: rstlsway-isos
+          path: ${{ github.workspace }}/cache/01firmware.sfs
+          key: cachyos-firmware
+
+      - name: Fetch huge-kernel firmware
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/cache"
+          [ -s "$GITHUB_WORKSPACE/cache/01firmware.sfs" ] && exit 0
+          URL="https://gitlab.com/firstrib/firstrib/-/raw/master/latest/build_system/huge_kernels/kernel_usrmerge_default/01firmware.sfs"
+          curl -fL "$URL" -o "$GITHUB_WORKSPACE/cache/01firmware.sfs"
+
+      - name: Build frugal (${{ matrix.arch }}, ${{ matrix.flavor }}) + wrap ISO
+        timeout-minutes: 180
+        run: |
+          set -euo pipefail
+          chmod +x mkfrugal-rstl.sh mkfrugal-iso.sh mkFRkernel
+          FLAVOR="${{ matrix.flavor }}"
+          ARCH="${{ matrix.arch }}"
+          DATE="$(date +%Y%m%d)"
+          STAGE="$GITHUB_WORKSPACE/stage"
+          mkdir -p "$STAGE" dist
+          ./mkfrugal-rstl.sh \
+            --target "$STAGE/rstlsway" \
+            --arch "$ARCH" \
+            --flavor "$FLAVOR" \
+            --yes \
+            --kernel linux-cachyos \
+            --firmware "$GITHUB_WORKSPACE/cache/01firmware.sfs" \
+            --cache "$GITHUB_WORKSPACE/cache" \
+            > build.log 2>&1 || {
+              echo "::error::mkfrugal-rstl.sh failed ($FLAVOR $ARCH)"
+              tail -60 build.log >&2
+              exit 1
+            }
+          ./mkfrugal-iso.sh \
+            -d "$STAGE/rstlsway" \
+            -S "$STAGE" \
+            -n rstlsway \
+            -l RSTLSW \
+            -o "dist/rstlsway-$FLAVOR-$ARCH-$DATE-x86_64.iso"
+          rm -rf "$STAGE"
+          ls -lh dist
+
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: iso-${{ matrix.flavor }}-${{ matrix.arch }}
           path: dist/*.iso
           if-no-files-found: error
+
+  release:
+    needs: build-frugal-iso
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all ISOs
+        uses: actions/download-artifact@v5
+        with:
+          pattern: iso-*
+          path: dist
+          merge-multiple: true
+
+      - name: Create/update YYYYMMDD tag + release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ls -lh dist
+          tag="$(date +%Y%m%d)"
+          if gh release view "$tag" --json id --jq .id >/dev/null 2>&1; then
+            echo "release '$tag' already exists - updating its assets"
+            gh release upload "$tag" dist/*.iso --clobber
+          else
+            echo "creating git tag + release '$tag'"
+            gh release create "$tag" \
+              --target "$GITHUB_SHA" \
+              --title "rstl.sway $tag" \
+              --notes "Frugal ISOs (linux-cachyos) from ${{ github.sha }}; flavors: install, install-min, install-uber-min; microarchitecture levels: v1, v2, v3, v4" \
+              dist/*.iso
+          fi

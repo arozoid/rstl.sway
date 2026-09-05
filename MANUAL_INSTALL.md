@@ -63,11 +63,15 @@ sudo pacman -S --needed libnotify dssd sound-theme-freedesktop
 sudo pacman -S --needed greetd greetd-tuigreet
 ```
 
-### terminal / shell / terminal file manager
+### terminal / shell
 
 ```bash
-sudo pacman -S --needed foot fish fastfetch bat eza zoxide jq lf
+sudo pacman -S --needed foot fish fastfetch bat eza zoxide jq
 ```
+
+no terminal file manager is installed; the file chooser portal uses the first
+of `superfile` (`spf`) / `rovr` / `lf` that it finds on your system — install
+and configure the one you like (e.g. `rovr-bin` from rstl.repo, or `lf`)
 
 ### editor
 
@@ -110,7 +114,7 @@ sudo pacman -S --needed dav1d libvpx openh264 mesa vulkan-icd-loader
 ```bash
 printf '\n[rstl-repo]\nSigLevel = Optional TrustAll\nServer = https://arozoid.github.io/rstl.repo\n' \
 | run_sudo tee -a "$conf" >/dev/null
-sudo pacman -Sy --needed yambar xdg-desktop-portal-termfilechooser ttf-jetbrains-mono-nerd-min papirus-icon-theme-dark-only googledot-black dssd
+sudo pacman -Sy --needed yambar xdg-desktop-portal-termfilechooser ttf-jetbrains-mono-nerd-min papirus-icon-theme-dark-only phinger-cursors dssd
 ```
 
 ### symlink the configs
@@ -126,12 +130,18 @@ ln -s ~/.config/rstl.sway/foot     ~/.config/foot
 ln -s ~/.config/rstl.sway/nvim     ~/.config/nvim
 ln -s ~/.config/rstl.sway/mako     ~/.config/mako
 ln -s ~/.config/rstl.sway/lf       ~/.config/lf
+ln -s ~/.config/rstl.sway/rovr     ~/.config/rovr
 sudo ln -s ~/.config/rstl.sway/greetd /etc/greetd
 ```
 
 ### post-install extras
 
 - enable the login manager: `sudo systemctl enable greetd` (and mask `getty@tty1` so greetd takes over)
+- first-login hook: greetd/tuigreet starts sway through `rstl-first-login`, so install it once:
+
+  ```bash
+  sudo install -Dm755 ~/.config/rstl.sway/scripts/first-login.sh /usr/local/bin/rstl-first-login
+  ```
 - drop your wallpaper at `~/Pictures/Wallpapers/wallpaper.jpg` or edit `~/.config/rstl.sway/wallpaper`
 - battery alerts run via cronie — add `~/.config/rstl.sway/scripts/batt.sh` to your crontab (see step 6 of `install.sh`)
 - `rstlpk` (our minimal polkit agent) — fetches from GitHub releases: `sudo rstlpk/install.sh`

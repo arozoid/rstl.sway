@@ -12,3 +12,6 @@ archiso/airootfs/root/*
 !archiso/airootfs/root/.bash_profile
 !archiso/airootfs/root/.automated_script.sh
 !archiso/airootfs/root/customize_airootfs.sh
+
+# rstl-first-login ran marker
+.first-login-done

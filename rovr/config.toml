@@ -1,0 +1,11 @@
+# rstl — rovr config for the full install flavor.
+# Border/styling overrides that match the rice live in style.tcss next to this.
+
+[interface]
+nerd_font = true
+show_hidden_files = true
+tooltips = true
+show_line_numbers = false
+
+[interface.clock]
+enabled = false

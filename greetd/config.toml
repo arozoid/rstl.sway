@@ -7,8 +7,10 @@ vt = 1
 [default_session]
 
 # `agreety` is the bundled agetty/login-lookalike. You can replace `/bin/sh`
-# with whatever you want started, such as `sway`.
-command = "tuigreet --time --remember --cmd sway"
+# with whatever you want started, such as `sway`. rstl-first-login runs the
+# one-shot per-user setup on first login, then exec's the session command
+# (`sway`) and is a no-op (exit 0) on later logins — see scripts/first-login.sh.
+command = "tuigreet --time --remember --cmd 'rstl-first-login sway'"
 
 # The user to run the command as. The privileges this user must have depends
 # on the greeter. A graphical greeter may for example require the user to be

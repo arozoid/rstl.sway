@@ -40,7 +40,7 @@ for_window [app_id="calpopup"] border pixel 1
 for_window [app_id="rstl-pick"] floating enable
 for_window [app_id="rstl-pick"] border pixel 1
 for_window [app_id="rstl-pick"] move position center
-for_window [app_id="rstl-pick"] resize set width 450 px height 400 px
+for_window [app_id="rstl-pick"] resize set width 600 px height 500 px
 
 ### session
 bindsym $mod+Shift+q kill
@@ -165,6 +165,8 @@ bindsym XF86Bluetooth exec rfkill toggle bluetooth
 bindsym $mod+Shift+s exec grim -g "$(slurp)" - | tee "$HOME/Pictures/Screenshots/$(date +%Y-%m-%d_%H-%M-%S).png" | wl-copy 
 
 ### autostart
+# first-login hook: one-shot per-user setup (idempotent, guarded by its marker)
+exec_always --no-startup-id rstl-first-login
 exec_always --no-startup-id ~/.config/rstl.sway/scripts/wallpaper-restore.sh
 # auto-scale sets output scale + bar/cursor sizing before the bar starts
 exec_always --no-startup-id sh -c 'killall -q yambar yambar-fullscreen.sh; ~/.config/rstl.sway/scripts/auto-scale.sh; sleep 0.2; ~/.config/rstl.sway/scripts/yambar-fullscreen.sh'
@@ -182,7 +184,7 @@ exec_always --no-startup-id /usr/bin/rstlpk
 
 ### cursor
 # size is recomputed by scripts/auto-scale.sh at startup; this is the fallback
-seat seat0 xcursor_theme GoogleDot-Black 20 
+seat seat0 xcursor_theme phinger-cursors-dark 24 
 
 ### focus behavior
 focus_follows_mouse yes

@@ -1,0 +1,221 @@
+#!/bin/sh
+# a standalone, simplified rework of FRmake_initrd.sh
+
+# Copyright (c) 2026 arozoid (For modifications)
+# Revised: 03 Sep 2026; License: GPLv3
+
+# Copyright (c) 2022 wiak (For FRmake_initrd.sh)
+# Revised: 22 Oct 2023; Original license: MIT
+
+# Copyright (c) 2012 Tomas M (For initramfs_create)
+# Original license: GPLv2
+
+run_dir="$(pwd)"
+
+
+# ========================
+# helpers
+# ========================
+
+usage() {
+	cat <<'EOF'
+Usage: mkFRkernel [initrd|latest] [rootfs-dir] [gz|xz|zst]
+
+  initrd  : a compressed initrd filename, or "latest" to download the
+            FirstRib skeleton initrd from the network
+  rootfs  : directory holding the kernel modules to include
+            (defaults to firstrib_rootfs)
+  zst/xz  : optional final compression; default is gz
+EOF
+}
+
+# ========================
+# argument handling 
+# ========================
+
+case "$1" in
+	"")          usage; exit 1 ;;
+	--version)   echo "mkFRkernel 1.0.0"; exit 0 ;;
+	-h|-H|--help) usage; exit 0 ;;
+	-*)          echo "unknown option: $1"; exit 1 ;;
+esac
+
+# output compression: gz unless told otherwise
+compression_out="${3:-gz}"
+
+# decide between downloading the skeleton initrd or using a local file
+if [ "$1" = "latest" ]; then
+	url="https://gitlab.com/firstrib/firstrib/-/raw/master/latest/build_system/initrd-latest.gz"
+	echo "[*] downloading skeleton initrd from FirstRib ..."
+	wget -c "$url" || { echo "download failed"; exit 1; }
+	initramfs="initrd-latest.gz"
+	initrd="initrd-latest"
+else
+	initramfs="$1"
+	initrd="${1%.gz}"            # strip .gz to get the base dir name
+fi
+
+# pick the rootfs that provides the kernel modules
+rootfs="${2:-firstrib_rootfs}"
+if [ ! -d "$rootfs" ]; then
+	echo "error: rootfs directory not found: $rootfs"; exit 1
+fi
+
+# ========================
+# locate the newest kernel module set inside the rootfs 
+# ========================
+
+# modules may be under usr/lib/modules or lib/modules
+moddir=""
+for base in "$rootfs/usr/lib/modules" "$rootfs/lib/modules"; do
+	if [ -d "$base" ]; then
+		moddir="$base"
+		break
+	fi
+done
+if [ -z "$moddir" ]; then
+	echo "error: no lib/modules found in $rootfs"; exit 1
+fi
+
+kernelver=$(ls -1 "$moddir" | tail -1)
+echo "[*] using kernel: $kernelver"
+if [ -z "$kernelver" ] || [ ! -d "$moddir/$kernelver" ]; then
+	echo "error: no kernel modules found in $moddir"; exit 1
+fi
+
+# module source tree (may live at usr/lib/modules or lib/modules)
+kernelver_tree="$moddir/$kernelver"
+
+# ========================
+# decompress the skeleton initrd
+# ========================
+
+wsdir="${initrd}_decompressed"
+echo "[*] decompressing $initramfs into $wsdir/ ..."
+rm -rf "$wsdir"
+mkdir -p "$wsdir"
+zcat "$initramfs" | cpio -idm -D "$wsdir" 2>/dev/null
+[ -x "$wsdir/init" ] || { echo "error: $initramfs is not a usable initrd (no /init)"; exit 1; }
+
+cd "$wsdir" || exit 1
+INITRAMFS="$PWD"
+
+# where the modules land inside the initrd (usrmerge: lib -> usr/lib works too)
+initrd_modules="lib/modules/$kernelver"
+
+# copy a path (relative to the module tree) into the initrd module tree.
+# Arguments are paths relative to $kernelver_tree and may hold globs.
+copy_including_deps()
+{
+	for SRCPATH in "$@"; do
+		# unquoted on purpose: SRCPATH may hold globs (e.g. loop.*)
+		for SRC in $kernelver_tree/$SRCPATH; do
+			[ -e "$SRC" ] || continue
+			REL="${SRC#"$kernelver_tree"/}"
+			DST="$INITRAMFS/$initrd_modules/$REL"
+			mkdir -p "$(dirname "$DST")"
+			cp -a "$SRC" "$DST"
+		done
+	done
+}
+
+# drop any modules that came with the skeleton, then re-create the dir
+rm -Rf "$INITRAMFS/lib/modules" 2>/dev/null
+mkdir -p "$INITRAMFS/$initrd_modules"
+
+# basic device nodes (recreated by devtmpfs at boot; best-effort here)
+mknod dev/console c 5 1 2>/dev/null || true
+mknod dev/null     c 1 3 2>/dev/null || true
+mknod dev/ram0     b 1 0 2>/dev/null || true
+mknod dev/tty1     c 4 1 2>/dev/null || true
+mknod dev/tty2     c 4 2 2>/dev/null || true
+mknod dev/tty3     c 4 3 2>/dev/null || true
+mknod dev/tty4     c 4 4 2>/dev/null || true
+
+# filesystems needed before the real root is available
+for fs in aufs overlayfs ext2 ext3 ext4 fat nls fuse isofs ntfs ntfs3 \
+          reiserfs squashfs exfat btrfs f2fs crypto; do
+	copy_including_deps "kernel/fs/$fs"
+done
+
+# crc32c is required by ext4; copy all of them (they are tiny)
+find "$kernelver_tree/kernel" -iname '*crc32c*' | while read -r line; do
+	rel="${line#"$kernelver_tree"/}"
+	copy_including_deps "$rel"
+done
+
+# block devices (loop is required to mount the sfs layers at boot, zram for RAM2)
+copy_including_deps "kernel/drivers/block/loop.*"
+copy_including_deps "kernel/drivers/block/zram"
+
+# disk, CD-ROM, USB and input drivers (keyboard + mouse at boot)
+copy_including_deps "kernel/drivers/cdrom"
+copy_including_deps "kernel/drivers/scsi"
+copy_including_deps "kernel/drivers/ata"
+copy_including_deps "kernel/drivers/nvme"
+copy_including_deps "kernel/drivers/mmc"
+copy_including_deps "kernel/drivers/md"
+copy_including_deps "kernel/drivers/usb/storage/usb-storage.*"
+copy_including_deps "kernel/drivers/usb/storage/uas.*"
+copy_including_deps "kernel/drivers/usb/host"
+copy_including_deps "kernel/drivers/usb/common"
+copy_including_deps "kernel/drivers/usb/core"
+copy_including_deps "kernel/drivers/hid"
+copy_including_deps "kernel/drivers/input/keyboard"
+copy_including_deps "kernel/drivers/input/mouse"
+copy_including_deps "kernel/drivers/input/serio"
+
+# network drivers (insurance; no network init expects them, but harmless)
+copy_including_deps "kernel/fs/nfs"
+copy_including_deps "kernel/drivers/net/ethernet"
+copy_including_deps "kernel/drivers/net/usb"
+
+# any custom modules
+copy_including_deps "updates"
+
+# pull the dependencies of every module that made it into the tree, repeating
+# until transitive deps settle (crc32c, crypto/... are frequently required by
+# the fs/drivers pulled in above)
+changed=1
+while [ "$changed" -eq 1 ]; do
+	changed=0
+	for MOD in $(find "$INITRAMFS/$initrd_modules" -type f -name '*.ko*'); do
+		DEPS=$(grep "/$(basename "$MOD"):" "$kernelver_tree/modules.dep" 2>/dev/null | tr ' ' '\n')
+		for DEP in $DEPS; do
+			DEPDST="$INITRAMFS/$initrd_modules/$DEP"
+			if [ -f "$kernelver_tree/$DEP" ] && [ ! -e "$DEPDST" ]; then
+				mkdir -p "$(dirname "$DEPDST")"
+				cp -a "$kernelver_tree/$DEP" "$DEPDST"
+				changed=1
+			fi
+		done
+	done
+done
+
+# sanity: a bootable initrd MUST contain kernel modules
+if [ "$(find "$INITRAMFS/$initrd_modules" -type f -name '*.ko*' | wc -l)" -eq 0 ]; then
+	echo "error: no kernel modules could be copied from $kernelver_tree into the initrd"
+	exit 1
+fi
+
+# decompress any compressed kernel modules (ko.gz / ko.xz / ko.zst)
+find . -name '*.ko.gz'  -exec gunzip {} \; 2>/dev/null
+find . -name '*.ko.xz'  -exec unxz  {} \; 2>/dev/null
+find . -name '*.ko.zst' -exec zstd -d --rm {} \; 2>/dev/null
+
+# rebuild module dependency data for the kernel inside the initrd
+depmod -b "$PWD" "$kernelver" 2>/dev/null || { echo "error: depmod failed (is kmod installed?)"; exit 1; }
+
+# repack the initrd into a new cpio archive
+case "$compression_out" in
+	gz)  find . -print | cpio -o -H newc 2>/dev/null | gzip > "../${initrd}.img" ;;
+	xz)  find . -print | cpio -o -H newc 2>/dev/null | xz -T0 -f --extreme --check=crc32 > "../${initrd}.img" ;;
+	zst) find . -print | cpio -o -H newc 2>/dev/null | zstd -6 > "../${initrd}.img" ;;
+	*)   echo "unknown compression: $compression_out (use gz, xz or zst)"; exit 1 ;;
+esac
+
+cd "$run_dir"
+echo "[x] created ${initrd}.img"
+rm -Rf "$wsdir"
+
+exit 0

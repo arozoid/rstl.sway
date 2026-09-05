@@ -1,0 +1,11 @@
+{
+  "default": [
+    { "name": "HOME", "path": "$HOME" }
+  ],
+  "pins": [
+    { "name": "Documents", "path": "$DOCUMENTS" },
+    { "name": "Downloads", "path": "$DOWNLOADS" },
+    { "name": "Pictures",  "path": "$PICTURES" },
+    { "name": "rstl",      "path": "$CONFIG/rstl.sway" }
+  ]
+}

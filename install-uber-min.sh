@@ -88,14 +88,28 @@ run_sudo() {
     fi
 }
 
+# retry a pacman transaction against transient download failures
+pac_retry() {
+    attempt=0
+    until run_sudo pacman "$@"; do
+        attempt=$((attempt + 1))
+        if [ "$attempt" -ge 3 ]; then
+            echo "  pacman $* failed after ${attempt} attempts" >&2
+            return 1
+        fi
+        echo "  pacman $* failed, retrying (${attempt}/3)" >&2
+        sleep 2
+    done
+}
+
 # install $1 if it exists in the (synced) repos, otherwise install the $2 fallback
 install_or_fallback() {
     pkg="$1"; fallback="$2"
     if run_sudo pacman -Ssq "^${pkg}$" 2>/dev/null | grep -qx "$pkg"; then
-        run_sudo pacman -S --needed --noconfirm "$pkg"
+        pac_retry -S --needed --noconfirm "$pkg"
     else
         echo "  ${pkg} not found in repos, using ${fallback}"
-        run_sudo pacman -S --needed --noconfirm "$fallback"
+        pac_retry -S --needed --noconfirm "$fallback"
     fi
 }
 
@@ -127,6 +141,18 @@ step_1() {
     else
         echo "dotfiles already at $DOTFILES_DIR"
     fi
+
+    if [ -f "$DOTFILES_DIR/scripts/first-login.sh" ]; then
+        run_sudo install -Dm755 "$DOTFILES_DIR/scripts/first-login.sh" /usr/local/bin/rstl-first-login
+        run_sudo tee /etc/profile.d/rstl-first-login.sh >/dev/null <<'EOF'
+# rstl.sway first-login hook: runs once per user on their first (shell) login.
+# The script itself guards on the per-user marker, so it is safe on every login.
+[ -n "$HOME" ] || return 0
+[ -x /usr/local/bin/rstl-first-login ] && /usr/local/bin/rstl-first-login
+EOF
+        run_sudo chmod 644 /etc/profile.d/rstl-first-login.sh
+        echo "installed rstl-first-login + profile.d hook"
+    fi
 }
 
 step_2() {
@@ -140,10 +166,10 @@ step_2() {
     if ! grep -qF "[rstl-repo]" "$conf" 2>/dev/null; then
         printf '\n[rstl-repo]\nSigLevel = Optional TrustAll\nServer = https://arozoid.github.io/rstl.repo\n' \
             | run_sudo tee -a "$conf" >/dev/null
-        run_sudo pacman -Sy --noconfirm
+        pac_retry -Sy --noconfirm
     fi
 
-    run_sudo pacman -S --needed --noconfirm \
+    pac_retry -S --needed --noconfirm \
         sway swaybg rofi mako swaylock swayidle \
         grim slurp wl-clipboard clipse \
         playerctl brightnessctl \
@@ -168,7 +194,7 @@ step_2() {
 
     # cursor package with optional fallback (kept separate so a missing AUR
     # package cannot fail the whole install)
-    install_or_fallback googledot-black xcursor-themes
+    install_or_fallback phinger-cursors xcursor-themes
 
     echo "packages installed"
 }
@@ -188,7 +214,7 @@ step_3() {
 
     copy_contents "$DOTFILES_DIR/portal" \
         "$HOME/.config/xdg-desktop-portal-termfilechooser"
-    chmod +x "$HOME/.config/xdg-desktop-portal-termfilechooser/lf-wrapper.sh"
+    chmod +x "$HOME/.config/xdg-desktop-portal-termfilechooser/fm-wrapper.sh"
 
     write_file_once "$HOME/.config/xdg-desktop-portal/portals.conf" \
         '[preferred]

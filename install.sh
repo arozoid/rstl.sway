@@ -107,14 +107,29 @@ run_sudo() {
   sudo "$@"
 }
 
+# retry a pacman transaction a few times against transient download failures
+# (GitHub Pages mirrors occasionally drop a mid-flight response)
+pac_retry() {
+  attempt=0
+  until run_sudo pacman "$@"; do
+    attempt=$((attempt + 1))
+    if [ "$attempt" -ge 3 ]; then
+      fail "pacman $* failed after ${attempt} attempts"
+      return 1
+    fi
+    warn "pacman $* failed, retrying (${attempt}/3)"
+    sleep 2
+  done
+}
+
 # install $1 if it exists in the (synced) repos, otherwise install the $2 fallback
 install_or_fallback() {
   pkg="$1"; fallback="$2"
   if run_sudo pacman -Ssq "^${pkg}$" 2>/dev/null | grep -qx "$pkg"; then
-    run_sudo pacman -S --needed --noconfirm "$pkg"
+    pac_retry -S --needed --noconfirm "$pkg"
   else
     printf "  ${C_DIM}%s not found, using %s${C_RESET}\n" "$pkg" "$fallback"
-    run_sudo pacman -S --needed --noconfirm "$fallback"
+    pac_retry -S --needed --noconfirm "$fallback"
   fi
 }
 
@@ -132,7 +147,7 @@ add_rstl_repo() {
 
   printf "  ${C_DIM}adding rstl-repo to ${conf}${C_RESET}\n"
   printf '\n%s\n%s\n%s\n' "$repo_line" "$sig_line" "$server_line" | run_sudo tee -a "$conf" >/dev/null
-  run_sudo pacman -Sy --noconfirm
+  pac_retry -Sy --noconfirm
   ok "rstl-repo added and synced"
 }
 
@@ -200,6 +215,20 @@ step_1() {
   ok "copied dotfiles from ${SOURCE_DIR}"
   chmod +x "$DOTFILES_DIR"/scripts/*.sh 2>/dev/null || true
   ok "scripts are executable"
+
+  # first-login hook: greetd/tuigreet starts sway through rstl-first-login,
+  # so install it system-wide (one-shot setup + session launch, see script).
+  if [ -f "$DOTFILES_DIR/scripts/first-login.sh" ]; then
+    run_sudo install -Dm755 "$DOTFILES_DIR/scripts/first-login.sh" /usr/local/bin/rstl-first-login
+    run_sudo tee /etc/profile.d/rstl-first-login.sh >/dev/null <<'EOF'
+# rstl.sway first-login hook: runs once per user on their first (shell) login.
+# The script itself guards on the per-user marker, so it is safe on every login.
+[ -n "$HOME" ] || return 0
+[ -x /usr/local/bin/rstl-first-login ] && /usr/local/bin/rstl-first-login
+EOF
+    run_sudo chmod 644 /etc/profile.d/rstl-first-login.sh
+    ok "installed rstl-first-login + profile.d hook"
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -226,8 +255,6 @@ swayidle
 grim
 slurp
 wl-clipboard
-clipse
-awww
 playerctl
 brightnessctl
 acpi
@@ -249,7 +276,6 @@ bat
 eza
 zoxide
 jq
-lf
 fastfetch
 neovim
 git
@@ -275,28 +301,40 @@ libvpx
 openh264
 mesa
 vulkan-icd-loader
- ttf-jetbrains-mono-nerd-min
- rstlpk
- dssd
+PKGS
+  } > /dev/null
+
+  # rstl-repo / extra packages; installed one at a time so a missing or
+  # renamed package skips only itself instead of aborting the whole install
+  { cat > "$GCDIR/packages-extra" <<'PKGS'
 ttf-jetbrains-mono-nerd-min
 rstlpk
 dssd
 xdg-desktop-portal-termfilechooser
 yambar
-bluetui
 latuicon
 clipse
 wiremix
+awww
 rstl-pick
 PKGS
-} > /dev/null
+  } > /dev/null
 
   printf "  ${C_DIM}installing: %s${C_RESET}\n" "$(tr '\n' ' ' < "$GCDIR/packages")"
-  run_sudo pacman -S --needed --noconfirm $(cat "$GCDIR/packages")
+  pac_retry -S --needed --noconfirm $(cat "$GCDIR/packages")
+
+  while IFS= read -r pkg; do
+    [ -n "$pkg" ] || continue
+    if run_sudo pacman -Ssq "^${pkg}$" 2>/dev/null | grep -qx "$pkg"; then
+      pac_retry -S --needed --noconfirm "$pkg"
+    else
+      printf "  ${C_DIM}extra package %s not found in any repo, skipping${C_RESET}\n" "$pkg"
+    fi
+  done < "$GCDIR/packages-extra"
 
   # theme/cursor packages with official-repo fallbacks (kept separate so a
   # missing AUR package cannot fail the whole install)
-  install_or_fallback googledot-black xcursor-themes
+  install_or_fallback phinger-cursors xcursor-themes
   install_or_fallback papirus-icon-theme-dark-only adwaita-icon-theme
 
   ok "packages installed"
@@ -343,6 +381,7 @@ step_3() {
   link_dir "$DOTFILES_DIR/foot"      "$HOME/.config/foot"
   link_dir "$DOTFILES_DIR/nvim"      "$HOME/.config/nvim"
   link_dir "$DOTFILES_DIR/mako"      "$HOME/.config/mako"
+  link_dir "$DOTFILES_DIR/rovr"      "$HOME/.config/rovr"
   link_dir "$DOTFILES_DIR/lf"        "$HOME/.config/lf"
   link_dir "$DOTFILES_DIR/fastfetch" "$HOME/.config/fastfetch"
   link_dir "$DOTFILES_DIR/greetd"    "/etc/greetd" yes
@@ -355,9 +394,9 @@ step_3() {
     warn "moved existing ${portal_dir}/config to config.bak"
   fi
   cp -a "$DOTFILES_DIR/portal/config" "$portal_dir/config"
-  cp -a "$DOTFILES_DIR/portal/lf-wrapper.sh" "$portal_dir/lf-wrapper.sh"
-  chmod +x "$portal_dir/lf-wrapper.sh"
-  ok "configured ${portal_dir}/config (lf file chooser)"
+  cp -a "$DOTFILES_DIR/portal/fm-wrapper.sh" "$portal_dir/fm-wrapper.sh"
+  chmod +x "$portal_dir/fm-wrapper.sh"
+  ok "configured ${portal_dir}/config (file chooser: superfile -> rovr -> lf)"
 
   portals_conf="$HOME/.config/xdg-desktop-portal/portals.conf"
   mkdir -p "$(dirname "$portals_conf")"
@@ -404,7 +443,7 @@ step_4() {
   printf "  ${C_DIM}masking agetty on tty1 (greetd takes over the login screen)${C_RESET}\n"
   run_sudo systemctl mask getty@tty1.service >/dev/null 2>&1 || true
 
-  ok "greetd configured (tuigreet -> sway)"
+  ok "greetd configured (tuigreet -> rstl-first-login -> sway)"
 }
 
 # ---------------------------------------------------------------------------
@@ -613,7 +652,9 @@ banner_start
 
 while IFS='|' read -r idx label question func <&3; do
   if ask_step "$idx" "$label" "$question"; then
-    "$func"
+    if ! "$func"; then
+      warn "step $idx failed (exit $?) — continuing with the next step"
+    fi
   fi
   echo
 done 3<<'EOF'

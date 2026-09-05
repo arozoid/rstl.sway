@@ -9,7 +9,7 @@ this setup includes but is not limited to:
 - minimal bar
 - launcher
 - notifications
-- lf file manager
+- no file manager installed; the file chooser portal uses superfile -> rovr -> lf (whichever exists)
 - lock screen
 - screenshots
 - clipboard history
@@ -62,12 +62,12 @@ prefer doing everything by hand? see [MANUAL_INSTALL.md](MANUAL_INSTALL.md)
 - pipewire/*: audio stack
 - dssd ([rstl.repo](https://github.com/arozoid/rstl.repo)): dead simple freedesktop secret service
 - rstlpk ([rstl.repo](https://github.com/arozoid/rstl.repo)): our own minimal polkit auth agent (no gtk; prompt in foot)
-- xdg-desktop-portal-termfilechooser ([rstl.repo](https://github.com/arozoid/rstl.repo)): file pickers open in lf
+- xdg-desktop-portal-termfilechooser ([rstl.repo](https://github.com/arozoid/rstl.repo)): file pickers open in the first of superfile / rovr / lf that is installed
 
 ---
 
 - foot: fast, feature-rich terminal (rust)
-- lf: terminal file manager (used by the file chooser portal)
+- rovr-bin ([rstl.repo](https://github.com/arozoid/rstl.repo)): post-modern terminal file explorer, used by the file chooser if installed (try superfile `spf`, or lf too)
 - nvim: vim alternative
 - fish: friendly interactive shell
 
