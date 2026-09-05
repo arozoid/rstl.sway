@@ -76,7 +76,7 @@ jobs:
           STAGE="$GITHUB_WORKSPACE/stage"
           mkdir -p "$STAGE" dist
           ./mkfrugal-rstl.sh \
-            --target "$STAGE/rstlsway" \
+            "$STAGE/rstlsway" \
             --arch "$ARCH" \
             --flavor "$FLAVOR" \
             --yes \
