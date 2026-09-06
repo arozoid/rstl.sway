@@ -88,11 +88,17 @@ jobs:
             --kernel linux-cachyos \
             --firmware "$GITHUB_WORKSPACE/cache/01firmware.sfs" \
             --cache "$GITHUB_WORKSPACE/cache" \
-            > build.log 2>&1 || {
-              echo "::error::mkfrugal-rstl.sh failed ($FLAVOR $ARCH)"
-              tail -60 build.log >&2
-              exit 1
-            }
+            > build.log 2>&1 &
+          BUILDPID=$!
+          while kill -0 "$BUILDPID" 2>/dev/null; do
+            sleep 90
+            echo "still building ($(date -u +%H:%M:%S)Z) - $(tail -1 build.log 2>/dev/null | cut -c1-180)"
+          done
+          wait "$BUILDPID" || {
+            echo "::error::mkfrugal-rstl.sh failed ($FLAVOR $ARCH)"
+            tail -60 build.log >&2
+            exit 1
+          }
           ./mkfrugal-iso.sh \
             -d "$STAGE/rstlsway" \
             -S "$STAGE" \
