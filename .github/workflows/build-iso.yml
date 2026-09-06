@@ -1,15 +1,16 @@
-# Build rstl.sway frugal ISOs for every flavor x microarchitecture combo
-# (9 matrix jobs), then tag the build (YYYYMMDD) and publish a GitHub
-# release holding the ISOs.
+# Build rstl.sway frugal ISOs for every flavor x microarchitecture x kernel
+# combo (18 matrix jobs: 2 kernels x 9), then publish a GitHub release named
+# YYYYMMDD-N (N = release number for the day: 1, 2, ...) holding the ISOs.
 #
 # Only runs on push (no scheduled/publishing cadence).
 #
-# linux-cachyos is used as the kernel. --arch vN selects pacman-vN.conf so the
-# rootfs is installed against the matching CachyOS repo tier (v1/v2 -> generic
-# [cachyos], v3 -> the x86_64_v3 optimized repo), and --kernel linux-cachyos
-# makes mkfrugal-rstl.sh drop the vanilla kernel, bake the CachyOS kernel
-# modules into the initrd (mkFRkernel) and ship the full module tree in
-# 00modules.sfs.
+# Kernels: cachyos (linux-cachyos, the default) and vdpup, the FirstRib huge
+# kernel 6.1.52-vdpup (a retro LTS with no pacman package - mkfrugal-rstl.sh
+# fetches FirstRib's vmlinuz + 00modules.sfs overlay instead). --arch vN
+# selects pacman-vN.conf so the rootfs is installed against the matching
+# CachyOS repo tier (v1/v2 -> generic [cachyos], v3 -> the x86_64_v3 optimized
+# repo), and mkfrugal-rstl.sh bakes the chosen kernel's modules into the
+# initrd (mkFRkernel) and ships the full module tree in 00modules.sfs.
 #
 # v4 is intentionally NOT in the matrix: x86_64_v4 (AVX-512) binaries signal 4
 # (SIGILL) as soon as a chrooted command runs on a host without AVX-512, and
@@ -27,12 +28,12 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write # create the YYYYMMDD tag + release
+  contents: write # create the YYYYMMDD-N release
   actions: read   # download the ISO artifacts for the release
 
 jobs:
   build-frugal-iso:
-    name: ${{ matrix.flavor }}-${{ matrix.arch }}
+    name: ${{ matrix.flavor }}-${{ matrix.arch }}-${{ matrix.kernel }}
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
@@ -42,6 +43,7 @@ jobs:
       matrix:
         flavor: [install, install-min, install-uber-min]
         arch: [v1, v2, v3]
+        kernel: [cachyos, vdpup]
     steps:
       - name: Update system and install tooling
         run: |
@@ -73,13 +75,25 @@ jobs:
           URL="https://gitlab.com/firstrib/firstrib/-/raw/master/latest/build_system/huge_kernels/kernel_usrmerge_default/01firmware.sfs"
           curl -fL --connect-timeout 30 --max-time 1800 --retry 3 --retry-delay 5 "$URL" -o "$GITHUB_WORKSPACE/cache/01firmware.sfs"
 
-      - name: Build frugal (${{ matrix.arch }}, ${{ matrix.flavor }}) + wrap ISO
+      - name: Cache vdpup huge kernel (vmlinuz + modules sfs)
+        if: matrix.kernel == 'vdpup'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/cache/vdpup-vmlinuz
+            ${{ github.workspace }}/cache/vdpup-00modules.sfs
+          key: vdpup-kernel-6.1.52
+
+      - name: Build frugal (${{ matrix.arch }}, ${{ matrix.flavor }}, ${{ matrix.kernel }}) + wrap ISO
         timeout-minutes: 65
         run: |
           set -uo pipefail
           chmod +x mkfrugal-rstl.sh mkfrugal-iso.sh mkFRkernel
           FLAVOR="${{ matrix.flavor }}"
           ARCH="${{ matrix.arch }}"
+          KERNEL="${{ matrix.kernel }}"
+          KERNEL_ARG="$KERNEL"
+          [ "$KERNEL_ARG" = "cachyos" ] && KERNEL_ARG="linux-cachyos"
           DATE="$(date +%Y%m%d)"
           STAGE="$GITHUB_WORKSPACE/stage"
           mkdir -p "$STAGE" dist
@@ -92,7 +106,7 @@ jobs:
               --arch "$ARCH" \
               --flavor "$FLAVOR" \
               --yes \
-              --kernel linux-cachyos \
+              --kernel "$KERNEL_ARG" \
               --firmware "$GITHUB_WORKSPACE/cache/01firmware.sfs" \
               --cache "$GITHUB_WORKSPACE/cache" \
           ) > build.log 2>&1 &
@@ -104,11 +118,11 @@ jobs:
           STATUS=0
           wait "$BUILDPID" || STATUS=$?
           if [ "$STATUS" -eq 124 ]; then
-            echo "::error::mkfrugal-rstl.sh timed out after 55m ($FLAVOR $ARCH)"
+            echo "::error::mkfrugal-rstl.sh timed out after 55m ($FLAVOR $ARCH $KERNEL)"
           elif [ "$STATUS" -ne 0 ]; then
-            echo "::error::mkfrugal-rstl.sh failed ($FLAVOR $ARCH) exit $STATUS"
+            echo "::error::mkfrugal-rstl.sh failed ($FLAVOR $ARCH $KERNEL) exit $STATUS"
           else
-            echo "mkfrugal-rstl.sh OK ($FLAVOR $ARCH)"
+            echo "mkfrugal-rstl.sh OK ($FLAVOR $ARCH $KERNEL)"
           fi
           if [ "$STATUS" -ne 0 ]; then
             tail -80 build.log >&2
@@ -120,8 +134,8 @@ jobs:
             -S "$STAGE" \
             -n rstlsway \
             -l RSTLSW \
-            -o "dist/rstlsway-$FLAVOR-$ARCH-$DATE-x86_64.iso" || {
-              echo "::error::mkfrugal-iso.sh failed ($FLAVOR $ARCH)"
+            -o "dist/rstlsway-$KERNEL-$FLAVOR-$ARCH-$DATE-x86_64.iso" || {
+              echo "::error::mkfrugal-iso.sh failed ($FLAVOR $ARCH $KERNEL)"
               exit 1
             }
           rm -rf "$STAGE"
@@ -131,14 +145,14 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v5
         with:
-          name: buildlog-${{ matrix.flavor }}-${{ matrix.arch }}
+          name: buildlog-${{ matrix.flavor }}-${{ matrix.arch }}-${{ matrix.kernel }}
           path: build.log
           if-no-files-found: ignore
 
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v5
         with:
-          name: iso-${{ matrix.flavor }}-${{ matrix.arch }}
+          name: iso-${{ matrix.flavor }}-${{ matrix.arch }}-${{ matrix.kernel }}
           path: dist/*.iso
           if-no-files-found: error
 
@@ -153,22 +167,26 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Create/update YYYYMMDD tag + release
+      - name: Create YYYYMMDD-N release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           ls -lh dist
-          tag="$(date +%Y%m%d)"
-          if gh release view "$tag" --json id --jq .id >/dev/null 2>&1; then
-            echo "release '$tag' already exists - updating its assets"
-            gh release upload "$tag" dist/*.iso --clobber
-          else
-            echo "creating git tag + release '$tag'"
-            gh release create "$tag" \
-              --target "$GITHUB_SHA" \
-              --title "rstl.sway $tag" \
-              --notes "Frugal ISOs (linux-cachyos) from ${{ github.sha }}; flavors: install, install-min, install-uber-min; microarchitecture levels: v1, v2, v3" \
-              dist/*.iso
-          fi
+          date_tag="$(date +%Y%m%d)"
+          rel=""
+          for i in $(seq 1 99); do
+            tag="${date_tag}-${i}"
+            if ! gh release view "$tag" --json id --jq .id >/dev/null 2>&1; then
+              rel="$tag"
+              break
+            fi
+          done
+          [ -n "$rel" ] || { echo "::error::too many releases for $date_tag"; exit 1; }
+          echo "creating git tag + release '$rel'"
+          gh release create "$rel" \
+            --target "$GITHUB_SHA" \
+            --title "rstl.sway $rel" \
+            --notes "Frugal ISOs from ${{ github.sha }}; kernels: cachyos (linux-cachyos), vdpup (FirstRib huge 6.1.52); flavors: install, install-min, install-uber-min; microarchitecture levels: v1, v2, v3" \
+            dist/*.iso

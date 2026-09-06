@@ -4,7 +4,8 @@
 # Produces a self-contained frugal directory at --target:
 #
 #   <target>/
-#     vmlinuz               linux-cachyos kernel image
+#     vmlinuz               kernel image (linux-cachyos, or the FirstRib huge
+#                           kernel 'vdpup' 6.1.52 when built with --kernel vdpup)
 #     initrd.gz             FirstRib initrd built by mkFRkernel (modules baked in)
 #     00modules.sfs         zstd level 19 squashfs of the full module tree
 #     01firmware.sfs        huge-kernel firmware (FirstRib, zstd level 19)
@@ -24,7 +25,9 @@
 #   -f, --flavor NAME       install | install-min | install-uber-min | rstl-inst
 #                           (default: install-min)
 #   -y, --yes               assume yes for the installer scripts
-#   -K, --kernel PKG        kernel package (default: linux-cachyos)
+#   -K, --kernel PKG        kernel package, or 'vdpup' for the FirstRib huge
+#                           kernel 6.1.52-vdpup (retro LTS, no pacman package;
+#                           default: linux-cachyos)
 #       --firmware FILE     reuse an existing 01firmware.sfs instead of downloading
 #       --modules-source DIR   build 00modules.sfs by reusing an existing
 #                          modules tree verbatim (FirstRib huge-kernel style,
@@ -83,6 +86,7 @@ requested_arch=""
 flavor="install-min"
 assume_yes=0
 kernel_pkg="linux-cachyos"
+kernel_vdpup=0
 opt_firmware=""
 opt_modules_build=""
 opt_modules_source=""
@@ -101,7 +105,7 @@ while [ "$#" -gt 0 ]; do
             flavor="$2"; shift 2 ;;
         --flavor=*) flavor="${1#*=}"; shift ;;
         -y|--yes) assume_yes=1; shift ;;
-        -K|--kernel) [ "$#" -ge 2 ] || die "--kernel requires a package name"
+        -K|--kernel) [ "$#" -ge 2 ] || die "--kernel requires a package name (or 'vdpup')"
             kernel_pkg="$2"; shift 2 ;;
         --kernel=*) kernel_pkg="${1#*=}"; shift ;;
         --firmware) [ "$#" -ge 2 ] || die "--firmware requires a file"
@@ -128,6 +132,10 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
+case "$kernel_pkg" in
+    vdpup) kernel_vdpup=1 ;;
+esac
+
 case "$flavor" in
     install|install-min|install-uber-min|rstl-inst) ;;
     *) die "unknown flavor: $flavor (use install, install-min, install-uber-min or rstl-inst)" ;;
@@ -137,7 +145,7 @@ esac
 # preflight
 # ---------------------------------------------------------------------------
 [ "$(id -u)" -eq 0 ] || die "must be run as root (pacstrap / mksquashfs need it)"
-for cmd in pacstrap arch-chroot mksquashfs; do
+for cmd in pacstrap arch-chroot mksquashfs unsquashfs; do
     command -v "$cmd" >/dev/null 2>&1 || die "'$cmd' not found (install arch-install-scripts + squashfs-tools)"
 done
 command -v wget >/dev/null 2>&1 || die "'wget' not found (mkFRkernel needs it to fetch the skeleton initrd)"
@@ -254,15 +262,61 @@ info "syncing + upgrading the rootfs (CachyOS repos)"
 arch-chroot "$ROOTFS" pacman -Syu --noconfirm
 
 # ---------------------------------------------------------------------------
-# 3. kernel (linux-cachyos) + drop the vanilla kernel that base pulled in
+# 3. kernel: linux-cachyos (default) OR the FirstRib huge kernel "vdpup"
+#    (kernel 6.1.52-vdpup, a retro LTS build). vdpup has no pacman package:
+#    its vmlinuz + full module tree come from FirstRib's kernel_usrmerge_default
+#    00modules.sfs overlay, so the vanilla `linux` that base pulled in is
+#    dropped and no arch kernel package is installed at all.
 # ---------------------------------------------------------------------------
 header "Installing kernel $kernel_pkg"
-arch-chroot "$ROOTFS" pacman -S --noconfirm "$kernel_pkg"
-kernelver="$(ls -1 "$ROOTFS/usr/lib/modules" | tail -1)"
-ok "kernel modules: $kernelver"
-
-if [ "$kernel_pkg" != "linux" ] && [ -d "$ROOTFS/usr/lib/modules" ]; then
+if [ "$kernel_vdpup" -eq 1 ]; then
     arch-chroot "$ROOTFS" pacman -Rns --noconfirm linux >/dev/null 2>&1 || true
+    ok "vdpup: no pacman kernel; huge-kernel assets fetched below"
+else
+    arch-chroot "$ROOTFS" pacman -S --noconfirm "$kernel_pkg"
+    kernelver="$(ls -1 "$ROOTFS/usr/lib/modules" | tail -1)"
+    ok "kernel modules: $kernelver"
+    if [ "$kernel_pkg" != "linux" ] && [ -d "$ROOTFS/usr/lib/modules" ]; then
+        arch-chroot "$ROOTFS" pacman -Rns --noconfirm linux >/dev/null 2>&1 || true
+    fi
+fi
+
+# --- FirstRib huge kernel "vdpup": fetch vmlinuz + 00modules.sfs ------------
+# Same FirstRib repo as the firmware. The modules sfs is extracted into the
+# rootfs so mkFRkernel bakes the loop/fs drivers into the initrd and the layer
+# re-squash in section 8 (which always emits zstd level 19) produces
+# 00modules.sfs at the level mkfrugal-iso.sh expects, whatever the upstream is.
+if [ "$kernel_vdpup" -eq 1 ]; then
+    vdpup_base="https://gitlab.com/firstrib/firstrib/-/raw/master/latest/build_system/huge_kernels/kernel_usrmerge_default"
+    mkdir -p "$cache"
+    fetch_vdpup() {
+        for f in vmlinuz 00modules.sfs; do
+            cached="$cache/vdpup-$f"
+            [ -s "$cached" ] && continue
+            url="$vdpup_base/$f"
+            if command -v curl >/dev/null 2>&1; then
+                curl -fL --connect-timeout 30 --max-time 1200 --retry 3 --retry-delay 5 "$url" -o "$cached.part" || return 1
+            else
+                wget --timeout=30 --tries=3 -O "$cached.part" "$url" || return 1
+            fi
+            mv "$cached.part" "$cached"
+        done
+        return 0
+    }
+    if command -v flock >/dev/null 2>&1; then
+        ( flock -x 9; fetch_vdpup ) 9>"$cache/.vdpup.lock"
+    else
+        fetch_vdpup
+    fi
+    [ -s "$cache/vdpup-00modules.sfs" ] || die "vdpup module download failed"
+    [ -s "$cache/vdpup-vmlinuz" ] || die "vdpup kernel download failed"
+    info "extracting vdpup 00modules.sfs into the rootfs (usr/lib/modules)"
+    mkdir -p "$ROOTFS/usr/lib/modules"
+    unsquashfs -f -d "$ROOTFS" "$cache/vdpup-00modules.sfs" >/dev/null
+    kernelver="$(ls -1 "$ROOTFS/usr/lib/modules" | tail -1)"
+    { [ -n "$kernelver" ] && [ -d "$ROOTFS/usr/lib/modules/$kernelver" ]; } || \
+        die "vdpup 00modules.sfs did not extract a usable usr/lib/modules tree"
+    ok "vdpup kernel modules: $kernelver"
 fi
 
 # ---------------------------------------------------------------------------
@@ -647,8 +701,12 @@ fi
 ok "01firmware.sfs -> $(du -h "$target/01firmware.sfs" | cut -f1)"
 
 # --- kernel image ----------------------------------------------------------
-cp -a "$ROOTFS/boot/vmlinuz-$kernel_pkg" "$target/vmlinuz" 2>/dev/null \
-    || cp -a "$(ls -1 "$ROOTFS"/boot/vmlinuz-* 2>/dev/null | head -1)" "$target/vmlinuz"
+if [ "$kernel_vdpup" -eq 1 ]; then
+    cp -a "$cache/vdpup-vmlinuz" "$target/vmlinuz"
+else
+    cp -a "$ROOTFS/boot/vmlinuz-$kernel_pkg" "$target/vmlinuz" 2>/dev/null \
+        || cp -a "$(ls -1 "$ROOTFS"/boot/vmlinuz-* 2>/dev/null | head -1)" "$target/vmlinuz"
+fi
 ok "vmlinuz -> $(du -h "$target/vmlinuz" | cut -f1)"
 # modules + firmware ship via the sfs layers at runtime -> drop them from rootfs
 rm -rf "$ROOTFS/boot"
