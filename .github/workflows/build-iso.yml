@@ -6,11 +6,12 @@
 #
 # Kernels: cachyos (linux-cachyos, the default) and vdpup, the FirstRib huge
 # kernel 6.1.52-vdpup (a retro LTS with no pacman package - mkfrugal-rstl.sh
-# fetches FirstRib's vmlinuz + 00modules.sfs overlay instead). --arch vN
-# selects pacman-vN.conf so the rootfs is installed against the matching
-# CachyOS repo tier (v1/v2 -> generic [cachyos], v3 -> the x86_64_v3 optimized
-# repo), and mkfrugal-rstl.sh bakes the chosen kernel's modules into the
-# initrd (mkFRkernel) and ships the full module tree in 00modules.sfs.
+# drops in FirstRib's stock vmlinuz + 00modules.sfs + initrd-latest.gz
+# unmodified, so nothing is rebuilt for it). --arch vN selects pacman-vN.conf
+# so the rootfs is installed against the matching CachyOS repo tier
+# (v1/v2 -> generic [cachyos], v3 -> the x86_64_v3 optimized repo). For the
+# cachyos kernel mkfrugal-rstl.sh bakes the modules into the initrd (mkFRkernel)
+# and ships the full module tree in 00modules.sfs.
 #
 # v4 is intentionally NOT in the matrix: x86_64_v4 (AVX-512) binaries signal 4
 # (SIGILL) as soon as a chrooted command runs on a host without AVX-512, and
@@ -75,13 +76,14 @@ jobs:
           URL="https://gitlab.com/firstrib/firstrib/-/raw/master/latest/build_system/huge_kernels/kernel_usrmerge_default/01firmware.sfs"
           curl -fL --connect-timeout 30 --max-time 1800 --retry 3 --retry-delay 5 "$URL" -o "$GITHUB_WORKSPACE/cache/01firmware.sfs"
 
-      - name: Cache vdpup huge kernel (vmlinuz + modules sfs)
+      - name: Cache vdpup huge kernel (vmlinuz + modules sfs + initrd)
         if: matrix.kernel == 'vdpup'
         uses: actions/cache@v4
         with:
           path: |
             ${{ github.workspace }}/cache/vdpup-vmlinuz
             ${{ github.workspace }}/cache/vdpup-00modules.sfs
+            ${{ github.workspace }}/cache/vdpup-initrd.gz
           key: vdpup-kernel-6.1.52
 
       - name: Build frugal (${{ matrix.arch }}, ${{ matrix.flavor }}, ${{ matrix.kernel }}) + wrap ISO

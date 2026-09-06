@@ -4,10 +4,12 @@
 # Produces a self-contained frugal directory at --target:
 #
 #   <target>/
-#     vmlinuz               kernel image (linux-cachyos, or the FirstRib huge
-#                           kernel 'vdpup' 6.1.52 when built with --kernel vdpup)
-#     initrd.gz             FirstRib initrd built by mkFRkernel (modules baked in)
+#     vmlinuz               kernel image (linux-cachyos, or the stock FirstRib
+#                           huge kernel 'vdpup' 6.1.52 with --kernel vdpup)
+#     initrd.gz             FirstRib initrd built by mkFRkernel (modules baked
+#                           in); with --kernel vdpup the stock FirstRib initrd
 #     00modules.sfs         zstd level 19 squashfs of the full module tree
+#                           (with --kernel vdpup: the stock FirstRib modules sfs)
 #     01firmware.sfs        huge-kernel firmware (FirstRib, zstd level 19)
 #     07rootfs/             the CachyOS root filesystem (squashed by the ISO maker)
 #     grub_config.txt       GRUB menu entry snippet (disk boot, UUID placeholder)
@@ -27,7 +29,8 @@
 #   -y, --yes               assume yes for the installer scripts
 #   -K, --kernel PKG        kernel package, or 'vdpup' for the FirstRib huge
 #                           kernel 6.1.52-vdpup (retro LTS, no pacman package;
-#                           default: linux-cachyos)
+#                           its stock vmlinuz + 00modules.sfs + initrd-latest.gz
+#                           are fetched unmodified; default: linux-cachyos)
 #       --firmware FILE     reuse an existing 01firmware.sfs instead of downloading
 #       --modules-source DIR   build 00modules.sfs by reusing an existing
 #                          modules tree verbatim (FirstRib huge-kernel style,
@@ -281,19 +284,24 @@ else
     fi
 fi
 
-# --- FirstRib huge kernel "vdpup": fetch vmlinuz + 00modules.sfs ------------
-# Same FirstRib repo as the firmware. The modules sfs is extracted into the
-# rootfs so mkFRkernel bakes the loop/fs drivers into the initrd and the layer
-# re-squash in section 8 (which always emits zstd level 19) produces
-# 00modules.sfs at the level mkfrugal-iso.sh expects, whatever the upstream is.
+# --- FirstRib huge kernel "vdpup": fetch kernel + modules + initrd ----------
+# Pure drop-in of the stock huge-kernel assets from the URLs in the original
+# mkfrugal script - nothing is rebuilt, extracted or recompressed (no
+# mkFRkernel, no re-squash): the three boot files are copied straight into the
+# frugal in section 8, so the only cost is the (cached) download.
 if [ "$kernel_vdpup" -eq 1 ]; then
     vdpup_base="https://gitlab.com/firstrib/firstrib/-/raw/master/latest/build_system/huge_kernels/kernel_usrmerge_default"
+    vdpup_initrd_url="https://gitlab.com/firstrib/firstrib/-/raw/master/latest/build_system/initrd-latest.gz"
     mkdir -p "$cache"
     fetch_vdpup() {
-        for f in vmlinuz 00modules.sfs; do
+        for spec in \
+            "vmlinuz|$vdpup_base/vmlinuz" \
+            "00modules.sfs|$vdpup_base/00modules.sfs" \
+            "initrd.gz|$vdpup_initrd_url"; do
+            f="${spec%%|*}"
+            url="${spec#*|}"
             cached="$cache/vdpup-$f"
             [ -s "$cached" ] && continue
-            url="$vdpup_base/$f"
             if command -v curl >/dev/null 2>&1; then
                 curl -fL --connect-timeout 30 --max-time 1200 --retry 3 --retry-delay 5 "$url" -o "$cached.part" || return 1
             else
@@ -308,15 +316,11 @@ if [ "$kernel_vdpup" -eq 1 ]; then
     else
         fetch_vdpup
     fi
-    [ -s "$cache/vdpup-00modules.sfs" ] || die "vdpup module download failed"
     [ -s "$cache/vdpup-vmlinuz" ] || die "vdpup kernel download failed"
-    info "extracting vdpup 00modules.sfs into the rootfs (usr/lib/modules)"
-    mkdir -p "$ROOTFS/usr/lib/modules"
-    unsquashfs -f -d "$ROOTFS" "$cache/vdpup-00modules.sfs" >/dev/null
-    kernelver="$(ls -1 "$ROOTFS/usr/lib/modules" | tail -1)"
-    { [ -n "$kernelver" ] && [ -d "$ROOTFS/usr/lib/modules/$kernelver" ]; } || \
-        die "vdpup 00modules.sfs did not extract a usable usr/lib/modules tree"
-    ok "vdpup kernel modules: $kernelver"
+    [ -s "$cache/vdpup-00modules.sfs" ] || die "vdpup module download failed"
+    [ -s "$cache/vdpup-initrd.gz" ] || die "vdpup initrd download failed"
+    kernelver="6.1.52-vdpup"
+    ok "vdpup assets cached: $kernelver (stock FirstRib huge kernel)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -597,77 +601,89 @@ fi
 # ---------------------------------------------------------------------------
 header "Assembling frugal at '$target'"
 
-# --- initrd (FirstRib skeleton + this kernel's modules baked in) ----------
-info "building initrd.gz (mkFRkernel)"
-initrd_work="$target/.initrd"
-rm -rf "$initrd_work"
-mkdir -p "$initrd_work"
-(
-    cd "$initrd_work"
-    "$REPO/mkFRkernel" latest "$ROOTFS" gz >mkFRkernel.log 2>&1 || {
-        cat mkFRkernel.log >&2
-        exit 1
-    }
-)
-mv "$initrd_work/initrd-latest.img" "$target/initrd.gz"
-rm -rf "$initrd_work"
+# --- initrd ---------------------------------------------------------------
+# cachyos: rebuild the FirstRib skeleton with this kernel's modules baked in
+# (mkFRkernel). vdpup: FirstRib's own initrd-latest.gz is a complete huge-kernel
+# initrd already, so it is used unmodified (no mkFRkernel on the vdpup assets).
+if [ "$kernel_vdpup" -eq 1 ]; then
+    cp -a "$cache/vdpup-initrd.gz" "$target/initrd.gz"
+else
+    info "building initrd.gz (mkFRkernel)"
+    initrd_work="$target/.initrd"
+    rm -rf "$initrd_work"
+    mkdir -p "$initrd_work"
+    (
+        cd "$initrd_work"
+        "$REPO/mkFRkernel" latest "$ROOTFS" gz >mkFRkernel.log 2>&1 || {
+            cat mkFRkernel.log >&2
+            exit 1
+        }
+    )
+    mv "$initrd_work/initrd-latest.img" "$target/initrd.gz"
+    rm -rf "$initrd_work"
+    # Guard: a module-less initrd cannot mount the sfs layers (loop mounts fail
+    # and the kernel panics on boot). Fail loudly instead of shipping a brick.
+    if ! zcat "$target/initrd.gz" 2>/dev/null | cpio -it 2>/dev/null | grep -q 'block/loop\.ko$'; then
+        die "initrd.gz contains no loop kernel module - the frugal would not boot (check mkFRkernel and \$ROOTFS/usr/lib/modules)"
+    fi
+    ok "initrd.gz carries the loop kernel module"
+fi
 ok "initrd.gz -> $(du -h "$target/initrd.gz" | cut -f1)"
 
-# Guard: a module-less initrd cannot mount the sfs layers (loop mounts fail and
-# the kernel panics on boot). Fail loudly here instead of shipping a brick.
-if ! zcat "$target/initrd.gz" 2>/dev/null | cpio -it 2>/dev/null | grep -q 'block/loop\.ko$'; then
-    die "initrd.gz contains no loop kernel module - the frugal would not boot (check mkFRkernel and \$ROOTFS/usr/lib/modules)"
-fi
-ok "initrd.gz carries the loop kernel module"
-
-# --- 00modules.sfs (full module tree, zstd level 19) ----------------------
-# w_init mounts NN=00 as an overlay LAYER, so the archive must be laid out at
-# usr/lib/modules/... (usrmerge), not at a bare modules/ top-level dir.
-info "building 00modules.sfs (zstd level 19)"
-modlayer="$target/.00mod"
-rm -rf "$modlayer"
-mkdir -p "$modlayer/usr/lib"
-if [ -n "$opt_modules_source" ]; then
-    # --modules-source DIR: reuse a known-good modules tree verbatim (e.g. the
-    # FirstRib huge-kernel 00modules dir). Accept as DIR a directory holding the
-    # module tree as <DIR>/usr/lib/modules, <DIR>/lib/modules, or directly the
-    # <kver> directories. Source must contain the kernel the frugal boots.
-    src=""
-    for cand in "$opt_modules_source"/usr/lib/modules "$opt_modules_source"/lib/modules "$opt_modules_source"; do
-        if [ -d "$cand/$kernelver" ] && [ -n "$(find "$cand/$kernelver" -name '*.ko*' 2>/dev/null | head -1)" ]; then
-            src="$cand"
-            break
-        fi
-    done
-    [ -n "$src" ] || die "--modules-source $opt_modules_source: no '$kernelver' module tree found (need usr/lib/modules, lib/modules or a bare <kver> dir)"
-    cp -a "$src"/. "$modlayer/usr/lib/modules/"
-    ok "00modules modules: $src/$kernelver (from --modules-source)"
+# --- 00modules.sfs (full module tree) --------------------------------------
+# vdpup: FirstRib's own 00modules.sfs is copied unmodified. cachyos: w_init
+# mounts NN=00 as an overlay LAYER, so the archive must be laid out at
+# usr/lib/modules/... (usrmerge), not at a bare modules/ top-level dir, and is
+# squashed at zstd level 19.
+if [ "$kernel_vdpup" -eq 1 ]; then
+    cp -a "$cache/vdpup-00modules.sfs" "$target/00modules.sfs"
+    ok "00modules.sfs (stock vdpup) -> $(du -h "$target/00modules.sfs" | cut -f1)"
+    unsquashfs -s "$target/00modules.sfs" 2>/dev/null | grep -m1 Compression | sed 's/^/    /' || true
 else
-    cp -a "$ROOTFS/usr/lib/modules" "$modlayer/usr/lib/modules"
-    ok "00modules modules: $ROOTFS/usr/lib/modules (from rootfs)"
+    info "building 00modules.sfs (zstd level 19)"
+    modlayer="$target/.00mod"
+    rm -rf "$modlayer"
+    mkdir -p "$modlayer/usr/lib"
+    if [ -n "$opt_modules_source" ]; then
+        # --modules-source DIR: reuse a known-good modules tree verbatim (e.g. the
+        # FirstRib huge-kernel 00modules dir). Accept as DIR a directory holding the
+        # module tree as <DIR>/usr/lib/modules, <DIR>/lib/modules, or directly the
+        # <kver> directories. Source must contain the kernel the frugal boots.
+        src=""
+        for cand in "$opt_modules_source"/usr/lib/modules "$opt_modules_source"/lib/modules "$opt_modules_source"; do
+            if [ -d "$cand/$kernelver" ] && [ -n "$(find "$cand/$kernelver" -name '*.ko*' 2>/dev/null | head -1)" ]; then
+                src="$cand"
+                break
+            fi
+        done
+        [ -n "$src" ] || die "--modules-source $opt_modules_source: no '$kernelver' module tree found (need usr/lib/modules, lib/modules or a bare <kver> dir)"
+        cp -a "$src"/. "$modlayer/usr/lib/modules/"
+        ok "00modules modules: $src/$kernelver (from --modules-source)"
+    else
+        cp -a "$ROOTFS/usr/lib/modules" "$modlayer/usr/lib/modules"
+        ok "00modules modules: $ROOTFS/usr/lib/modules (from rootfs)"
+    fi
+    # Optional kernel build tree (build/ -> for dkms / out-of-tree module builds).
+    # Auto-use it if present in the module source, or take it explicitly via --modules-build-dir.
+    if [ -z "$opt_modules_source" ] || [ ! -d "$modlayer/usr/lib/modules/$kernelver/build" ]; then
+        bdir_candidates="${opt_modules_build:-} $(echo "$ROOTFS"/usr/lib/modules/*/build 2>/dev/null) $modlayer/usr/lib/modules/$kernelver/build"
+        for bd in $bdir_candidates; do
+            [ -n "$bd" ] && [ -f "$bd/Makefile" ] || continue
+            kver_build="$modlayer/usr/lib/modules/$kernelver/build"
+            mkdir -p "$kver_build"
+            cp -a "$bd"/. "$kver_build"/
+            break
+        done
+    fi
+    # source is "$modlayer" (NOT "$modlayer/usr"): mksquashfs puts the *contents*
+    # of the source dir at the fs root, so squashing usr/ would drop the prefix
+    # and produce lib/modules/... which the frugal cannot find under /usr/lib.
+    mksquashfs "$modlayer" "$target/00modules.sfs" \
+        -noappend -comp zstd -Xcompression-level 19 -no-progress >/dev/null
+    rm -rf "$modlayer"
+    ok "00modules.sfs -> $(du -h "$target/00modules.sfs" | cut -f1)"
+    unsquashfs -s "$target/00modules.sfs" 2>/dev/null | grep -m1 Compression | sed 's/^/    /' || true
 fi
-# Optional kernel build tree (build/ -> for dkms / out-of-tree module builds).
-# The FirstRib huge-kernel 00modules ships usr/lib/modules/<ver>/build/, which
-# is ~35MiB extra once zstd-19-compressed (375MB -> 185MiB vs our 164MB -> 150MB).
-# Auto-use it if present in the module source, or take it explicitly via --modules-build-dir.
-if [ -z "$opt_modules_source" ] || [ ! -d "$modlayer/usr/lib/modules/$kernelver/build" ]; then
-    bdir_candidates="${opt_modules_build:-} $(echo "$ROOTFS"/usr/lib/modules/*/build 2>/dev/null) $modlayer/usr/lib/modules/$kernelver/build"
-    for bd in $bdir_candidates; do
-        [ -n "$bd" ] && [ -f "$bd/Makefile" ] || continue
-        kver_build="$modlayer/usr/lib/modules/$kernelver/build"
-        mkdir -p "$kver_build"
-        cp -a "$bd"/. "$kver_build"/
-        break
-    done
-fi
-# source is "$modlayer" (NOT "$modlayer/usr"): mksquashfs puts the *contents*
-# of the source dir at the fs root, so squashing usr/ would drop the prefix
-# and produce lib/modules/... which the frugal cannot find under /usr/lib.
-mksquashfs "$modlayer" "$target/00modules.sfs" \
-    -noappend -comp zstd -Xcompression-level 19 -no-progress >/dev/null
-rm -rf "$modlayer"
-ok "00modules.sfs -> $(du -h "$target/00modules.sfs" | cut -f1)"
-unsquashfs -s "$target/00modules.sfs" 2>/dev/null | grep -m1 Compression | sed 's/^/    /' || true
 
 # --- 01firmware.sfs (huge-kernel firmware from FirstRib, already zstd 19) --
 if [ -n "$opt_firmware" ]; then
