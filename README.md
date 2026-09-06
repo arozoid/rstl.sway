@@ -61,7 +61,7 @@ prefer doing everything by hand? see [MANUAL_INSTALL.md](MANUAL_INSTALL.md)
 - flac/mpg123/opus/vorbis/dav1d/libvpx/openh264: audio & video codecs
 - pipewire/*: audio stack
 - dssd ([rstl.repo](https://github.com/arozoid/rstl.repo)): dead simple freedesktop secret service
-- rstlpk ([rstl.repo](https://github.com/arozoid/rstl.repo)): our own minimal polkit auth agent (no gtk; prompt in foot)
+- rstlpk ([rstl.repo](https://github.com/arozoid/rstl.repo)): my minimal polkit auth agent (no gtk; prompt in foot)
 - xdg-desktop-portal-termfilechooser ([rstl.repo](https://github.com/arozoid/rstl.repo)): file pickers open in the first of superfile / rovr / lf that is installed
 
 ---
@@ -108,4 +108,6 @@ prefer doing everything by hand? see [MANUAL_INSTALL.md](MANUAL_INSTALL.md)
 
 ## credits
 
-[melatonia/meloworld-dotfiles](https://github.com/melatonia/meloworld-dotfiles) for the chime startup desktop sound and the default wallpaper :3 
+[melatonia/meloworld-dotfiles](https://github.com/melatonia/meloworld-dotfiles) for the chime startup desktop sound and the default wallpaper :3
+
+[firstrib/firstrib](https://gitlab.com/firstrib/firstrib) for the "firstrib" initrd and for some initrd and frugal install scripts (which i had remastered for this repo)
