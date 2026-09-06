@@ -519,7 +519,7 @@ mesa
 vulkan-icd-loader
 ttf-jetbrains-mono-nerd-min
 papirus-icon-theme-dark-only
-phinger-cursors
+adwaita-cursors
 rstlpk
 dssd
 xdg-desktop-portal-termfilechooser

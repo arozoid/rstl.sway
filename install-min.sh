@@ -191,7 +191,7 @@ step_2() {
 
     # theme/cursor packages with official-repo fallbacks (kept separate so a
     # missing AUR package cannot fail the whole install)
-    install_or_fallback phinger-cursors xcursor-themes
+    install_or_fallback adwaita-cursors xcursor-themes
     install_or_fallback papirus-icon-theme-dark-only adwaita-icon-theme
 
     echo "packages installed"

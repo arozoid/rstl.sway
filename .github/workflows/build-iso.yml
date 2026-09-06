@@ -1,15 +1,20 @@
 # Build rstl.sway frugal ISOs for every flavor x microarchitecture combo
-# (12 matrix jobs), then tag the build (YYYYMMDD) and publish a GitHub
+# (9 matrix jobs), then tag the build (YYYYMMDD) and publish a GitHub
 # release holding the ISOs.
 #
 # Only runs on push (no scheduled/publishing cadence).
 #
 # linux-cachyos is used as the kernel. --arch vN selects pacman-vN.conf so the
 # rootfs is installed against the matching CachyOS repo tier (v1/v2 -> generic
-# [cachyos], v3/v4 -> the x86_64_v3/v4 optimized repos), and --kernel
-# linux-cachyos makes mkfrugal-rstl.sh drop the vanilla kernel, bake the
-# CachyOS kernel modules into the initrd (mkFRkernel) and ship the full module
-# tree in 00modules.sfs.
+# [cachyos], v3 -> the x86_64_v3 optimized repo), and --kernel linux-cachyos
+# makes mkfrugal-rstl.sh drop the vanilla kernel, bake the CachyOS kernel
+# modules into the initrd (mkFRkernel) and ship the full module tree in
+# 00modules.sfs.
+#
+# v4 is intentionally NOT in the matrix: x86_64_v4 (AVX-512) binaries signal 4
+# (SIGILL) as soon as a chrooted command runs on a host without AVX-512, and
+# neither GitHub runners nor desktop CPU < Ice Lake/Zen4 have it. v4 ISOs can
+# still be built locally with:  sudo ./mkfrugal-rstl.sh stage --arch v4 ...
 name: Build Frugal ISOs
 
 on:
@@ -36,7 +41,7 @@ jobs:
       fail-fast: false
       matrix:
         flavor: [install, install-min, install-uber-min]
-        arch: [v1, v2, v3, v4]
+        arch: [v1, v2, v3]
     steps:
       - name: Update system and install tooling
         run: |
@@ -130,6 +135,6 @@ jobs:
             gh release create "$tag" \
               --target "$GITHUB_SHA" \
               --title "rstl.sway $tag" \
-              --notes "Frugal ISOs (linux-cachyos) from ${{ github.sha }}; flavors: install, install-min, install-uber-min; microarchitecture levels: v1, v2, v3, v4" \
+              --notes "Frugal ISOs (linux-cachyos) from ${{ github.sha }}; flavors: install, install-min, install-uber-min; microarchitecture levels: v1, v2, v3" \
               dist/*.iso
           fi

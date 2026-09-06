@@ -20,15 +20,15 @@
 #
 # within a band, the base scale assumes a 1440p (2k) panel. lower
 # resolution -> lower physical dpi, so output scale is corrected down,
-# but the yambar/cursor mm are corrected UP: readability matters, and
-# the same physical mm that looks good on 2k is hard to read on a
-# 1366x768 display. so lower-res panels get a bigger bar/cursor
-# (inverse-of-height factor, clamped to never go tiny).
+# but the yambar/cursor px follow the panel height: low-res panels get a
+# SMALLER bar so it does not dominate (1366x768), high-res panels get a
+# BIGGER bar so it stays visible (3200x...), keeping the same relative
+# footprint whatever the resolution.
 # ============================================================
 
 set -u
 
-CURSOR_THEME="phinger-cursors-dark"
+CURSOR_THEME="Adwaita"
 
 DOTFILES_DIR="$HOME/.config/rstl.sway"
 YAMBAR_SRC="$DOTFILES_DIR/yambar/config.yml"
@@ -42,7 +42,7 @@ REF_PHYS_H_MM=160
 # reference pixels (at scale 2.0) that we consider "1.0x"
 REF_BAR_PX=35
 REF_FONT_PX=23
-REF_CURSOR_PX=24
+REF_CURSOR_PX=25
 
 # ---------- size bands (by diagonal inches) ----------
 # each band: <diag|max> scale yambar_mult cursor_default
@@ -50,18 +50,17 @@ REF_CURSOR_PX=24
 BAND_1_MAX=17
 BAND_1_SCALE=2.0
 BAND_1_YBAR=1.0
-BAND_1_CURSOR=24
+BAND_1_CURSOR=25
 
 BAND_2_MAX=25
 BAND_2_SCALE=1.75
 BAND_2_YBAR=1.5
-BAND_2_CURSOR=24
+BAND_2_CURSOR=25
 
 BAND_3_MAX=9999
 BAND_3_SCALE=1.5
 BAND_3_YBAR=2.0
-BAND_3_CURSOR=24
-
+BAND_3_CURSOR=25
 
 # ============================================================
 # helpers
@@ -188,18 +187,17 @@ while IFS="$(printf '\t')" read -r cur_out cur_width cur_height; do
     res_corr=$(calc "$cur_height / $REF_HEIGHT")
     scale=$(calc "$base_scale * $res_corr")
 
-    # ---- yambar / cursor READABILITY factor ----
-    # lower resolution = harder to read the same physical mm, so bump
-    # the yambar/cursor mm up as resolution drops. use the SQUARE ROOT
-    # of the inverse-of-height so the bump is gentle (1366 ~= x1.37,
-    # 1080p ~= x1.15, 2k = x1.0) rather than a full inverse (x1.88).
-    dpi_k=$(calc "sqrt($REF_HEIGHT / $cur_height)")
+    # ---- yambar / cursor RESOLUTION-tracking factor ----
+    # bar/font px follow the panel height so a 1366x768 display gets a
+    # smaller bar (it no longer dominates) and a >=2k display gets a
+    # bigger one (it stays visible). square root keeps the swing gentle
+    # (1366 ~= x0.97, 1080p ~= x0.87, 2k = x1.0, 4k ~= x1.22).
+    dpi_k=$(calc "sqrt($cur_height / $REF_HEIGHT)")
 
     bar_mm=$(calc "$REF_BAR_MM * $ybar_mult * $dpi_k")
     font_mm=$(calc "$REF_FONT_MM * $ybar_mult * $dpi_k")
-    # cursor bumps gentler than the bar on lower res so it doesn't
-    # overwhelm; uses the cube-root of the readability factor.
-    cur_cur=$(round "$(calc "$cur_cursor * ($REF_HEIGHT / $cur_height) ^ (1/3)")")
+    # cursor tracks resolution at a gentler (cube-root) rate than the bar
+    cur_cur=$(round "$(calc "$cur_cursor * ($cur_height / $REF_HEIGHT) ^ (1/3)")")
 
     # convert back to pixels for this panel: px = mm * height / (scale * phys_h)
     cur_bar=$(round "$(calc "$bar_mm * $cur_height / ($scale * $cur_h)")")

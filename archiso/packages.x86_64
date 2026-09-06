@@ -102,7 +102,7 @@ greetd-tuigreet
 # rstl-repo packages (fonts, icons, themes, rstl tools)
 ttf-jetbrains-mono-nerd-min
 papirus-icon-theme-dark-only
-phinger-cursors
+adwaita-cursors
 rstlpk
 dssd
 xdg-desktop-portal-termfilechooser

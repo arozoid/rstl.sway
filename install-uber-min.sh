@@ -194,7 +194,7 @@ step_2() {
 
     # cursor package with optional fallback (kept separate so a missing AUR
     # package cannot fail the whole install)
-    install_or_fallback phinger-cursors xcursor-themes
+    install_or_fallback adwaita-cursors xcursor-themes
 
     echo "packages installed"
 }

@@ -31,7 +31,7 @@ DEBUG=0
 
 RSTL_REPO_CONF='
 # rstl.sway custom repository (rstlpk, dssd, yambar, bluetui, latuicon,
-# clipse, rstl-pick, phinger-cursors, ...)
+# clipse, rstl-pick, ...)
 [rstl-repo]
 SigLevel = Never
 Server = https://arozoid.github.io/rstl.repo
@@ -179,8 +179,7 @@ gen_profile() {
     #   o [core]/[extra]/[multilib] keep Include=/etc/pacman.d/mirrorlist,
     #     which exists on the host via pacman-mirrorlist.
     #   o append the rstl.repo custom repo (absent from pacman-vN.conf), which
-    #     provides rstlpk, dssd, yambar, bluetui, latuicon, clipse, rstl-pick,
-    #     phinger-cursors, ...
+    #     provides rstlpk, dssd, yambar, bluetui, latuicon, clipse, rstl-pick, ...
     # Note on CachyOS URL layout: the generic [cachyos] repo lives under
     # /repo/x86_64/, but the optimized v3/v4 repos live under /repo/x86_64_v3/
     # and /repo/x86_64_v4/ respectively. The arch path is derived from the

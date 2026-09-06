@@ -184,7 +184,7 @@ exec_always --no-startup-id /usr/bin/rstlpk
 
 ### cursor
 # size is recomputed by scripts/auto-scale.sh at startup; this is the fallback
-seat seat0 xcursor_theme phinger-cursors-dark 24 
+seat seat0 xcursor_theme Adwaita 25 
 
 ### focus behavior
 focus_follows_mouse yes
