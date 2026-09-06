@@ -140,7 +140,9 @@ step_1() {
     echo "== copy dotfiles =="
     git submodule update --init nvim ranger rstlpk
     mkdir -p "$DOTFILES_DIR"
-    if [ "$SOURCE_DIR" != "$DOTFILES_DIR" ]; then
+    # true when invoked from $DOTFILES_DIR (or a path that resolves to it, e.g.
+    # /root/.config/rstl.sway symlinked into /etc/skel) - nothing to copy then
+    if [ "$(readlink -f "$SOURCE_DIR" 2>/dev/null)" != "$(readlink -f "$DOTFILES_DIR" 2>/dev/null)" ]; then
         cp -a "$SOURCE_DIR"/. "$DOTFILES_DIR"/
         chmod +x "$DOTFILES_DIR"/scripts/*.sh 2>/dev/null || true
         echo "copied dotfiles to $DOTFILES_DIR"

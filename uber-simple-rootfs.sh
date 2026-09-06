@@ -238,15 +238,12 @@ copy_repo() {
         -C "$repo_root" -cf - . | tar -C "$dest" -xf -
 }
 
-install_dir="$target/root/.config/rstl.sway"
-info "copying dotfiles into '$install_dir'"
-copy_repo "$install_dir"
-chmod +x "$install_dir"/install-uber-min.sh "$install_dir"/scripts/*.sh 2>/dev/null || true
-
-# also add to the target's /etc/skel so newly created users inherit the dotfiles
 skel_dir="$target/etc/skel/.config/rstl.sway"
-info "copying dotfiles into '$skel_dir'"
+info "copying dotfiles into '$skel_dir' (single copy; root links into it)"
 copy_repo "$skel_dir"
+chmod +x "$skel_dir"/install-uber-min.sh "$skel_dir"/scripts/*.sh 2>/dev/null || true
+mkdir -p "$target/root/.config"
+ln -sfn /etc/skel/.config/rstl.sway "$target/root/.config/rstl.sway"
 
 # ---- 3. run install-uber-min.sh inside the rootfs ----
 header "Entering rootfs to run install-uber-min.sh"

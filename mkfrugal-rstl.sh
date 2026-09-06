@@ -371,12 +371,18 @@ trim_git_dirs() {
     done
 }
 
-info "staging dotfiles into /root/.config/rstl.sway + /etc/skel"
-copy_repo "$ROOTFS/root/.config/rstl.sway"
+info "staging dotfiles into /etc/skel/.config/rstl.sway (single copy)"
 copy_repo "$ROOTFS/etc/skel/.config/rstl.sway"
-trim_git_dirs "$ROOTFS/root" "$ROOTFS/etc/skel"
-chmod +x "$ROOTFS/root/.config/rstl.sway"/install*.sh \
-         "$ROOTFS/root/.config/rstl.sway"/scripts/*.sh 2>/dev/null || true
+trim_git_dirs "$ROOTFS/etc/skel"
+chmod +x "$ROOTFS/etc/skel/.config/rstl.sway"/install*.sh \
+         "$ROOTFS/etc/skel/.config/rstl.sway"/scripts/*.sh 2>/dev/null || true
+# root does NOT get a second copy: /root/.config/rstl.sway is a link into the
+# skel tree, so every root flow (install-min/uber-min run as root, the rustle
+# scaffolding copies, the root desktop) reads/writes the ONE repo copy. New
+# users pick it up through skel; rstl-first-login skips root at boot
+# ($HOME != /root guard), so the skel template stays pristine.
+mkdir -p "$ROOTFS/root/.config"
+ln -sfn /etc/skel/.config/rstl.sway "$ROOTFS/root/.config/rstl.sway"
 
 # --- first-login hook: one-shot per-user desktop setup on first login -------
 # /etc/skel carries static dotfiles only; rstl-first-login does the wiring a
@@ -530,17 +536,19 @@ case "$flavor" in
         # rstl-install.sh's install_dotfiles() (NOPASSWD wheel, then restore)
         install_as_rustle install.sh
         set_passwords
-        # keep a working config for root as well (the cleaned copy + symlinks)
+        # root's config stays the skel copy (single repo): re-point the link in
+        # case the as-rustle flow ever replaced it, then wire the root symlinks
         root_cfg="$ROOTFS/root/.config/rstl.sway"
-        rm -rf "$root_cfg"
-        cp -a "$ROOTFS/home/rustle/.config/rstl.sway" "$root_cfg"
+        rm -f "$root_cfg"
+        ln -sfn /etc/skel/.config/rstl.sway "$root_cfg"
         replicate_symlinks "$ROOTFS/root"
         ;;
 
     rstl-inst)
         install_as_rustle install.sh
-        # root keeps the FULL staged repo (install.sh + rstl-install.sh intact)
-        # so the TUI's "Install" -> ~/.config/rstl.sway/rstl-install.sh works
+        # root's path to the full staged repo (via the skel link; install.sh +
+        # rstl-install.sh intact) so the TUI's "Install" ->
+        # ~/.config/rstl.sway/rstl-install.sh works
         replicate_symlinks "$ROOTFS/root"
         set_passwords
         ;;
