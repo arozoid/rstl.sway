@@ -228,7 +228,7 @@ SELF_BIND=1
 bootstrap_cachyos() {
     info "installing CachyOS keyring + mirrorlists into '$ROOTFS'"
     base="https://mirror.cachyos.org/repo/x86_64/cachyos"
-    listing="$(curl -fsSL "$base/")" || die "cannot fetch $base/ (network up?)"
+    listing="$(curl -fsSL --connect-timeout 20 --max-time 120 --retry 3 --retry-delay 5 "$base/")" || die "cannot fetch $base/ (network up?)"
     pkgs=""
     for stem in cachyos-keyring cachyos-mirrorlist cachyos-v3-mirrorlist cachyos-v4-mirrorlist; do
         pkg="$(printf '%s\n' "$listing" | grep -oE "${stem}-[0-9]+[^\"<]*?-any\.pkg\.tar\.zst" | sort -V | tail -1)"
@@ -237,6 +237,9 @@ bootstrap_cachyos() {
     done
     arch-chroot "$ROOTFS" pacman-key --init
     arch-chroot "$ROOTFS" pacman-key --populate archlinux
+    # bound the keyserver fetch so a flaky dirmngr cannot hang the build
+    mkdir -p "$ROOTFS/root/.gnupg"
+    printf 'keyserver timeout 30\n' > "$ROOTFS/root/.gnupg/dirmngr.conf"
     arch-chroot "$ROOTFS" pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com
     arch-chroot "$ROOTFS" pacman-key --lsign-key F3B607488DB35A47
     arch-chroot "$ROOTFS" pacman -U --noconfirm $pkgs
@@ -577,9 +580,9 @@ else
         fetch_fw() {
             [ -s "$cache/01firmware.sfs" ] && return 0
             if command -v curl >/dev/null 2>&1; then
-                curl -fL "$fw_url" -o "$cache/01firmware.sfs.part" || return 1
+                curl -fL --connect-timeout 30 --max-time 1800 --retry 3 --retry-delay 5 "$fw_url" -o "$cache/01firmware.sfs.part" || return 1
             elif command -v wget >/dev/null 2>&1; then
-                wget -O "$cache/01firmware.sfs.part" "$fw_url" || return 1
+                wget --timeout=30 --tries=3 -O "$cache/01firmware.sfs.part" "$fw_url" || return 1
             else
                 die "need curl or wget to fetch 01firmware.sfs"
             fi

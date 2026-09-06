@@ -68,43 +68,53 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/cache"
           [ -s "$GITHUB_WORKSPACE/cache/01firmware.sfs" ] && exit 0
           URL="https://gitlab.com/firstrib/firstrib/-/raw/master/latest/build_system/huge_kernels/kernel_usrmerge_default/01firmware.sfs"
-          curl -fL "$URL" -o "$GITHUB_WORKSPACE/cache/01firmware.sfs"
+          curl -fL --connect-timeout 30 --max-time 1800 --retry 3 --retry-delay 5 "$URL" -o "$GITHUB_WORKSPACE/cache/01firmware.sfs"
 
       - name: Build frugal (${{ matrix.arch }}, ${{ matrix.flavor }}) + wrap ISO
-        timeout-minutes: 180
+        timeout-minutes: 65
         run: |
-          set -euo pipefail
+          set -uo pipefail
           chmod +x mkfrugal-rstl.sh mkfrugal-iso.sh mkFRkernel
           FLAVOR="${{ matrix.flavor }}"
           ARCH="${{ matrix.arch }}"
           DATE="$(date +%Y%m%d)"
           STAGE="$GITHUB_WORKSPACE/stage"
           mkdir -p "$STAGE" dist
-          ./mkfrugal-rstl.sh \
-            "$STAGE/rstlsway" \
-            --arch "$ARCH" \
-            --flavor "$FLAVOR" \
-            --yes \
-            --kernel linux-cachyos \
-            --firmware "$GITHUB_WORKSPACE/cache/01firmware.sfs" \
-            --cache "$GITHUB_WORKSPACE/cache" \
-            > build.log 2>&1 &
+          # build in the background with a 90s progress heartbeat; every 90s we
+          # print the last build.log line so a long build is visibly alive
+          ( timeout 55m ./mkfrugal-rstl.sh \
+              "$STAGE/rstlsway" \
+              --arch "$ARCH" \
+              --flavor "$FLAVOR" \
+              --yes \
+              --kernel linux-cachyos \
+              --firmware "$GITHUB_WORKSPACE/cache/01firmware.sfs" \
+              --cache "$GITHUB_WORKSPACE/cache" \
+          ) > build.log 2>&1 &
           BUILDPID=$!
           while kill -0 "$BUILDPID" 2>/dev/null; do
             sleep 90
             echo "still building ($(date -u +%H:%M:%S)Z) - $(tail -1 build.log 2>/dev/null | cut -c1-180)"
           done
-          wait "$BUILDPID" || {
-            echo "::error::mkfrugal-rstl.sh failed ($FLAVOR $ARCH)"
-            tail -60 build.log >&2
-            exit 1
-          }
+          STATUS=0
+          wait "$BUILDPID" || STATUS=$?
+          if [ "$STATUS" -eq 124 ]; then
+            echo "::error::mkfrugal-rstl.sh timed out after 55m ($FLAVOR $ARCH)"
+          elif [ "$STATUS" -ne 0 ]; then
+            echo "::error::mkfrugal-rstl.sh failed ($FLAVOR $ARCH) exit $STATUS"
+          else
+            echo "mkfrugal-rstl.sh OK ($FLAVOR $ARCH)"
+          fi
+          [ "$STATUS" -eq 0 ] || { tail -80 build.log >&2; exit 1; }
           ./mkfrugal-iso.sh \
             -d "$STAGE/rstlsway" \
             -S "$STAGE" \
             -n rstlsway \
             -l RSTLSW \
-            -o "dist/rstlsway-$FLAVOR-$ARCH-$DATE-x86_64.iso"
+            -o "dist/rstlsway-$FLAVOR-$ARCH-$DATE-x86_64.iso" || {
+              echo "::error::mkfrugal-iso.sh failed ($FLAVOR $ARCH)"
+              exit 1
+            }
           rm -rf "$STAGE"
           ls -lh dist
 
