@@ -248,6 +248,7 @@ step_5() {
     wp_dir="$HOME/Pictures/Wallpapers"
     wp_conf="$DOTFILES_DIR/wallpaper"
     wp_file="$wp_dir/wallpaper.jpg"
+    mkdir -p "$wp_dir"
 
     write_file_once "$wp_conf" "~/Pictures/Wallpapers/wallpaper.jpg"
     if [ ! -f "$wp_file" ] && [ -f "$DOTFILES_DIR/wallpapers/Kiki's Delievery Service.jpg" ]; then

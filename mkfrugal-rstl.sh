@@ -338,7 +338,13 @@ ok "first-login hook installed (/usr/local/bin/rstl-first-login + profile.d)"
 # ---------------------------------------------------------------------------
 # helpers shared by the flavors
 # ---------------------------------------------------------------------------
-chr() { arch-chroot "$ROOTFS" "$@"; }
+chr() {
+    echo "  [chroot] $*" >&2
+    # HOME must be /root inside the rootfs: a leaked host HOME (GitHub Actions
+    # uses /github/home) makes every $HOME-relative operation land in a dead
+    # path (wallpaper, crontab, skel copy) and has crashed useradd in CI.
+    arch-chroot "$ROOTFS" env HOME=/root "$@"
+}
 
 # symlinked ~/.config dirs point INTO $src_cfg; replicate the standard links
 replicate_symlinks() { # $1 = home dir whose $1/.config/rstl.sway is the source
@@ -362,9 +368,32 @@ replicate_symlinks() { # $1 = home dir whose $1/.config/rstl.sway is the source
 }
 
 ensure_rustle_user() {
-    if ! grep -q '^rustle:' "$ROOTFS/etc/passwd"; then
-        chr useradd -m -G wheel,video,audio,storage,input -s /usr/bin/bash rustle
+    if grep -q '^rustle:' "$ROOTFS/etc/passwd"; then
+        return 0
     fi
+    if chr useradd -m -G wheel,video,audio,storage,input -s /usr/bin/bash rustle; then
+        return 0
+    fi
+    # useradd died under some chroot envs (e.g. GitHub Actions workers); wire
+    # the account natively so the build cannot be bricked by a shadow crash
+    warn "useradd failed - creating rustle account natively"
+    acc="$ROOTFS/tmp/mkuser.sh"
+    cat > "$acc" <<'EOMKAN'
+set -u
+grep -q '^rustle:' /etc/passwd || printf 'rustle:x:1000:1000:rustle:/home/rustle:/usr/bin/bash\n' >> /etc/passwd
+grep -q '^rustle:' /etc/shadow || printf 'rustle:x:0:0:99999:7:::\n' >> /etc/shadow
+grep -q '^rustle:' /etc/group || printf 'rustle:x:1000:\n' >> /etc/group
+for g in wheel video audio storage input; do
+    if ! awk -F: -v g="$g" '$1==g && $4 ~ /(^|,)rustle(,|$)/ {f=1} END{exit !f}' /etc/group; then
+        sed -i "s/^\($g:[^:]*:[0-9]*:\).*/\1rustle/" /etc/group
+    fi
+done
+mkdir -p /home/rustle
+[ -e /home/rustle/.config ] || cp -a /etc/skel/. /home/rustle/ 2>/dev/null || true
+chown -R rustle:rustle /home/rustle 2>/dev/null || true
+EOMKAN
+    chr /bin/sh /tmp/mkuser.sh || warn "native account creation also failed (continuing)"
+    rm -f "$acc"
 }
 
 # rustle can run install.sh through sudo; grant wheel NOPASSWD only for the

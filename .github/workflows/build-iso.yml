@@ -49,6 +49,9 @@ jobs:
             base-devel sudo git rust wget xorriso mtools dosfstools \
             squashfs-tools arch-install-scripts grub kmod cpio gzip xz zstd
 
+      - name: Pin HOME=/root for chroot sanity
+        run: echo "HOME=/root" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@v7
         with:
           submodules: recursive
