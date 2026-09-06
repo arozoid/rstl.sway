@@ -85,6 +85,8 @@ jobs:
           mkdir -p "$STAGE" dist
           # build in the background with a 90s progress heartbeat; every 90s we
           # print the last build.log line so a long build is visibly alive
+          # RSTL_TRACE=1 makes install-min/install-uber-min set -x (via chr env)
+          export RSTL_TRACE=1
           ( timeout 55m ./mkfrugal-rstl.sh \
               "$STAGE/rstlsway" \
               --arch "$ARCH" \
@@ -108,7 +110,11 @@ jobs:
           else
             echo "mkfrugal-rstl.sh OK ($FLAVOR $ARCH)"
           fi
-          [ "$STATUS" -eq 0 ] || { tail -80 build.log >&2; exit 1; }
+          if [ "$STATUS" -ne 0 ]; then
+            tail -80 build.log >&2
+            echo "::warning::full build.log stored in the buildlog artifact"
+            exit 1
+          fi
           ./mkfrugal-iso.sh \
             -d "$STAGE/rstlsway" \
             -S "$STAGE" \
@@ -120,6 +126,14 @@ jobs:
             }
           rm -rf "$STAGE"
           ls -lh dist
+
+      - name: Upload build.log on failure
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: buildlog-${{ matrix.flavor }}-${{ matrix.arch }}
+          path: build.log
+          if-no-files-found: ignore
 
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v5

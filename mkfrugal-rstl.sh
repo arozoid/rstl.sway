@@ -343,7 +343,14 @@ chr() {
     # HOME must be /root inside the rootfs: a leaked host HOME (GitHub Actions
     # uses /github/home) makes every $HOME-relative operation land in a dead
     # path (wallpaper, crontab, skel copy) and has crashed useradd in CI.
-    arch-chroot "$ROOTFS" env HOME=/root "$@"
+    if arch-chroot "$ROOTFS" env HOME=/root "$@"; then
+        echo "  [chr ok] $*" >&2
+        return 0
+    fi
+    # always attribute a failing/crashing chroot call before set -e aborts
+    rc=$?
+    echo "  [chr FAILED rc=$rc] $*" >&2
+    return $rc
 }
 
 # symlinked ~/.config dirs point INTO $src_cfg; replicate the standard links

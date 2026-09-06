@@ -8,6 +8,11 @@
 
 set -u
 
+if [ -n "${RSTL_TRACE:-}" ]; then
+    set -x
+    export PS4='+[install-min:$LINENO] '
+fi
+
 ASSUME_YES=0
 [ "${1:-}" = "--yes" ] || [ "${1:-}" = "-y" ] && ASSUME_YES=1
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
