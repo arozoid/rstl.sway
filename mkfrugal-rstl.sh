@@ -283,11 +283,22 @@ rm -f "$ROOTFS/etc/localtime.bak" 2>/dev/null || true
 copy_repo() {
     dest="$1"
     mkdir -p "$dest"
+    # Exclude build/CI workspace artifacts, which can be GB in CI (cache
+    # firmware, stage/ rootfs with pacman caches, dist/, build.log) — they must
+    # never ship in staged dotfiles, and stage/ is also the tar *destination*,
+    # so excluding it avoids tar streaming a tree it is writing into.
     tar --exclude='./build_work' \
         --exclude='./build_output' \
         --exclude='./archiso' \
         --exclude='./rstl-inst/target' \
         --exclude='./rstl-pick/target' \
+        --exclude='./cache' \
+        --exclude='./stage' \
+        --exclude='./dist' \
+        --exclude='./build.log' \
+        --exclude='./.git' \
+        --exclude='./.gitmodules' \
+        --exclude='./.gitignore' \
         -C "$REPO" -cf - . | tar -C "$dest" -xf -
 }
 
