@@ -191,7 +191,7 @@ step_2() {
         flac mpg123 opus libvorbis speex speexdsp sbc \
         dav1d libvpx openh264 \
         mesa vulkan-icd-loader \
-        ttf-jetbrains-mono-nerd-min adwaita-icon-theme \
+        ttf-jetbrains-mono-nerd-min adwaita-icon-theme-dark \
         rstlpk dssd xdg-desktop-portal-termfilechooser yambar \
         bluetui clipse wiremix rstl-pick \
         util-linux file less
@@ -201,7 +201,7 @@ step_2() {
 
     # cursor package with optional fallback (kept separate so a missing AUR
     # package cannot fail the whole install)
-    install_or_fallback adwaita-cursors xcursor-themes
+    install_or_fallback notwaita-cursors-grey adwaita-cursors
 
     echo "packages installed"
 }
@@ -217,6 +217,7 @@ step_3() {
     link_file "$DOTFILES_DIR/foot"     "$HOME/.config/foot"
     link_file "$DOTFILES_DIR/mako"     "$HOME/.config/mako"
     link_file "$DOTFILES_DIR/lf"       "$HOME/.config/lf"
+    link_file "$DOTFILES_DIR/.zshrc"   "$HOME/.zshrc"
     link_file "$DOTFILES_DIR/greetd"   "/etc/greetd" yes
 
     copy_contents "$DOTFILES_DIR/portal" \

@@ -28,7 +28,7 @@
 
 set -u
 
-CURSOR_THEME="Adwaita"
+CURSOR_THEME="Notwaita-Gray"
 
 DOTFILES_DIR="$HOME/.config/rstl.sway"
 YAMBAR_SRC="$DOTFILES_DIR/yambar/config.yml"

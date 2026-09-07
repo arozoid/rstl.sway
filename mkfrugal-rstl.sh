@@ -44,6 +44,10 @@
 #       --rstl-inst-bin FILE prebuilt rstl-inst binary (required for --flavor rstl-inst
 #                           unless cargo + the rstl-inst submodule are available)
 #       --password PASS     login password for root/rustle (default: rstl)
+#       --fetch-vdpup       download the FirstRib 'vdpup' huge-kernel assets
+#                           into --cache and exit (no build is started). Lets a
+#                           vdpup-variant ISO be wired onto an existing build's
+#                           compressed rootfs without a full second build.
 #       --force             rebuild into --target even if it is not empty
 #   -h, --help
 #
@@ -90,6 +94,7 @@ flavor="install-min"
 assume_yes=0
 kernel_pkg="linux-cachyos"
 kernel_vdpup=0
+fetch_vdpup_mode=0
 opt_firmware=""
 opt_modules_build=""
 opt_modules_source=""
@@ -130,6 +135,7 @@ while [ "$#" -gt 0 ]; do
             password="$2"; shift 2 ;;
         --password=*) password="${1#*=}"; shift ;;
         --force) force=1; shift ;;
+        --fetch-vdpup) fetch_vdpup_mode=1; shift ;;
         -*) die "unknown option: $1" ;;
         *) target="$1"; shift ;;
     esac
@@ -143,6 +149,53 @@ case "$flavor" in
     install|install-min|install-uber-min|rstl-inst) ;;
     *) die "unknown flavor: $flavor (use install, install-min, install-uber-min or rstl-inst)" ;;
 esac
+
+# ---------------------------------------------------------------------------
+# vdpup huge-kernel asset fetch (shared by --kernel vdpup builds and the
+# standalone --fetch-vdpup mode used to wire a vdpup variant onto an existing
+# rebuild's compressed rootfs without a full second build)
+# ---------------------------------------------------------------------------
+fetch_vdpup_assets() {
+    vdpup_base="https://gitlab.com/firstrib/firstrib/-/raw/master/latest/build_system/huge_kernels/kernel_usrmerge_default"
+    vdpup_initrd_url="https://gitlab.com/firstrib/firstrib/-/raw/master/latest/build_system/initrd-latest.gz"
+    mkdir -p "$cache"
+    _fetch_vdpup() {
+        for spec in \
+            "vmlinuz|$vdpup_base/vmlinuz" \
+            "00modules.sfs|$vdpup_base/00modules.sfs" \
+            "initrd.gz|$vdpup_initrd_url"; do
+            f="${spec%%|*}"
+            url="${spec#*|}"
+            cached="$cache/vdpup-$f"
+            [ -s "$cached" ] && continue
+            if command -v curl >/dev/null 2>&1; then
+                curl -fL --connect-timeout 30 --max-time 1200 --retry 3 --retry-delay 5 \
+                    "$url" -o "$cached.part" || return 1
+            else
+                wget --timeout=30 --tries=3 -O "$cached.part" "$url" || return 1
+            fi
+            mv "$cached.part" "$cached"
+        done
+        return 0
+    }
+    if command -v flock >/dev/null 2>&1; then
+        ( flock -x 9; _fetch_vdpup ) 9>"$cache/.vdpup.lock"
+    else
+        _fetch_vdpup
+    fi
+    [ -s "$cache/vdpup-vmlinuz" ]        || die "vdpup kernel download failed"
+    [ -s "$cache/vdpup-00modules.sfs" ]  || die "vdpup modules download failed"
+    [ -s "$cache/vdpup-initrd.gz" ]      || die "vdpup initrd download failed"
+    ok "vdpup huge-kernel assets cached in $cache"
+}
+
+if [ "$fetch_vdpup_mode" -eq 1 ]; then
+    fetch_vdpup_assets
+    for f in vdpup-vmlinuz vdpup-00modules.sfs vdpup-initrd.gz; do
+        printf '  %s (%s)\n' "$f" "$(du -h "$cache/$f" | cut -f1)"
+    done
+    exit 0
+fi
 
 # ---------------------------------------------------------------------------
 # preflight
@@ -290,37 +343,9 @@ fi
 # mkFRkernel, no re-squash): the three boot files are copied straight into the
 # frugal in section 8, so the only cost is the (cached) download.
 if [ "$kernel_vdpup" -eq 1 ]; then
-    vdpup_base="https://gitlab.com/firstrib/firstrib/-/raw/master/latest/build_system/huge_kernels/kernel_usrmerge_default"
-    vdpup_initrd_url="https://gitlab.com/firstrib/firstrib/-/raw/master/latest/build_system/initrd-latest.gz"
-    mkdir -p "$cache"
-    fetch_vdpup() {
-        for spec in \
-            "vmlinuz|$vdpup_base/vmlinuz" \
-            "00modules.sfs|$vdpup_base/00modules.sfs" \
-            "initrd.gz|$vdpup_initrd_url"; do
-            f="${spec%%|*}"
-            url="${spec#*|}"
-            cached="$cache/vdpup-$f"
-            [ -s "$cached" ] && continue
-            if command -v curl >/dev/null 2>&1; then
-                curl -fL --connect-timeout 30 --max-time 1200 --retry 3 --retry-delay 5 "$url" -o "$cached.part" || return 1
-            else
-                wget --timeout=30 --tries=3 -O "$cached.part" "$url" || return 1
-            fi
-            mv "$cached.part" "$cached"
-        done
-        return 0
-    }
-    if command -v flock >/dev/null 2>&1; then
-        ( flock -x 9; fetch_vdpup ) 9>"$cache/.vdpup.lock"
-    else
-        fetch_vdpup
-    fi
-    [ -s "$cache/vdpup-vmlinuz" ] || die "vdpup kernel download failed"
-    [ -s "$cache/vdpup-00modules.sfs" ] || die "vdpup module download failed"
-    [ -s "$cache/vdpup-initrd.gz" ] || die "vdpup initrd download failed"
+    fetch_vdpup_assets
     kernelver="6.1.52-vdpup"
-    ok "vdpup assets cached: $kernelver (stock FirstRib huge kernel)"
+    ok "kernel assets ready: $kernelver (stock FirstRib huge kernel)"
 fi
 
 # ---------------------------------------------------------------------------

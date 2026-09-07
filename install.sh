@@ -271,7 +271,10 @@ sound-theme-freedesktop
 greetd
 greetd-tuigreet
 foot
-fish
+zsh-syntax-highlighting
+zsh
+zsh-autosuggestions
+zsh-completions
 bat
 eza
 zoxide
@@ -317,6 +320,8 @@ clipse
 wiremix
 awww
 rstl-pick
+fzf-tab
+zsh-auto-notify
 PKGS
   } > /dev/null
 
@@ -334,7 +339,8 @@ PKGS
 
   # theme/cursor packages with official-repo fallbacks (kept separate so a
   # missing AUR package cannot fail the whole install)
-  install_or_fallback adwaita-cursors xcursor-themes
+  install_or_fallback notwaita-cursors-grey adwaita-cursors
+  install_or_fallback adwaita-icon-theme-dark adwaita-icon-theme
   install_or_fallback papirus-icon-theme-dark-only adwaita-icon-theme
 
   ok "packages installed"
@@ -377,13 +383,14 @@ step_3() {
   link_dir "$DOTFILES_DIR/swayidle"  "$HOME/.config/swayidle"
   link_dir "$DOTFILES_DIR/yambar"    "$HOME/.config/yambar"
   link_dir "$DOTFILES_DIR/rofi"      "$HOME/.config/rofi"
-  link_dir "$DOTFILES_DIR/fish"      "$HOME/.config/fish"
+# link_dir "$DOTFILES_DIR/fish"      "$HOME/.config/fish"
   link_dir "$DOTFILES_DIR/foot"      "$HOME/.config/foot"
   link_dir "$DOTFILES_DIR/nvim"      "$HOME/.config/nvim"
   link_dir "$DOTFILES_DIR/mako"      "$HOME/.config/mako"
   link_dir "$DOTFILES_DIR/rovr"      "$HOME/.config/rovr"
   link_dir "$DOTFILES_DIR/lf"        "$HOME/.config/lf"
   link_dir "$DOTFILES_DIR/fastfetch" "$HOME/.config/fastfetch"
+  link_dir "$DOTFILES_DIR/.zshrc"    "$HOME/.zshrc"
   link_dir "$DOTFILES_DIR/greetd"    "/etc/greetd" yes
 
   # xdg-desktop-portal-termfilechooser: prefer it for file pickers
@@ -532,25 +539,25 @@ DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${uid}/bus
 }
 
 # ---------------------------------------------------------------------------
-# Step 7: fish as default shell
+# Step 7: zsh as default shell
 # ---------------------------------------------------------------------------
 step_7() {
-  info "fish default shell"
+  info "zsh default shell"
 
-  if command -v fish >/dev/null 2>&1; then
-    printf "  ${C_DIM}setting fish as the default shell for ${USER}${C_RESET}\n"
-    run_sudo chsh -s "$(command -v fish)" "$USER"
-    ok "default shell is now fish"
+  if command -v zsh >/dev/null 2>&1; then
+    printf "  ${C_DIM}setting zsh as the default shell for ${USER}${C_RESET}\n"
+    run_sudo chsh -s "$(command -v zsh)" "$USER"
+    ok "default shell is now zsh"
   else
-    warn "fish not installed — skipping shell change"
+    warn "zsh not installed — skipping shell change"
   fi
 
   # fish config sourced a CachyOS-only file; guard it so vanilla Arch works
-  fishconf="$HOME/.config/fish/config.fish"
-  if [ -f "$fishconf" ] && ! grep -q 'if test -f /usr/share/cachyos-fish-config' "$fishconf"; then
-    sed -i 's|^source /usr/share/cachyos-fish-config/conf.d/done.fish$|if test -f /usr/share/cachyos-fish-config/conf.d/done.fish\n    source /usr/share/cachyos-fish-config/conf.d/done.fish\nend|' "$fishconf"
-    ok "guarded cachyos-fish-config source in ${fishconf}"
-  fi
+  #fishconf="$HOME/.config/fish/config.fish"
+  #if [ -f "$fishconf" ] && ! grep -q 'if test -f /usr/share/cachyos-fish-config' "$fishconf"; then
+  #  sed -i 's|^source /usr/share/cachyos-fish-config/conf.d/done.fish$|if test -f /usr/share/cachyos-fish-config/conf.d/done.fish\n    source /usr/share/cachyos-fish-config/conf.d/done.fish\nend|' "$fishconf"
+  #  ok "guarded cachyos-fish-config source in ${fishconf}"
+  #fi
 }
 
 # ---------------------------------------------------------------------------
@@ -665,7 +672,7 @@ done 3<<'EOF'
 4|greetd + tuigreet setup|Set up greetd + tuigreet as the login manager?|step_4
 5|wallpaper setup|Set up the wallpaper?|step_5
 6|battery alerts (40% / 80%)|Set up the 40% / 80% battery alerts (batt.sh)?|step_6
-7|fish default shell|Set fish as the default shell?|step_7
+7|zsh default shell|Set zsh as the default shell?|step_7
 8|final preferences|Enable lingering, pipewire, network, bluetooth?|step_8
 9|cleanup|Remove build artifacts and caches from the dotfiles?|step_9
 EOF

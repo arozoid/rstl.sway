@@ -198,7 +198,8 @@ step_2() {
 
     # theme/cursor packages with official-repo fallbacks (kept separate so a
     # missing AUR package cannot fail the whole install)
-    install_or_fallback adwaita-cursors xcursor-themes
+    install_or_fallback notwaita-cursors-grey adwaita-cursors
+    install_or_fallback adwaita-icon-theme-dark adwaita-icon-theme
     install_or_fallback papirus-icon-theme-dark-only adwaita-icon-theme
 
     echo "packages installed"
@@ -216,6 +217,7 @@ step_3() {
     link_file "$DOTFILES_DIR/nvim"     "$HOME/.config/nvim"
     link_file "$DOTFILES_DIR/mako"     "$HOME/.config/mako"
     link_file "$DOTFILES_DIR/lf"       "$HOME/.config/lf"
+    link_file "$DOTFILES_DIR/.zshrc"   "$HOME/.zshrc"
     link_file "$DOTFILES_DIR/greetd"   "/etc/greetd" yes
 
     copy_contents "$DOTFILES_DIR/portal" \

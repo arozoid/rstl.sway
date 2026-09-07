@@ -1,17 +1,25 @@
-# Build rstl.sway frugal ISOs for every flavor x microarchitecture x kernel
-# combo (18 matrix jobs: 2 kernels x 9), then publish a GitHub release named
-# YYYYMMDD-N (N = release number for the day: 1, 2, ...) holding the ISOs.
+# Build rstl.sway frugal ISOs: ONE matrix of 9 jobs (flavor x microarchitecture),
+# each producing TWO ISOs, then a GitHub release named YYYYMMDD-N
+# (N = release number for the day: 1, 2, ...) holding all 18 ISOs.
 #
 # Only runs on push (no scheduled/publishing cadence).
 #
 # Kernels: cachyos (linux-cachyos, the default) and vdpup, the FirstRib huge
-# kernel 6.1.52-vdpup (a retro LTS with no pacman package - mkfrugal-rstl.sh
-# drops in FirstRib's stock vmlinuz + 00modules.sfs + initrd-latest.gz
-# unmodified, so nothing is rebuilt for it). --arch vN selects pacman-vN.conf
-# so the rootfs is installed against the matching CachyOS repo tier
-# (v1/v2 -> generic [cachyos], v3 -> the x86_64_v3 optimized repo). For the
-# cachyos kernel mkfrugal-rstl.sh bakes the modules into the initrd (mkFRkernel)
-# and ships the full module tree in 00modules.sfs.
+# kernel 6.1.52-vdpup (a retro LTS with no pacman package - FirstRib's stock
+# vmlinuz + 00modules.sfs + initrd-latest.gz are dropped in unmodified, so
+# nothing is rebuilt for it).
+#
+# The vdpup ISO is NOT a full second build: it reuses the compressed rootfs
+# (07rootfs.sfs) left in place by the cachyos wrap step (mkfrugal-iso.sh
+# squashes 07rootfs/ in place under --source-root) and just swaps the three
+# boot files for the vdpup stock assets. That keeps compute cost ~1 rootfs
+# build per job; the only vdpup-specific work is the cached 75MB download.
+#
+# --arch vN selects pacman-vN.conf so the rootfs is installed against the
+# matching CachyOS repo tier (v1/v2 -> generic [cachyos], v3 -> the
+# x86_64_v3 optimized repo). For the cachyos kernel mkfrugal-rstl.sh bakes the
+# modules into the initrd (mkFRkernel) and ships the full module tree in
+# 00modules.sfs; vdpup keeps its own stock initrd/modules instead.
 #
 # v4 is intentionally NOT in the matrix: x86_64_v4 (AVX-512) binaries signal 4
 # (SIGILL) as soon as a chrooted command runs on a host without AVX-512, and
@@ -34,7 +42,7 @@ permissions:
 
 jobs:
   build-frugal-iso:
-    name: ${{ matrix.flavor }}-${{ matrix.arch }}-${{ matrix.kernel }}
+    name: ${{ matrix.flavor }}-${{ matrix.arch }}
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
@@ -44,7 +52,6 @@ jobs:
       matrix:
         flavor: [install, install-min, install-uber-min]
         arch: [v1, v2, v3]
-        kernel: [cachyos, vdpup]
     steps:
       - name: Update system and install tooling
         run: |
@@ -77,7 +84,6 @@ jobs:
           curl -fL --connect-timeout 30 --max-time 1800 --retry 3 --retry-delay 5 "$URL" -o "$GITHUB_WORKSPACE/cache/01firmware.sfs"
 
       - name: Cache vdpup huge kernel (vmlinuz + modules sfs + initrd)
-        if: matrix.kernel == 'vdpup'
         uses: actions/cache@v4
         with:
           path: |
@@ -86,18 +92,16 @@ jobs:
             ${{ github.workspace }}/cache/vdpup-initrd.gz
           key: vdpup-kernel-6.1.52
 
-      - name: Build frugal (${{ matrix.arch }}, ${{ matrix.flavor }}, ${{ matrix.kernel }}) + wrap ISO
+      - name: Build frugal (${{ matrix.arch }}, ${{ matrix.flavor }}) + wrap cachyos & vdpup ISOs
         timeout-minutes: 65
         run: |
           set -uo pipefail
           chmod +x mkfrugal-rstl.sh mkfrugal-iso.sh mkFRkernel
           FLAVOR="${{ matrix.flavor }}"
           ARCH="${{ matrix.arch }}"
-          KERNEL="${{ matrix.kernel }}"
-          KERNEL_ARG="$KERNEL"
-          [ "$KERNEL_ARG" = "cachyos" ] && KERNEL_ARG="linux-cachyos"
           DATE="$(date +%Y%m%d)"
           STAGE="$GITHUB_WORKSPACE/stage"
+          VSTAGE="$GITHUB_WORKSPACE/vstage"
           mkdir -p "$STAGE" dist
           # build in the background with a 90s progress heartbeat; every 90s we
           # print the last build.log line so a long build is visibly alive
@@ -108,7 +112,7 @@ jobs:
               --arch "$ARCH" \
               --flavor "$FLAVOR" \
               --yes \
-              --kernel "$KERNEL_ARG" \
+              --kernel linux-cachyos \
               --firmware "$GITHUB_WORKSPACE/cache/01firmware.sfs" \
               --cache "$GITHUB_WORKSPACE/cache" \
           ) > build.log 2>&1 &
@@ -120,41 +124,71 @@ jobs:
           STATUS=0
           wait "$BUILDPID" || STATUS=$?
           if [ "$STATUS" -eq 124 ]; then
-            echo "::error::mkfrugal-rstl.sh timed out after 55m ($FLAVOR $ARCH $KERNEL)"
+            echo "::error::mkfrugal-rstl.sh timed out after 55m ($FLAVOR $ARCH)"
           elif [ "$STATUS" -ne 0 ]; then
-            echo "::error::mkfrugal-rstl.sh failed ($FLAVOR $ARCH $KERNEL) exit $STATUS"
+            echo "::error::mkfrugal-rstl.sh failed ($FLAVOR $ARCH) exit $STATUS"
           else
-            echo "mkfrugal-rstl.sh OK ($FLAVOR $ARCH $KERNEL)"
+            echo "mkfrugal-rstl.sh OK ($FLAVOR $ARCH)"
           fi
           if [ "$STATUS" -ne 0 ]; then
             tail -80 build.log >&2
             echo "::warning::full build.log stored in the buildlog artifact"
             exit 1
           fi
+          # 1/2 cachyos ISO. --source-root squashes 07rootfs/ -> 07rootfs.sfs in
+          # place, so the compressed rootfs stays in the stage tree and is
+          # reused verbatim for the vdpup variant (no second rootfs build).
           ./mkfrugal-iso.sh \
             -d "$STAGE/rstlsway" \
             -S "$STAGE" \
             -n rstlsway \
             -l RSTLSW \
-            -o "dist/rstlsway-$KERNEL-$FLAVOR-$ARCH-$DATE-x86_64.iso" || {
-              echo "::error::mkfrugal-iso.sh failed ($FLAVOR $ARCH $KERNEL)"
+            -o "dist/rstlsway-cachyos-$FLAVOR-$ARCH-$DATE-x86_64.iso" || {
+              echo "::error::mkfrugal-iso.sh failed (cachyos $FLAVOR $ARCH)"
               exit 1
             }
-          rm -rf "$STAGE"
+          # 2/2 vdpup variant: fetch the stock huge-kernel assets (cached), copy
+          # the cachyos frugal (07rootfs.sfs already zstd 19 -> reused as-is),
+          # swap the three boot files, fix the docs, rewrap into a second ISO.
+          ./mkfrugal-rstl.sh --fetch-vdpup --cache "$GITHUB_WORKSPACE/cache"
+          mkdir -p "$VSTAGE"
+          cp -al "$STAGE/rstlsway" "$VSTAGE/rstlsway-vdpup"
+          for f in vmlinuz 00modules.sfs initrd.gz; do
+            rm -f "$VSTAGE/rstlsway-vdpup/$f"
+            cp -a "$GITHUB_WORKSPACE/cache/vdpup-$f" "$VSTAGE/rstlsway-vdpup/$f"
+          done
+          sed -i 's/rstlsway/rstlsway-vdpup/g' "$VSTAGE/rstlsway-vdpup/grub_config.txt"
+          printf '%s\n' \
+            "name:   rstlsway-vdpup" \
+            "flavor: $FLAVOR" \
+            "arch:   x86-64-v${ARCH#v}" \
+            "kernel: vdpup (FirstRib huge kernel 6.1.52)" \
+            "build:  $(date -u '+%Y-%m-%d %H:%M UTC')" \
+            > "$VSTAGE/rstlsway-vdpup/readme_kernel_version.txt"
+          ./mkfrugal-iso.sh \
+            -d "$VSTAGE/rstlsway-vdpup" \
+            -S "$VSTAGE" \
+            -n rstlsway-vdpup \
+            -l RSTLSW \
+            -o "dist/rstlsway-vdpup-$FLAVOR-$ARCH-$DATE-x86_64.iso" || {
+              echo "::error::mkfrugal-iso.sh failed (vdpup $FLAVOR $ARCH)"
+              exit 1
+            }
+          rm -rf "$STAGE" "$VSTAGE"
           ls -lh dist
 
       - name: Upload build.log on failure
         if: failure()
         uses: actions/upload-artifact@v5
         with:
-          name: buildlog-${{ matrix.flavor }}-${{ matrix.arch }}-${{ matrix.kernel }}
+          name: buildlog-${{ matrix.flavor }}-${{ matrix.arch }}
           path: build.log
           if-no-files-found: ignore
 
-      - name: Upload ISO artifact
+      - name: Upload ISO artifact (cachyos + vdpup)
         uses: actions/upload-artifact@v5
         with:
-          name: iso-${{ matrix.flavor }}-${{ matrix.arch }}-${{ matrix.kernel }}
+          name: iso-${{ matrix.flavor }}-${{ matrix.arch }}
           path: dist/*.iso
           if-no-files-found: error
 
@@ -190,5 +224,5 @@ jobs:
           gh release create "$rel" \
             --target "$GITHUB_SHA" \
             --title "rstl.sway $rel" \
-            --notes "Frugal ISOs from ${{ github.sha }}; kernels: cachyos (linux-cachyos), vdpup (FirstRib huge 6.1.52); flavors: install, install-min, install-uber-min; microarchitecture levels: v1, v2, v3" \
+            --notes "Frugal ISOs from ${{ github.sha }} (2 kernels x 3 flavors x 3 microarch levels = 18): cachyos (linux-cachyos) and vdpup (FirstRib huge 6.1.52, same rootfs re-packed)" \
             dist/*.iso
