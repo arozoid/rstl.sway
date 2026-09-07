@@ -28,9 +28,10 @@ if [ -t 1 ]; then
   C_GREEN='\033[32m'
   C_YELLOW='\033[33m'
   C_MAGENTA='\033[35m'
+  C_PURPLE='\033[95m'
   C_CYAN='\033[36m'
 else
-  C_RESET='' C_BOLD='' C_DIM='' C_RED='' C_GREEN='' C_YELLOW='' C_MAGENTA='' C_CYAN=''
+  C_RESET='' C_BOLD='' C_DIM='' C_RED='' C_GREEN='' C_YELLOW='' C_MAGENTA='' C_PURPLE='' C_CYAN=''
 fi
 
 COLS="${COLUMNS:-$(tput cols 2>/dev/null || echo 80)}"
@@ -96,7 +97,7 @@ banner_end() {
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-info()  { printf "\n${C_BOLD}${C_CYAN}== %s${C_RESET}\n" "$*"; }
+info()  { printf "\n${C_BOLD}${C_PURPLE}== %s${C_RESET}\n" "$*"; }
 ok()    { printf "  ${C_GREEN}✓ %s${C_RESET}\n" "$*"; }
 warn()  { printf "  ${C_YELLOW}! %s${C_RESET}\n" "$*" >&2; }
 fail()  { printf "  ${C_RED}✗ %s${C_RESET}\n" "$*" >&2; }
@@ -155,18 +156,18 @@ add_rstl_repo() {
 ask_step() {
   idx="$1" label="$2" question="$3"
   ans=""
-  rule "$C_MAGENTA"
-  printf "  ${C_BOLD}${C_CYAN}STEP %s · ${C_CYAN}%s${C_RESET}\n" "$idx" "$label"
+  rule "$C_PURPLE"
+  printf "  ${C_BOLD}${C_PURPLE}STEP %s · ${C_PURPLE}%s${C_RESET}\n" "$idx" "$label"
   if [ "$ASSUME_YES" -eq 1 ]; then
     printf "  ${C_BOLD}%s${C_RESET}  ${C_DIM}[auto-yes]${C_RESET}\n" "$question"
-    rule "$C_MAGENTA"
+    rule "$C_PURPLE"
     printf "  ${C_GREEN}${C_BOLD}✓ proceeding${C_RESET}\n"
     return 0
   fi
   printf "  ${C_BOLD}%s${C_RESET}  ${C_DIM}[Y/n]${C_RESET}  " "$question"
   read -r ans
   [ -t 0 ] || printf "\n"
-  rule "$C_MAGENTA"
+  rule "$C_PURPLE"
   case "$ans" in
     ""|[yY]|[yY][eE][sS])
       printf "  ${C_GREEN}${C_BOLD}✓ proceeding${C_RESET}\n"

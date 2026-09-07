@@ -24,7 +24,7 @@
 #   target    directory the frugal is placed in (defaults to ./rstl.sway).
 #
 #   -a, --arch LEVEL        v1|v2|v3|v4|auto (default: auto when not a TTY)
-#   -f, --flavor NAME       install | install-min | install-uber-min | rstl-inst
+#   -f, --flavor NAME       install | install-min | rstl-inst
 #                           (default: install-min)
 #   -y, --yes               assume yes for the installer scripts
 #   -K, --kernel PKG        kernel package, or 'vdpup' for the FirstRib huge
@@ -61,8 +61,7 @@
 #                  install_dotfiles() step in rstl-install.sh), root keeps config too
 #   rstl-inst      same desktop, but boots straight into the rstl-inst TUI on tty1
 #                  (install to disk / try-live sway / network / shell)
-#   install-min    minimal desktop, install-min.sh runs as root
-#   install-uber-min  uber-minimal desktop, install-uber-min.sh runs as root
+#   install-min    minimal desktop, install-min.sh runs as root (uber-minimal)
 
 set -eu
 
@@ -109,7 +108,7 @@ while [ "$#" -gt 0 ]; do
         -a|--arch) [ "$#" -ge 2 ] || die "--arch requires v1|v2|v3|v4|auto"
             requested_arch="$2"; shift 2 ;;
         --arch=*) requested_arch="${1#*=}"; shift ;;
-        -f|--flavor) [ "$#" -ge 2 ] || die "--flavor requires install|install-min|install-uber-min|rstl-inst"
+        -f|--flavor) [ "$#" -ge 2 ] || die "--flavor requires install|install-min|rstl-inst"
             flavor="$2"; shift 2 ;;
         --flavor=*) flavor="${1#*=}"; shift ;;
         -y|--yes) assume_yes=1; shift ;;
@@ -146,8 +145,8 @@ case "$kernel_pkg" in
 esac
 
 case "$flavor" in
-    install|install-min|install-uber-min|rstl-inst) ;;
-    *) die "unknown flavor: $flavor (use install, install-min, install-uber-min or rstl-inst)" ;;
+    install|install-min|rstl-inst) ;;
+    *) die "unknown flavor: $flavor (use install, install-min or rstl-inst)" ;;
 esac
 
 # ---------------------------------------------------------------------------
@@ -271,7 +270,7 @@ header "Bootstrapping base system into '$ROOTFS'"
 mkdir -p "$ROOTFS"
 pacstrap -C "$REPO/pacman-base.conf" -K "$ROOTFS" --noconfirm base sudo git
 
-# marker so install-min.sh / install-uber-min.sh may run as root inside a rootfs
+# marker so install-min.sh may run as root inside a rootfs
 touch "$ROOTFS/etc/.rstl-sway-rootfs"
 
 # make sure DNS works inside the chroot while pacman talks to the mirrors
@@ -533,19 +532,6 @@ case "$flavor" in
         chr /bin/sh /root/.config/rstl.sway/install-min.sh $FLAG_YES
         ensure_rustle_user
         # surface the root-staged desktop config for the rustle login too
-        home="$ROOTFS/home/rustle"
-        rm -rf "$home/.config/rstl.sway"
-        cp -a "$ROOTFS/root/.config/rstl.sway" "$home/.config/rstl.sway"
-        replicate_symlinks "$ROOTFS/home/rustle"
-        chr chown -R rustle:rustle /home/rustle/.config
-        printf '%%wheel ALL=(ALL:ALL) ALL\n' > "$ROOTFS/etc/sudoers.d/10-installer"
-        chmod 440 "$ROOTFS/etc/sudoers.d/10-installer"
-        set_passwords
-        ;;
-
-    install-uber-min)
-        chr /bin/sh /root/.config/rstl.sway/install-uber-min.sh $FLAG_YES
-        ensure_rustle_user
         home="$ROOTFS/home/rustle"
         rm -rf "$home/.config/rstl.sway"
         cp -a "$ROOTFS/root/.config/rstl.sway" "$home/.config/rstl.sway"

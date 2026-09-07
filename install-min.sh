@@ -27,6 +27,15 @@ DOTFILES_DIR="${HOME}/.config/rstl.sway"
 # invoked (e.g. when run from a chroot as /root/rstl.sway/install-min.sh).
 cd "$SOURCE_DIR"
 
+if [ -t 1 ]; then
+    C_RESET='\033[0m' C_BOLD='\033[1m'
+    C_PURPLE='\033[95m' C_GREEN='\033[32m'
+else
+    C_RESET='' C_BOLD='' C_PURPLE='' C_GREEN=''
+fi
+
+header() { printf "\n${C_BOLD}${C_PURPLE}== %s${C_RESET}\n" "$*"; }
+
 # ===========================================================================
 # helpers
 # ===========================================================================
@@ -132,13 +141,12 @@ confirm() {
 }
 
 step_0() {
-    echo "== sudo privileges =="
+    header "sudo privileges"
     sudo -n true 2>/dev/null || sudo -v
 }
 
 step_1() {
-    echo "== copy dotfiles =="
-    git submodule update --init nvim ranger rstlpk
+    header "copy dotfiles"
     mkdir -p "$DOTFILES_DIR"
     # true when invoked from $DOTFILES_DIR (or a path that resolves to it, e.g.
     # /root/.config/rstl.sway symlinked into /etc/skel) - nothing to copy then
@@ -164,7 +172,7 @@ EOF
 }
 
 step_2() {
-    echo "== install packages =="
+    header "install packages"
     command -v pacman >/dev/null 2>&1 || {
         echo "pacman not found, skipping (requires Arch Linux)"
         return 1
@@ -179,34 +187,36 @@ step_2() {
 
     pac_retry -S --needed --noconfirm \
         sway swaybg rofi mako swaylock swayidle \
-        grim slurp wl-clipboard clipse \
+        grim slurp wl-clipboard \
         playerctl brightnessctl \
         networkmanager bluez bluez-utils \
         pipewire wireplumber pipewire-pulse pipewire-alsa alsa-utils \
         libnotify sound-theme-freedesktop \
         greetd greetd-tuigreet \
         foot lf \
-        neovim git curl wget unzip ripgrep fd \
-        xorg-xwayland xdg-utils xdg-desktop-portal-wlr \
+        git curl wget unzip \
+        xdg-utils xdg-desktop-portal-wlr \
         cronie \
         flac mpg123 opus libvorbis speex speexdsp sbc \
         dav1d libvpx openh264 \
         mesa vulkan-icd-loader \
-        ttf-jetbrains-mono-nerd-min \
+        ttf-jetbrains-mono-nerd-min adwaita-icon-theme-dark \
         rstlpk dssd xdg-desktop-portal-termfilechooser yambar \
-        bluetui latuicon clipse wiremix rstl-pick
+        bluetui clipse wiremix rstl-pick \
+        util-linux less
 
-    # theme/cursor packages with official-repo fallbacks (kept separate so a
-    # missing AUR package cannot fail the whole install)
+    # note: latuicon (icon picker) is intentionally omitted from this
+    # minimal variant; it is only installed by the full installer.
+
+    # cursor package with optional fallback (kept separate so a missing AUR
+    # package cannot fail the whole install)
     install_or_fallback notwaita-cursors-grey adwaita-cursors
-    install_or_fallback adwaita-icon-theme-dark adwaita-icon-theme
-    install_or_fallback papirus-icon-theme-dark-only adwaita-icon-theme
 
     echo "packages installed"
 }
 
 step_3() {
-    echo "== symlink dotfiles =="
+    header "symlink dotfiles"
 
     link_file "$DOTFILES_DIR/sway"     "$HOME/.config/sway"
     link_file "$DOTFILES_DIR/swaylock" "$HOME/.config/swaylock"
@@ -214,7 +224,6 @@ step_3() {
     link_file "$DOTFILES_DIR/yambar"   "$HOME/.config/yambar"
     link_file "$DOTFILES_DIR/rofi"     "$HOME/.config/rofi"
     link_file "$DOTFILES_DIR/foot"     "$HOME/.config/foot"
-    link_file "$DOTFILES_DIR/nvim"     "$HOME/.config/nvim"
     link_file "$DOTFILES_DIR/mako"     "$HOME/.config/mako"
     link_file "$DOTFILES_DIR/lf"       "$HOME/.config/lf"
     link_file "$DOTFILES_DIR/.zshrc"   "$HOME/.zshrc"
@@ -231,7 +240,7 @@ org.freedesktop.impl.portal.FileChooser=termfilechooser'
 }
 
 step_4() {
-    echo "== greetd + tuigreet =="
+    header "greetd + tuigreet"
     [ -e /etc/greetd/config.toml ] || { echo "/etc/greetd/config.toml missing"; return 1; }
 
     if ! id greeter >/dev/null 2>&1; then
@@ -252,7 +261,7 @@ step_4() {
 }
 
 step_5() {
-    echo "== wallpaper =="
+    header "wallpaper"
     wp_dir="$HOME/Pictures/Wallpapers"
     wp_conf="$DOTFILES_DIR/wallpaper"
     wp_file="$wp_dir/wallpaper.jpg"
@@ -266,7 +275,7 @@ step_5() {
 }
 
 step_6() {
-    echo "== battery alerts =="
+    header "battery alerts"
     command -v crontab >/dev/null 2>&1 || { echo "crontab not found, skipping"; return 1; }
     run_sudo systemctl enable --now cronie.service >/dev/null 2>&1 || true
 
@@ -283,7 +292,7 @@ DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${uid}/bus
 }
 
 step_7() {
-    echo "== final preferences =="
+    header "final preferences"
     user="${USER:-root}"
     run_sudo loginctl enable-linger "$user"
     sudo -u "$user" systemctl --user enable pipewire.socket pipewire-pulse.socket wireplumber.service >/dev/null 2>&1 || true
@@ -298,11 +307,13 @@ step_7() {
 }
 
 step_8() {
-    echo "== cleanup =="
+    header "cleanup"
     remove_path \
         "$DOTFILES_DIR/wallpapers" \
         "$DOTFILES_DIR/depsize" \
-        "$DOTFILES_DIR/nvim/.git" \
+        "$DOTFILES_DIR/nvim" \
+        "$DOTFILES_DIR/rstl-inst" \
+        "$DOTFILES_DIR/rstl-pick" \
         "$DOTFILES_DIR/ranger/.git" \
         "$DOTFILES_DIR/waybar" \
         "$DOTFILES_DIR/packages.txt" \
