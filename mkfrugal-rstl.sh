@@ -24,13 +24,14 @@
 #   target    directory the frugal is placed in (defaults to ./rstl.sway).
 #
 #   -a, --arch LEVEL        v1|v2|v3|v4|auto (default: auto when not a TTY)
-#   -f, --flavor NAME       install | install-min | rstl-inst
+#   -f, --flavor NAME       install | install-min | install-base | rstl-inst
 #                           (default: install-min)
 #   -y, --yes               assume yes for the installer scripts
-#   -K, --kernel PKG        kernel package, or 'vdpup' for the FirstRib huge
-#                           kernel 6.1.52-vdpup (retro LTS, no pacman package;
-#                           its stock vmlinuz + 00modules.sfs + initrd-latest.gz
-#                           are fetched unmodified; default: linux-cachyos)
+#   -K, --kernel PKG        kernel package, 'vdpup' for the FirstRib huge
+#                           kernel 6.1.52-vdpup, or 'microz' for the ozsouth
+#                           micro kernel 6.1.96 (retro LTS, no pacman package;
+#                           stock vmlinuz + modules sfs are extracted from the
+#                           Puppy huge-kernel archive; default: linux-cachyos)
 #       --firmware FILE     reuse an existing 01firmware.sfs instead of downloading
 #       --modules-source DIR   build 00modules.sfs by reusing an existing
 #                          modules tree verbatim (FirstRib huge-kernel style,
@@ -48,6 +49,9 @@
 #                           into --cache and exit (no build is started). Lets a
 #                           vdpup-variant ISO be wired onto an existing build's
 #                           compressed rootfs without a full second build.
+#       --fetch-microz      download + prepare the ozsouth 'microz' kernel assets
+#                           (vmlinuz, reorganized modules sfs, firmware) into
+#                           --cache and exit (no build is started).
 #       --force             rebuild into --target even if it is not empty
 #   -h, --help
 #
@@ -61,7 +65,8 @@
 #                  install_dotfiles() step in rstl-install.sh), root keeps config too
 #   rstl-inst      same desktop, but boots straight into the rstl-inst TUI on tty1
 #                  (install to disk / try-live sway / network / shell)
-#   install-min    minimal desktop, install-min.sh runs as root (uber-minimal)
+#   install-min    minimal desktop, install-min.sh runs as root
+#   install-base   bare-minimum sway desktop, no audio codecs/TUIs/BT/NM
 
 set -eu
 
@@ -93,7 +98,9 @@ flavor="install-min"
 assume_yes=0
 kernel_pkg="linux-cachyos"
 kernel_vdpup=0
+kernel_microz=0
 fetch_vdpup_mode=0
+fetch_microz_mode=0
 opt_firmware=""
 opt_modules_build=""
 opt_modules_source=""
@@ -108,7 +115,7 @@ while [ "$#" -gt 0 ]; do
         -a|--arch) [ "$#" -ge 2 ] || die "--arch requires v1|v2|v3|v4|auto"
             requested_arch="$2"; shift 2 ;;
         --arch=*) requested_arch="${1#*=}"; shift ;;
-        -f|--flavor) [ "$#" -ge 2 ] || die "--flavor requires install|install-min|rstl-inst"
+        -f|--flavor) [ "$#" -ge 2 ] || die "--flavor requires install|install-min|install-base|rstl-inst"
             flavor="$2"; shift 2 ;;
         --flavor=*) flavor="${1#*=}"; shift ;;
         -y|--yes) assume_yes=1; shift ;;
@@ -135,18 +142,20 @@ while [ "$#" -gt 0 ]; do
         --password=*) password="${1#*=}"; shift ;;
         --force) force=1; shift ;;
         --fetch-vdpup) fetch_vdpup_mode=1; shift ;;
+        --fetch-microz) fetch_microz_mode=1; shift ;;
         -*) die "unknown option: $1" ;;
         *) target="$1"; shift ;;
     esac
 done
 
 case "$kernel_pkg" in
-    vdpup) kernel_vdpup=1 ;;
+    vdpup)   kernel_vdpup=1 ;;
+    microz)  kernel_microz=1 ;;
 esac
 
 case "$flavor" in
-    install|install-min|rstl-inst) ;;
-    *) die "unknown flavor: $flavor (use install, install-min or rstl-inst)" ;;
+    install|install-min|install-base|rstl-inst) ;;
+    *) die "unknown flavor: $flavor (use install, install-min, install-base or rstl-inst)" ;;
 esac
 
 # ---------------------------------------------------------------------------
@@ -193,6 +202,93 @@ if [ "$fetch_vdpup_mode" -eq 1 ]; then
     for f in vdpup-vmlinuz vdpup-00modules.sfs vdpup-initrd.gz; do
         printf '  %s (%s)\n' "$f" "$(du -h "$cache/$f" | cut -f1)"
     done
+    exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# microz (ozsouth) kernel asset fetch + preparation
+# ---------------------------------------------------------------------------
+# The Puppy Linux ozsouth huge kernel ships as a tar.bz2 containing vmlinuz +
+# kernel-modules.sfs (xz-compressed squashfs with modules at lib/modules/.
+# Not usrmerge).  fetch_microz_assets() downloads the tar + the firmware SFS,
+# extracts the modules SFS, reorganizes the tree from lib/modules/ to
+# usr/lib/modules/ (usrmerge), and re-squashes at zstd level 19.  The prepared
+# assets are deposited in --cache as:
+#   microz-vmlinuz          kernel image
+#   microz-00modules.sfs    re-squashed modules (usrmerge layout, zstd 19)
+#   microz-modules          plain usrmerge modules tree (copied into the rootfs
+#                           as /usr/lib/modules so mkFRkernel can build the
+#                           initrd from it in the normal section 8 flow)
+#   microz-firmware.sfs     Puppy fdrv firmware (26 MiB)
+# ---------------------------------------------------------------------------
+fetch_microz_assets() {
+    microz_base="https://archive.org/download/Puppy_Linux_Huge-Kernels"
+    microz_fw_base="https://archive.org/download/Puppy_Linux_Kernels"
+    mkdir -p "$cache"
+    _fetch_microz() {
+        for spec in \
+            "microz-kernel.tar.bz2|${microz_base}/huge-6.1.96-ubun64oz-nr-ao.tar.bz2" \
+            "microz-firmware.sfs|${microz_fw_base}/fdrv_jan2021.sfs"; do
+            f="${spec%%|*}"
+            url="${spec#*|}"
+            cached="$cache/$f"
+            [ -s "$cached" ] && continue
+            if command -v curl >/dev/null 2>&1; then
+                curl -fL --connect-timeout 30 --max-time 1200 --retry 3 --retry-delay 5 \
+                    "$url" -o "$cached.part" || return 1
+            else
+                wget --timeout=30 --tries=3 -O "$cached.part" "$url" || return 1
+            fi
+            mv "$cached.part" "$cached"
+        done
+        return 0
+    }
+    if command -v flock >/dev/null 2>&1; then
+        ( flock -x 9; _fetch_microz ) 9>"$cache/.microz.lock"
+    else
+        _fetch_microz
+    fi
+    [ -s "$cache/microz-kernel.tar.bz2" ]  || die "microz kernel download failed"
+    [ -s "$cache/microz-firmware.sfs" ]     || die "microz firmware download failed"
+    # --- extract + reorganize modules (lib/ -> usr/lib/) and re-squash ------
+    if [ ! -s "$cache/microz-vmlinuz" ] || [ ! -s "$cache/microz-00modules.sfs" ] \
+       || [ ! -d "$cache/microz-modules" ]; then
+        info "extracting + reorganizing microz modules for usrmerge layout"
+        workdir="$cache/.microz-extract"
+        rm -rf "$workdir"
+        mkdir -p "$workdir"
+        tar -xjf "$cache/microz-kernel.tar.bz2" -C "$workdir"
+        # locate the modules SFS (name may vary)
+        sfs="$(find "$workdir" -maxdepth 1 -name 'kernel-modules.sfs-*' | head -1)"
+        [ -n "$sfs" ] || die "microz tar: no kernel-modules.sfs found"
+        unsquashfs -f -d "$workdir/mods" "$sfs" >/dev/null
+        modroot="$(find "$workdir/mods" -maxdepth 2 -type d -name 'modules' | head -1)"
+        [ -n "$modroot" ] || die "microz modules tree not found after extraction"
+        # plain usrmerge modules dir ($cache/microz-modules/<ver>) for mkFRkernel
+        rm -rf "$cache/microz-modules"
+        mkdir -p "$cache/microz-modules/usr/lib/modules"
+        cp -a "$modroot"/. "$cache/microz-modules/usr/lib/modules/"
+        # re-squashed 00modules.sfs (usrmerge, zstd 19) shipped in the frugal
+        mkdir -p "$workdir/modlayer/usr/lib"
+        cp -a "$modroot" "$workdir/modlayer/usr/lib/modules"
+        # copy vmlinuz from the tar
+        vml="$(find "$workdir" -maxdepth 1 -name 'vmlinuz-*' | head -1)"
+        [ -n "$vml" ] || die "microz tar: no vmlinuz found"
+        mv "$vml" "$cache/microz-vmlinuz"
+        mksquashfs "$workdir/modlayer" "$cache/microz-00modules.sfs" \
+            -noappend -comp zstd -Xcompression-level 19 -no-progress >/dev/null
+        rm -rf "$workdir"
+    fi
+    ok "microz assets ready: vmlinuz $(du -h "$cache/microz-vmlinuz" | cut -f1), \
+00modules.sfs $(du -h "$cache/microz-00modules.sfs" | cut -f1)"
+}
+
+if [ "$fetch_microz_mode" -eq 1 ]; then
+    fetch_microz_assets
+    for f in microz-vmlinuz microz-00modules.sfs microz-firmware.sfs; do
+        [ -e "$cache/$f" ] && printf '  %s (%s)\n' "$f" "$(du -h "$cache/$f" | cut -f1)"
+    done
+    printf '  microz-modules/ (plain tree, %s)\n' "$(du -sh "$cache/microz-modules" | cut -f1)"
     exit 0
 fi
 
@@ -270,7 +366,7 @@ header "Bootstrapping base system into '$ROOTFS'"
 mkdir -p "$ROOTFS"
 pacstrap -C "$REPO/pacman-base.conf" -K "$ROOTFS" --noconfirm base sudo git
 
-# marker so install-min.sh may run as root inside a rootfs
+# marker so install-min.sh / install-base.sh may run as root inside a rootfs
 touch "$ROOTFS/etc/.rstl-sway-rootfs"
 
 # make sure DNS works inside the chroot while pacman talks to the mirrors
@@ -317,16 +413,20 @@ info "syncing + upgrading the rootfs (CachyOS repos)"
 arch-chroot "$ROOTFS" pacman -Syu --noconfirm
 
 # ---------------------------------------------------------------------------
-# 3. kernel: linux-cachyos (default) OR the FirstRib huge kernel "vdpup"
-#    (kernel 6.1.52-vdpup, a retro LTS build). vdpup has no pacman package:
-#    its vmlinuz + full module tree come from FirstRib's kernel_usrmerge_default
-#    00modules.sfs overlay, so the vanilla `linux` that base pulled in is
+# 3. kernel: linux-cachyos (default), FirstRib huge kernel "vdpup"
+#    (kernel 6.1.52-vdpup, a retro LTS build), or the ozsouth "microz"
+#    (kernel 6.1.96, Puppy Linux huge kernel, loop/squashfs/overlay built-in).
+#    Both vdpup and microz have no pacman package: their vmlinuz + module trees
+#    come as stock assets, so the vanilla `linux` that base pulled in is
 #    dropped and no arch kernel package is installed at all.
 # ---------------------------------------------------------------------------
 header "Installing kernel $kernel_pkg"
 if [ "$kernel_vdpup" -eq 1 ]; then
     arch-chroot "$ROOTFS" pacman -Rns --noconfirm linux >/dev/null 2>&1 || true
     ok "vdpup: no pacman kernel; huge-kernel assets fetched below"
+elif [ "$kernel_microz" -eq 1 ]; then
+    arch-chroot "$ROOTFS" pacman -Rns --noconfirm linux >/dev/null 2>&1 || true
+    ok "microz: no pacman kernel; ozsouth huge-kernel assets fetched below"
 else
     arch-chroot "$ROOTFS" pacman -S --noconfirm "$kernel_pkg"
     kernelver="$(ls -1 "$ROOTFS/usr/lib/modules" | tail -1)"
@@ -345,6 +445,21 @@ if [ "$kernel_vdpup" -eq 1 ]; then
     fetch_vdpup_assets
     kernelver="6.1.52-vdpup"
     ok "kernel assets ready: $kernelver (stock FirstRib huge kernel)"
+fi
+
+# --- ozsouth "microz" kernel: fetch + install modules into the rootfs -------
+# The Puppy Linux ozsouth huge kernel (6.1.96) has no pacman package and no
+# paired initrd.  fetch_microz_assets() extracts vmlinuz + modules from the
+# ozsouth archive and reorganizes the tree to usrmerge.  The modules are copied
+# into the rootfs so the standard mkFRkernel workflow (section 8) can build the
+# initrd with the microz kernel's modules baked in, and squash 00modules.sfs.
+if [ "$kernel_microz" -eq 1 ]; then
+    fetch_microz_assets
+    kernelver="6.1.96-64oz-nr-ao"
+    rm -rf "$ROOTFS/usr/lib/modules"
+    mkdir -p "$ROOTFS/usr/lib/modules"
+    cp -a "$cache/microz-modules"/usr/lib/modules/. "$ROOTFS/usr/lib/modules/"
+    ok "microz modules installed into rootfs: $kernelver"
 fi
 
 # ---------------------------------------------------------------------------
@@ -401,8 +516,8 @@ trim_git_dirs "$ROOTFS/etc/skel"
 chmod +x "$ROOTFS/etc/skel/.config/rstl.sway"/install*.sh \
          "$ROOTFS/etc/skel/.config/rstl.sway"/scripts/*.sh 2>/dev/null || true
 # root does NOT get a second copy: /root/.config/rstl.sway is a link into the
-# skel tree, so every root flow (install-min/uber-min run as root, the rustle
-# scaffolding copies, the root desktop) reads/writes the ONE repo copy. New
+# skel tree, so every root flow (install-min/install-base run as root, the
+# rustle scaffolding copies, the root desktop) reads/writes the ONE repo copy. New
 # users pick it up through skel; rstl-first-login skips root at boot
 # ($HOME != /root guard), so the skel template stays pristine.
 mkdir -p "$ROOTFS/root/.config"
@@ -542,6 +657,20 @@ case "$flavor" in
         set_passwords
         ;;
 
+    install-base)
+        chr /bin/sh /root/.config/rstl.sway/install-base.sh $FLAG_YES
+        ensure_rustle_user
+        # surface the root-staged desktop config for the rustle login too
+        home="$ROOTFS/home/rustle"
+        rm -rf "$home/.config/rstl.sway"
+        cp -a "$ROOTFS/root/.config/rstl.sway" "$home/.config/rstl.sway"
+        replicate_symlinks "$ROOTFS/home/rustle"
+        chr chown -R rustle:rustle /home/rustle/.config
+        printf '%%wheel ALL=(ALL:ALL) ALL\n' > "$ROOTFS/etc/sudoers.d/10-installer"
+        chmod 440 "$ROOTFS/etc/sudoers.d/10-installer"
+        set_passwords
+        ;;
+
     install)
         # install.sh refuses to run as root -> run it as rustle, exactly like
         # rstl-install.sh's install_dotfiles() (NOPASSWD wheel, then restore)
@@ -621,9 +750,9 @@ fi
 header "Assembling frugal at '$target'"
 
 # --- initrd ---------------------------------------------------------------
-# cachyos: rebuild the FirstRib skeleton with this kernel's modules baked in
-# (mkFRkernel). vdpup: FirstRib's own initrd-latest.gz is a complete huge-kernel
-# initrd already, so it is used unmodified (no mkFRkernel on the vdpup assets).
+# cachyos + microz: rebuild the FirstRib skeleton with this kernel's modules
+# baked in (mkFRkernel). vdpup: FirstRib's own initrd-latest.gz is a complete
+# huge-kernel initrd already, so it is used unmodified (no mkFRkernel).
 if [ "$kernel_vdpup" -eq 1 ]; then
     cp -a "$cache/vdpup-initrd.gz" "$target/initrd.gz"
 else
@@ -640,23 +769,35 @@ else
     )
     mv "$initrd_work/initrd-latest.img" "$target/initrd.gz"
     rm -rf "$initrd_work"
-    # Guard: a module-less initrd cannot mount the sfs layers (loop mounts fail
-    # and the kernel panics on boot). Fail loudly instead of shipping a brick.
-    if ! zcat "$target/initrd.gz" 2>/dev/null | cpio -it 2>/dev/null | grep -q 'block/loop\.ko$'; then
-        die "initrd.gz contains no loop kernel module - the frugal would not boot (check mkFRkernel and \$ROOTFS/usr/lib/modules)"
+    if [ "$kernel_microz" -eq 1 ]; then
+        # microz has loop + squashfs + overlay ALL built into the kernel, so the
+        # built initrd intentionally carries no loop.ko module.
+        ok "initrd.gz built (microz: loop/squashfs/overlay built-in, no module needed)"
+    else
+        # Guard: a module-less initrd cannot mount the sfs layers (loop mounts
+        # fail and the kernel panics on boot). Fail loudly instead of shipping a
+        # brick.
+        if ! zcat "$target/initrd.gz" 2>/dev/null | cpio -it 2>/dev/null | grep -q 'block/loop\.ko$'; then
+            die "initrd.gz contains no loop kernel module - the frugal would not boot (check mkFRkernel and \$ROOTFS/usr/lib/modules)"
+        fi
+        ok "initrd.gz carries the loop kernel module"
     fi
-    ok "initrd.gz carries the loop kernel module"
 fi
 ok "initrd.gz -> $(du -h "$target/initrd.gz" | cut -f1)"
 
 # --- 00modules.sfs (full module tree) --------------------------------------
-# vdpup: FirstRib's own 00modules.sfs is copied unmodified. cachyos: w_init
-# mounts NN=00 as an overlay LAYER, so the archive must be laid out at
-# usr/lib/modules/... (usrmerge), not at a bare modules/ top-level dir, and is
-# squashed at zstd level 19.
+# vdpup: FirstRib's own 00modules.sfs is copied unmodified. microz: the ozsouth
+# modules sfs is reorganized to usr/lib/modules/ and re-squashed by
+# fetch_microz_assets(). cachyos: w_init mounts NN=00 as an overlay LAYER, so
+# the archive must be laid out at usr/lib/modules/... (usrmerge), not at a bare
+# modules/ top-level dir, and is squashed at zstd level 19.
 if [ "$kernel_vdpup" -eq 1 ]; then
     cp -a "$cache/vdpup-00modules.sfs" "$target/00modules.sfs"
     ok "00modules.sfs (stock vdpup) -> $(du -h "$target/00modules.sfs" | cut -f1)"
+    unsquashfs -s "$target/00modules.sfs" 2>/dev/null | grep -m1 Compression | sed 's/^/    /' || true
+elif [ "$kernel_microz" -eq 1 ]; then
+    cp -a "$cache/microz-00modules.sfs" "$target/00modules.sfs"
+    ok "00modules.sfs (microz, usrmerge) -> $(du -h "$target/00modules.sfs" | cut -f1)"
     unsquashfs -s "$target/00modules.sfs" 2>/dev/null | grep -m1 Compression | sed 's/^/    /' || true
 else
     info "building 00modules.sfs (zstd level 19)"
@@ -704,10 +845,14 @@ else
     unsquashfs -s "$target/00modules.sfs" 2>/dev/null | grep -m1 Compression | sed 's/^/    /' || true
 fi
 
-# --- 01firmware.sfs (huge-kernel firmware from FirstRib, already zstd 19) --
+# --- 01firmware.sfs (huge-kernel firmware) ---------------------------------
+# cachyos/vdpup: FirstRib huge-kernel firmware (already zstd 19). microz: the
+# Puppy ozsouth 'fdrv' firmware sfs (already fetched/prepared with the kernel).
 if [ -n "$opt_firmware" ]; then
     [ -f "$opt_firmware" ] || die "--firmware file not found: $opt_firmware"
     cp -a "$opt_firmware" "$target/01firmware.sfs"
+elif [ "$kernel_microz" -eq 1 ]; then
+    cp -a "$cache/microz-firmware.sfs" "$target/01firmware.sfs"
 else
     mkdir -p "$cache"
     if [ ! -s "$cache/01firmware.sfs" ]; then
@@ -738,6 +883,8 @@ ok "01firmware.sfs -> $(du -h "$target/01firmware.sfs" | cut -f1)"
 # --- kernel image ----------------------------------------------------------
 if [ "$kernel_vdpup" -eq 1 ]; then
     cp -a "$cache/vdpup-vmlinuz" "$target/vmlinuz"
+elif [ "$kernel_microz" -eq 1 ]; then
+    cp -a "$cache/microz-vmlinuz" "$target/vmlinuz"
 else
     cp -a "$ROOTFS/boot/vmlinuz-$kernel_pkg" "$target/vmlinuz" 2>/dev/null \
         || cp -a "$(ls -1 "$ROOTFS"/boot/vmlinuz-* 2>/dev/null | head -1)" "$target/vmlinuz"

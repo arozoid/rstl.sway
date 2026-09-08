@@ -1,19 +1,27 @@
 # Build rstl.sway frugal ISOs: ONE matrix of 9 jobs (flavor x microarchitecture),
-# each producing TWO ISOs, then a GitHub release named YYYYMMDD-N
-# (N = release number for the day: 1, 2, ...) holding all 18 ISOs.
+# each producing THREE ISOs, then a GitHub release named YYYYMMDD-N
+# (N = release number for the day: 1, 2, ...) holding all 27 ISOs.
 #
 # Only runs on push (no scheduled/publishing cadence).
 #
-# Kernels: cachyos (linux-cachyos, the default) and vdpup, the FirstRib huge
-# kernel 6.1.52-vdpup (a retro LTS with no pacman package - FirstRib's stock
+# Kernels: cachyos (linux-cachyos, the default), vdpup (the FirstRib huge
+# kernel 6.1.52 - a retro LTS with no pacman package; FirstRib's stock
 # vmlinuz + 00modules.sfs + initrd-latest.gz are dropped in unmodified, so
-# nothing is rebuilt for it).
+# nothing is rebuilt for it), and microz (the ozsouth Puppy huge kernel
+# 6.1.96 - vmlinuz + modules are extracted from the archive.org ozsouth tar;
+# loop/squashfs/overlay are built-in, so the initrd is rebuilt via the normal
+# mkFRkernel path).
 #
-# The vdpup ISO is NOT a full second build: it reuses the compressed rootfs
-# (07rootfs.sfs) left in place by the cachyos wrap step (mkfrugal-iso.sh
-# squashes 07rootfs/ in place under --source-root) and just swaps the three
-# boot files for the vdpup stock assets. That keeps compute cost ~1 rootfs
-# build per job; the only vdpup-specific work is the cached 75MB download.
+# The vdpup and microz (full-build) variants are NOT free rewraps of the same
+# rootfs for every kernel at once:
+#   - The vdpup ISO reuses the compressed rootfs (07rootfs.sfs) left in place
+#     by the cachyos wrap step (mkfrugal-iso.sh squashes 07rootfs/ in place
+#     under --source-root) and just swaps the three boot files for the vdpup
+#     stock assets. That keeps compute at ~1 rootfs build per job for the
+#     vdpup variant; the only vdpup-specific work is the cached download.
+#   - The microz ISO is a genuine second full build: the mkFRkernel initrd is
+#     rebuilt from the ozsouth module tree, so it needs a fresh rootfs. This
+#     is ~2 rootfs builds per job (cachyos + microz).
 #
 # --arch vN selects pacman-vN.conf so the rootfs is installed against the
 # matching CachyOS repo tier (v1/v2 -> generic [cachyos], v3 -> the
@@ -50,7 +58,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        flavor: [install, install-min, install-uber-min]
+        flavor: [install, install-min, install-base]
         arch: [v1, v2, v3]
     steps:
       - name: Update system and install tooling
@@ -92,8 +100,19 @@ jobs:
             ${{ github.workspace }}/cache/vdpup-initrd.gz
           key: vdpup-kernel-6.1.52
 
-      - name: Build frugal (${{ matrix.arch }}, ${{ matrix.flavor }}) + wrap cachyos & vdpup ISOs
-        timeout-minutes: 65
+      - name: Cache microz (ozsouth) kernel assets
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/cache/microz-kernel.tar.bz2
+            ${{ github.workspace }}/cache/microz-vmlinuz
+            ${{ github.workspace }}/cache/microz-00modules.sfs
+            ${{ github.workspace }}/cache/microz-modules
+            ${{ github.workspace }}/cache/microz-firmware.sfs
+          key: microz-kernel-6.1.96
+
+      - name: Build frugal (${{ matrix.arch }}, ${{ matrix.flavor }}) + wrap all 3 kernel ISOs
+        timeout-minutes: 120
         run: |
           set -uo pipefail
           chmod +x mkfrugal-rstl.sh mkfrugal-iso.sh mkFRkernel
@@ -102,10 +121,11 @@ jobs:
           DATE="$(date +%Y%m%d)"
           STAGE="$GITHUB_WORKSPACE/stage"
           VSTAGE="$GITHUB_WORKSPACE/vstage"
+          MSTAGE="$GITHUB_WORKSPACE/mstage"
           mkdir -p "$STAGE" dist
           # build in the background with a 90s progress heartbeat; every 90s we
           # print the last build.log line so a long build is visibly alive
-          # RSTL_TRACE=1 makes install-min/install-uber-min set -x (via chr env)
+          # RSTL_TRACE=1 makes the installer scripts set -x (via chr env)
           export RSTL_TRACE=1
           ( timeout 55m ./mkfrugal-rstl.sh \
               "$STAGE/rstlsway" \
@@ -174,7 +194,43 @@ jobs:
               echo "::error::mkfrugal-iso.sh failed (vdpup $FLAVOR $ARCH)"
               exit 1
             }
-          rm -rf "$STAGE" "$VSTAGE"
+          # 3/3 microz variant: a genuine second full build (the mkFRkernel
+          # initrd is rebuilt from the ozsouth module tree, so it cannot reuse
+          # the cachyos rootfs). The ozsouth assets are cached; loop/squashfs/
+          # overlay are built into the kernel, so the mkFRkernel loop-module
+          # guard is skipped for this kernel inside mkfrugal-rstl.sh.
+          ./mkfrugal-rstl.sh --fetch-microz --cache "$GITHUB_WORKSPACE/cache"
+          ( timeout 55m ./mkfrugal-rstl.sh \
+              "$MSTAGE/rstlsway-microz" \
+              --arch "$ARCH" \
+              --flavor "$FLAVOR" \
+              --yes \
+              --kernel microz \
+              --cache "$GITHUB_WORKSPACE/cache" \
+          ) > build-microz.log 2>&1 &
+          BUILDPID=$!
+          while kill -0 "$BUILDPID" 2>/dev/null; do
+            sleep 90
+            echo "still building microz ($(date -u +%H:%M:%S)Z) - $(tail -1 build-microz.log 2>/dev/null | cut -c1-180)"
+          done
+          STATUS=0
+          wait "$BUILDPID" || STATUS=$?
+          if [ "$STATUS" -ne 0 ]; then
+            tail -80 build-microz.log >&2
+            echo "::error::mkfrugal-rstl.sh failed (microz $FLAVOR $ARCH) exit $STATUS"
+            exit 1
+          fi
+          echo "mkfrugal-rstl.sh OK (microz $FLAVOR $ARCH)"
+          ./mkfrugal-iso.sh \
+            -d "$MSTAGE/rstlsway-microz" \
+            -S "$MSTAGE" \
+            -n rstlsway-microz \
+            -l RSTLSW \
+            -o "dist/rstlsway-microz-$FLAVOR-$ARCH-$DATE-x86_64.iso" || {
+              echo "::error::mkfrugal-iso.sh failed (microz $FLAVOR $ARCH)"
+              exit 1
+            }
+          rm -rf "$STAGE" "$VSTAGE" "$MSTAGE"
           ls -lh dist
 
       - name: Upload build.log on failure
@@ -185,7 +241,7 @@ jobs:
           path: build.log
           if-no-files-found: ignore
 
-      - name: Upload ISO artifact (cachyos + vdpup)
+      - name: Upload ISO artifact (all 3 kernels)
         uses: actions/upload-artifact@v5
         with:
           name: iso-${{ matrix.flavor }}-${{ matrix.arch }}
@@ -224,5 +280,5 @@ jobs:
           gh release create "$rel" \
             --target "$GITHUB_SHA" \
             --title "rstl.sway $rel" \
-            --notes "Frugal ISOs from ${{ github.sha }} (2 kernels x 3 flavors x 3 microarch levels = 18): cachyos (linux-cachyos) and vdpup (FirstRib huge 6.1.52, same rootfs re-packed)" \
+            --notes "Frugal ISOs from ${{ github.sha }} (3 kernels x 3 flavors x 3 microarch levels = 27): cachyos (linux-cachyos), vdpup (FirstRib huge 6.1.52, same rootfs re-packed), and microz (ozsouth Puppy huge 6.1.96, full second build)" \
             dist/*.iso
