@@ -84,7 +84,7 @@ if [ -z "$kernelver" ] || [ ! -d "$moddir/$kernelver" ]; then
 fi
 
 # module source tree (may live at usr/lib/modules or lib/modules)
-kernelver_tree="$moddir/$kernelver"
+kernelver_tree="$(realpath "$moddir/$kernelver")"
 
 # ========================
 # decompress the skeleton initrd

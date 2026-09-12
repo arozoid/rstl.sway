@@ -109,7 +109,7 @@ jobs:
             ${{ github.workspace }}/cache/microz-00modules.sfs
             ${{ github.workspace }}/cache/microz-modules
             ${{ github.workspace }}/cache/microz-firmware.sfs
-          key: microz-kernel-6.1.96
+          key: microz-kernel-6.1.96-v2
 
       - name: Build frugal (${{ matrix.arch }}, ${{ matrix.flavor }}) + wrap all 3 kernel ISOs
         timeout-minutes: 120

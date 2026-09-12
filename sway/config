@@ -43,7 +43,7 @@ for_window [app_id="rstl-pick"] move position center
 for_window [app_id="rstl-pick"] resize set width 600 px height 500 px
 
 ### session
-bindsym $mod+Shift+q kill
+bindsym $mod+q kill
 bindsym $mod+Shift+e exec swaymsg exit
 bindsym $mod+Shift+c reload
 

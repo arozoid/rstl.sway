@@ -70,6 +70,8 @@
 
 set -eu
 
+REPO="$(cd "$(dirname "$0")" && pwd)"
+
 # ---------------------------------------------------------------------------
 # colors / styling
 # ---------------------------------------------------------------------------
@@ -219,7 +221,10 @@ fi
 #   microz-modules          plain usrmerge modules tree (copied into the rootfs
 #                           as /usr/lib/modules so mkFRkernel can build the
 #                           initrd from it in the normal section 8 flow)
-#   microz-firmware.sfs     Puppy fdrv firmware (26 MiB)
+#   microz-firmware.sfs     Puppy fdrv_jan2021 firmware (26 MiB), converted to
+#                           usrmerge layout, augmented with the i915 DMC blobs
+#                           (incl. bdw) and re-squashed at zstd level 19 by
+#                           scripts/microz-firmware-i915.sh
 # ---------------------------------------------------------------------------
 fetch_microz_assets() {
     microz_base="https://archive.org/download/Puppy_Linux_Huge-Kernels"
@@ -227,12 +232,18 @@ fetch_microz_assets() {
     mkdir -p "$cache"
     _fetch_microz() {
         for spec in \
-            "microz-kernel.tar.bz2|${microz_base}/huge-6.1.96-ubun64oz-nr-ao.tar.bz2" \
-            "microz-firmware.sfs|${microz_fw_base}/fdrv_jan2021.sfs"; do
+            "microz-kernel.tar.bz2|${microz_base}/huge-6.1.96-ubun64oz-nr-ao.tar.bz2|huge-6.1.96-ubun64oz-nr-ao" \
+            "microz-firmware.sfs|${microz_fw_base}/fdrv_jan2021.sfs|fdrv_jan2021"; do
             f="${spec%%|*}"
-            url="${spec#*|}"
+            rest="${spec#*|}"
+            url="${rest%%|*}"
+            tok="${rest#*|}"
             cached="$cache/$f"
-            [ -s "$cached" ] && continue
+            stamp="$cache/.${f}.src"
+            # skip only if the cached file matches the intended source (stamp):
+            # switching firmware/kernel versions forces a re-download even when
+            # the cache file is already present (old CI caches, local rebuilds)
+            [ -s "$cached" ] && [ "$(cat "$stamp" 2>/dev/null)" = "$tok" ] && continue
             if command -v curl >/dev/null 2>&1; then
                 curl -fL --connect-timeout 30 --max-time 1200 --retry 3 --retry-delay 5 \
                     "$url" -o "$cached.part" || return 1
@@ -240,6 +251,7 @@ fetch_microz_assets() {
                 wget --timeout=30 --tries=3 -O "$cached.part" "$url" || return 1
             fi
             mv "$cached.part" "$cached"
+            printf '%s\n' "$tok" > "$stamp"
         done
         return 0
     }
@@ -250,6 +262,20 @@ fetch_microz_assets() {
     fi
     [ -s "$cache/microz-kernel.tar.bz2" ]  || die "microz kernel download failed"
     [ -s "$cache/microz-firmware.sfs" ]     || die "microz firmware download failed"
+    # --- convert to usrmerge + add i915 DMC blobs, repack zstd 19 ---------
+    # fdrv_jan2021 the helper also converts to usrmerge (lib/ -> usr/lib/),
+    # keeps the ver-9 DMC blobs it ships and downloads the ones the 6.1.96
+    # driver loads but the fdrv lacks (icl_1_09 + the gen-2 set tgl/rkl/dg1/
+    # adls/adlp/dg2).  Idempotent; exit 2 only means some blob was unavailable
+    # upstream, which is non-fatal (the fdrv data is still valid).
+    if [ -x "$REPO/scripts/microz-firmware-i915.sh" ]; then
+        augment_rc=0
+        "$REPO/scripts/microz-firmware-i915.sh" --sfs "$cache/microz-firmware.sfs" || augment_rc=$?
+        [ "$augment_rc" -eq 0 ] || [ "$augment_rc" -eq 2 ] \
+            || die "microz firmware augmentation failed (exit $augment_rc)"
+    else
+        info "scripts/microz-firmware-i915.sh not present; firmware left un-augmented"
+    fi
     # --- extract + reorganize modules (lib/ -> usr/lib/) and re-squash ------
     if [ ! -s "$cache/microz-vmlinuz" ] || [ ! -s "$cache/microz-00modules.sfs" ] \
        || [ ! -d "$cache/microz-modules" ]; then
@@ -300,7 +326,6 @@ for cmd in pacstrap arch-chroot mksquashfs unsquashfs; do
     command -v "$cmd" >/dev/null 2>&1 || die "'$cmd' not found (install arch-install-scripts + squashfs-tools)"
 done
 command -v wget >/dev/null 2>&1 || die "'wget' not found (mkFRkernel needs it to fetch the skeleton initrd)"
-REPO="$(cd "$(dirname "$0")" && pwd)"
 [ -x "$REPO/mkFRkernel" ] || die "missing mkFRkernel next to this script"
 
 if [ -z "$target" ]; then
