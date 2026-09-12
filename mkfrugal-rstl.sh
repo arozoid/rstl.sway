@@ -466,8 +466,27 @@ bootstrap_cachyos
 
 cp -a "$REPO/$pacman_conf_name" "$ROOTFS/etc/pacman.conf"
 
+# retry a chroot pacman transaction against transient mirror/CDN trouble. A
+# mirror occasionally serves a truncated/corrupt package (PGP verification
+# fails, pacman asks to delete the cached file and re-fetches, still broken):
+# purge the poisoned cache between attempts so the corrupt artifact is never
+# reused, and attribute the final failure with a helpful message instead of a
+# bare set -e abort.
+chroot_pac() {
+    attempt=0
+    until arch-chroot "$ROOTFS" pacman "$@"; do
+        attempt=$((attempt + 1))
+        if [ "$attempt" -ge 4 ]; then
+            die "chroot pacman '$*' failed after ${attempt} attempts (mirror/CDN serving corrupt packages?)"
+        fi
+        warn "chroot pacman '$*' failed (attempt ${attempt}); clearing package cache + retrying"
+        rm -rf "$ROOTFS/var/cache/pacman/pkg/"* 2>/dev/null || true
+        sleep 10
+    done
+}
+
 info "syncing + upgrading the rootfs (CachyOS repos)"
-arch-chroot "$ROOTFS" pacman -Syu --noconfirm
+chroot_pac -Syu --noconfirm
 
 # ---------------------------------------------------------------------------
 # 3. kernel: linux-cachyos (default), FirstRib huge kernel "vdpup"
@@ -485,7 +504,7 @@ elif [ "$kernel_rstl" -eq 1 ]; then
     arch-chroot "$ROOTFS" pacman -Rns --noconfirm linux >/dev/null 2>&1 || true
     ok "rstl: no pacman kernel; rstl.linuz kernel assets fetched below"
 else
-    arch-chroot "$ROOTFS" pacman -S --noconfirm "$kernel_pkg"
+    chroot_pac -S --noconfirm "$kernel_pkg"
     kernelver="$(ls -1 "$ROOTFS/usr/lib/modules" | tail -1)"
     ok "kernel modules: $kernelver"
     if [ "$kernel_pkg" != "linux" ] && [ -d "$ROOTFS/usr/lib/modules" ]; then
