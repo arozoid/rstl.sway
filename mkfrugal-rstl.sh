@@ -101,6 +101,7 @@ fi
 header() { printf "\n${C_BOLD}${C_PURPLE}== %s${C_RESET}\n" "$*"; }
 info()   { printf "${C_PURPLE}:: %s${C_RESET}\n" "$*"; }
 ok()     { printf "  ${C_GREEN}%s${C_RESET}\n" "$*"; }
+warn()   { printf "  ${C_RED}! %s${C_RESET}\n" "$*" >&2; }
 die()    { printf "${C_RED}error: %s${C_RESET}\n" "$*" >&2; exit 1; }
 
 usage() {
