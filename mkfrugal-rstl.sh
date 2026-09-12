@@ -28,10 +28,21 @@
 #                           (default: install-min)
 #   -y, --yes               assume yes for the installer scripts
 #   -K, --kernel PKG        kernel package, 'vdpup' for the FirstRib huge
-#                           kernel 6.1.52-vdpup, or 'microz' for the ozsouth
-#                           micro kernel 6.1.96 (retro LTS, no pacman package;
-#                           stock vmlinuz + modules sfs are extracted from the
-#                           Puppy huge-kernel archive; default: linux-cachyos)
+#                           kernel 6.1.52-vdpup, or 'rstl' for the rstl kernel
+#                           from the latest github.com/arozoid/rstl.linuz
+#                           release (7.x, no pacman package: vmlinuz + its
+#                           module/firmware trees come from the release's -long
+#                           tar.zst; default: linux-cachyos)
+#       --program MODE      program configuration: 'vim' (nvim + superfile) or
+#                           'mouse' (micro with cachyos-micro-settings + rovr).
+#                           The desktop flavor decides how much of it is kept:
+#                           install = everything, install-min = file manager
+#                           only, install-base = none. (default: vim)
+#       --firefox           also install firefox (browser bundle variant)
+#       --rstl-source DIR   reuse a pre-extracted rstl kernel tree (boot/ +
+#                           lib/ + config, e.g. ~/Downloads/rstl.krnl) instead
+#                           of resolving + downloading the latest rstl.linuz
+#                           release (used with --kernel rstl)
 #       --firmware FILE     reuse an existing 01firmware.sfs instead of downloading
 #       --modules-source DIR   build 00modules.sfs by reusing an existing
 #                          modules tree verbatim (FirstRib huge-kernel style,
@@ -49,7 +60,7 @@
 #                           into --cache and exit (no build is started). Lets a
 #                           vdpup-variant ISO be wired onto an existing build's
 #                           compressed rootfs without a full second build.
-#       --fetch-microz      download + prepare the ozsouth 'microz' kernel assets
+#       --fetch-rstl        download + prepare the latest 'rstl' kernel assets
 #                           (vmlinuz, reorganized modules sfs, firmware) into
 #                           --cache and exit (no build is started).
 #       --force             rebuild into --target even if it is not empty
@@ -67,6 +78,11 @@
 #                  (install to disk / try-live sway / network / shell)
 #   install-min    minimal desktop, install-min.sh runs as root
 #   install-base   bare-minimum sway desktop, no audio codecs/TUIs/BT/NM
+#
+# Program configurations (--program):
+#   vim        nvim + superfile (spf) file manager
+#   mouse      micro editor (cachyos-micro-settings) + rovr file manager
+#   --firefox  bundles firefox on top of either program configuration
 
 set -eu
 
@@ -88,7 +104,7 @@ ok()     { printf "  ${C_GREEN}%s${C_RESET}\n" "$*"; }
 die()    { printf "${C_RED}error: %s${C_RESET}\n" "$*" >&2; exit 1; }
 
 usage() {
-    sed -n '4,47p' "$0" | sed 's/^# //; s/^#//'
+    sed -n '4,/^#   -h, --help/p' "$0" | sed 's/^# //; s/^#//'
 }
 
 # ---------------------------------------------------------------------------
@@ -100,9 +116,12 @@ flavor="install-min"
 assume_yes=0
 kernel_pkg="linux-cachyos"
 kernel_vdpup=0
-kernel_microz=0
+kernel_rstl=0
 fetch_vdpup_mode=0
-fetch_microz_mode=0
+fetch_rstl_mode=0
+opt_rstl_source=""
+program="vim"
+opt_firefox=0
 opt_firmware=""
 opt_modules_build=""
 opt_modules_source=""
@@ -144,7 +163,14 @@ while [ "$#" -gt 0 ]; do
         --password=*) password="${1#*=}"; shift ;;
         --force) force=1; shift ;;
         --fetch-vdpup) fetch_vdpup_mode=1; shift ;;
-        --fetch-microz) fetch_microz_mode=1; shift ;;
+        --fetch-rstl) fetch_rstl_mode=1; shift ;;
+        --program) [ "$#" -ge 2 ] || die "--program requires vim|mouse"
+            program="$2"; shift 2 ;;
+        --program=*) program="${1#*=}"; shift ;;
+        --firefox) opt_firefox=1; shift ;;
+        --rstl-source) [ "$#" -ge 2 ] || die "--rstl-source requires a directory"
+            opt_rstl_source="$2"; shift 2 ;;
+        --rstl-source=*) opt_rstl_source="${1#*=}"; shift ;;
         -*) die "unknown option: $1" ;;
         *) target="$1"; shift ;;
     esac
@@ -152,7 +178,12 @@ done
 
 case "$kernel_pkg" in
     vdpup)   kernel_vdpup=1 ;;
-    microz)  kernel_microz=1 ;;
+    rstl)    kernel_rstl=1 ;;
+esac
+
+case "$program" in
+    vim|mouse) ;;
+    *) die "unknown program config: $program (use vim or mouse)" ;;
 esac
 
 case "$flavor" in
@@ -208,113 +239,114 @@ if [ "$fetch_vdpup_mode" -eq 1 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# microz (ozsouth) kernel asset fetch + preparation
+# rstl kernel asset fetch + preparation
 # ---------------------------------------------------------------------------
-# The Puppy Linux ozsouth huge kernel ships as a tar.bz2 containing vmlinuz +
-# kernel-modules.sfs (xz-compressed squashfs with modules at lib/modules/.
-# Not usrmerge).  fetch_microz_assets() downloads the tar + the firmware SFS,
-# extracts the modules SFS, reorganizes the tree from lib/modules/ to
-# usr/lib/modules/ (usrmerge), and re-squashes at zstd level 19.  The prepared
-# assets are deposited in --cache as:
-#   microz-vmlinuz          kernel image
-#   microz-00modules.sfs    re-squashed modules (usrmerge layout, zstd 19)
-#   microz-modules          plain usrmerge modules tree (copied into the rootfs
-#                           as /usr/lib/modules so mkFRkernel can build the
-#                           initrd from it in the normal section 8 flow)
-#   microz-firmware.sfs     Puppy fdrv_jan2021 firmware (26 MiB), converted to
-#                           usrmerge layout, augmented with the i915 DMC blobs
-#                           (incl. bdw) and re-squashed at zstd level 19 by
-#                           scripts/microz-firmware-i915.sh
+# The rstl kernel (github.com/arozoid/rstl.linuz release, the rstl.sway
+# mainline 7.x kernel) has no pacman package: each release ships a -long
+# tar.zst holding boot/vmlinuz-<kver> + config + lib/{firmware,modules}/<kver>
+# (NOT usrmerge).  fetch_rstl_assets() resolves the LATEST release, downloads
+# its -long archive, and reorganizes the tree from lib/ to usr/lib/ (usrmerge),
+# re-squashing modules + firmware at zstd level 19.  The prepared assets are
+# deposited in --cache as:
+#   rstl-vmlinuz          kernel image
+#   rstl-00modules.sfs    re-squashed modules (usrmerge layout, zstd 19)
+#   rstl-modules          plain usrmerge modules tree (copied into the rootfs
+#                         as /usr/lib/modules so mkFRkernel can build the
+#                         initrd from it in the normal section 8 flow)
+#   rstl-firmware.sfs     the release's firmware tree, usrmerge + zstd 19
+# --rstl-source DIR reuses a pre-extracted tree (boot/ + lib/ + config) and
+# skips the GitHub resolution + download entirely.
 # ---------------------------------------------------------------------------
-fetch_microz_assets() {
-    microz_base="https://archive.org/download/Puppy_Linux_Huge-Kernels"
-    microz_fw_base="https://archive.org/download/Puppy_Linux_Kernels"
+fetch_rstl_assets() {
     mkdir -p "$cache"
-    _fetch_microz() {
-        for spec in \
-            "microz-kernel.tar.bz2|${microz_base}/huge-6.1.96-ubun64oz-nr-ao.tar.bz2|huge-6.1.96-ubun64oz-nr-ao" \
-            "microz-firmware.sfs|${microz_fw_base}/fdrv_jan2021.sfs|fdrv_jan2021"; do
-            f="${spec%%|*}"
-            rest="${spec#*|}"
-            url="${rest%%|*}"
-            tok="${rest#*|}"
-            cached="$cache/$f"
-            stamp="$cache/.${f}.src"
-            # skip only if the cached file matches the intended source (stamp):
-            # switching firmware/kernel versions forces a re-download even when
-            # the cache file is already present (old CI caches, local rebuilds)
-            [ -s "$cached" ] && [ "$(cat "$stamp" 2>/dev/null)" = "$tok" ] && continue
+    if [ -n "$opt_rstl_source" ]; then
+        rstl_src="$opt_rstl_source"
+        [ -d "$rstl_src" ] || die "--rstl-source dir not found: $rstl_src"
+        info "rstl kernel: using pre-extracted tree $rstl_src"
+    else
+        info "resolving latest rstl.linuz release (github.com/arozoid/rstl.linuz)"
+        rstl_json="$(curl -fsSL --connect-timeout 30 --max-time 120 --retry 3 --retry-delay 5 \
+            "https://api.github.com/repos/arozoid/rstl.linuz/releases/latest")" \
+            || die "cannot resolve the latest rstl.linuz release (network up?)"
+        rstl_tag="$(printf '%s\n' "$rstl_json" | sed -n 's/^  "tag_name": "\([^"]*\)",$/\1/p' | head -1)"
+        [ -n "$rstl_tag" ] || die "rstl.linuz release JSON: no tag_name found"
+        # prefer the -long kernel archive (matches the canonical unzipped tree)
+        rstl_asset="$(printf '%s\n' "$rstl_json" \
+            | sed -n 's/^    "name": "\(rstl-linuz-push-.*-long\.tar\.zst\)",$/\1/p' | head -1)"
+        [ -n "$rstl_asset" ] \
+            || rstl_asset="$(printf '%s\n' "$rstl_json" \
+                   | sed -n 's/^    "name": "\(rstl-linuz-push-.*\.tar\.zst\)",$/\1/p' | head -1)"
+        [ -n "$rstl_asset" ] || die "rstl.linuz latest release has no kernel tar.zst asset"
+        rstl_url="$(printf '%s\n' "$rstl_json" | grep -A40 -F "\"name\": \"$rstl_asset\"" \
+            | sed -n 's/^      "browser_download_url": "\([^"]*\)".*$/\1/p' | head -1)"
+        [ -n "$rstl_url" ] || die "rstl.linuz asset $rstl_asset: no download URL found"
+
+        rstl_tok="$rstl_tag|$rstl_asset"
+        rstl_cached="$cache/rstl-kernel.tar.zst"
+        rstl_stamp="$cache/.rstl-kernel.src"
+        if [ -s "$rstl_cached" ] && [ "$(cat "$rstl_stamp" 2>/dev/null)" = "$rstl_tok" ]; then
+            info "rstl kernel archive already cached ($rstl_asset)"
+        else
+            info "downloading $rstl_asset"
             if command -v curl >/dev/null 2>&1; then
-                curl -fL --connect-timeout 30 --max-time 1200 --retry 3 --retry-delay 5 \
-                    "$url" -o "$cached.part" || return 1
+                curl -fL --connect-timeout 30 --max-time 3000 --retry 3 --retry-delay 5 \
+                    "$rstl_url" -o "$rstl_cached.part" || return 1
             else
-                wget --timeout=30 --tries=3 -O "$cached.part" "$url" || return 1
+                wget --timeout=30 --tries=3 -O "$rstl_cached.part" "$rstl_url" || return 1
             fi
-            mv "$cached.part" "$cached"
-            printf '%s\n' "$tok" > "$stamp"
-        done
-        return 0
-    }
-    if command -v flock >/dev/null 2>&1; then
-        ( flock -x 9; _fetch_microz ) 9>"$cache/.microz.lock"
-    else
-        _fetch_microz
+            mv "$rstl_cached.part" "$rstl_cached"
+            printf '%s\n' "$rstl_tok" > "$rstl_stamp"
+        fi
+        # extract the archive (GNU tar auto-detects zstd)
+        rstl_work="$cache/.rstl-extract"
+        rm -rf "$rstl_work"
+        mkdir -p "$rstl_work"
+        tar -xf "$rstl_cached" -C "$rstl_work" || die "rstl kernel archive extraction failed"
+        rstl_src="$rstl_work"
     fi
-    [ -s "$cache/microz-kernel.tar.bz2" ]  || die "microz kernel download failed"
-    [ -s "$cache/microz-firmware.sfs" ]     || die "microz firmware download failed"
-    # --- convert to usrmerge + add i915 DMC blobs, repack zstd 19 ---------
-    # fdrv_jan2021 the helper also converts to usrmerge (lib/ -> usr/lib/),
-    # keeps the ver-9 DMC blobs it ships and downloads the ones the 6.1.96
-    # driver loads but the fdrv lacks (icl_1_09 + the gen-2 set tgl/rkl/dg1/
-    # adls/adlp/dg2).  Idempotent; exit 2 only means some blob was unavailable
-    # upstream, which is non-fatal (the fdrv data is still valid).
-    if [ -x "$REPO/scripts/microz-firmware-i915.sh" ]; then
-        augment_rc=0
-        "$REPO/scripts/microz-firmware-i915.sh" --sfs "$cache/microz-firmware.sfs" || augment_rc=$?
-        [ "$augment_rc" -eq 0 ] || [ "$augment_rc" -eq 2 ] \
-            || die "microz firmware augmentation failed (exit $augment_rc)"
-    else
-        info "scripts/microz-firmware-i915.sh not present; firmware left un-augmented"
-    fi
-    # --- extract + reorganize modules (lib/ -> usr/lib/) and re-squash ------
-    if [ ! -s "$cache/microz-vmlinuz" ] || [ ! -s "$cache/microz-00modules.sfs" ] \
-       || [ ! -d "$cache/microz-modules" ]; then
-        info "extracting + reorganizing microz modules for usrmerge layout"
-        workdir="$cache/.microz-extract"
-        rm -rf "$workdir"
-        mkdir -p "$workdir"
-        tar -xjf "$cache/microz-kernel.tar.bz2" -C "$workdir"
-        # locate the modules SFS (name may vary)
-        sfs="$(find "$workdir" -maxdepth 1 -name 'kernel-modules.sfs-*' | head -1)"
-        [ -n "$sfs" ] || die "microz tar: no kernel-modules.sfs found"
-        unsquashfs -f -d "$workdir/mods" "$sfs" >/dev/null
-        modroot="$(find "$workdir/mods" -maxdepth 2 -type d -name 'modules' | head -1)"
-        [ -n "$modroot" ] || die "microz modules tree not found after extraction"
-        # plain usrmerge modules dir ($cache/microz-modules/<ver>) for mkFRkernel
-        rm -rf "$cache/microz-modules"
-        mkdir -p "$cache/microz-modules/usr/lib/modules"
-        cp -a "$modroot"/. "$cache/microz-modules/usr/lib/modules/"
-        # re-squashed 00modules.sfs (usrmerge, zstd 19) shipped in the frugal
-        mkdir -p "$workdir/modlayer/usr/lib"
-        cp -a "$modroot" "$workdir/modlayer/usr/lib/modules"
-        # copy vmlinuz from the tar
-        vml="$(find "$workdir" -maxdepth 1 -name 'vmlinuz-*' | head -1)"
-        [ -n "$vml" ] || die "microz tar: no vmlinuz found"
-        mv "$vml" "$cache/microz-vmlinuz"
-        mksquashfs "$workdir/modlayer" "$cache/microz-00modules.sfs" \
-            -noappend -comp zstd -Xcompression-level 19 -no-progress >/dev/null
-        rm -rf "$workdir"
-    fi
-    ok "microz assets ready: vmlinuz $(du -h "$cache/microz-vmlinuz" | cut -f1), \
-00modules.sfs $(du -h "$cache/microz-00modules.sfs" | cut -f1)"
+
+    # --- reorganize + re-squash (usrmerge, zstd 19) -------------------------
+    rstl_vml="$(ls -1 "$rstl_src"/boot/vmlinuz-* 2>/dev/null | head -1)"
+    [ -n "$rstl_vml" ] || die "rstl kernel: no boot/vmlinuz-* found"
+    rstl_modver="$(ls -1 "$rstl_src/lib/modules" 2>/dev/null | grep -v '^\.' | head -1)"
+    [ -n "$rstl_modver" ] || die "rstl kernel: no lib/modules/<ver> found"
+    [ -d "$rstl_src/lib/firmware" ] || die "rstl kernel: no lib/firmware found"
+
+    # plain usrmerge modules dir ($cache/rstl-modules/<ver>) for mkFRkernel
+    rm -rf "$cache/rstl-modules"
+    mkdir -p "$cache/rstl-modules/usr/lib/modules"
+    cp -a "$rstl_src/lib/modules/$rstl_modver" "$cache/rstl-modules/usr/lib/modules/"
+    # re-squashed 00modules.sfs (usrmerge, zstd 19) shipped in the frugal; the
+    # source keeps the usr/ prefix so the archive lays out at usr/lib/modules
+    # (w_init mounts NN=00 as an overlay layer, so a bare lib/modules root
+    # would not be found)
+    rm -f "$cache/rstl-00modules.sfs"
+    mksquashfs "$cache/rstl-modules" "$cache/rstl-00modules.sfs" \
+        -noappend -comp zstd -Xcompression-level 19 -no-progress >/dev/null
+    # kernel image
+    cp -a "$rstl_vml" "$cache/rstl-vmlinuz"
+    # firmware: convert lib/ -> usr/lib/ and re-squash at zstd 19
+    rstl_fww="$cache/.rstl-fw"
+    rm -rf "$rstl_fww"
+    mkdir -p "$rstl_fww/usr/lib"
+    cp -a "$rstl_src/lib/firmware" "$rstl_fww/usr/lib/firmware"
+    rm -f "$cache/rstl-firmware.sfs"
+    mksquashfs "$rstl_fww" "$cache/rstl-firmware.sfs" \
+        -noappend -comp zstd -Xcompression-level 19 -no-progress >/dev/null
+    rm -rf "$rstl_fww"
+
+    [ -n "$opt_rstl_source" ] || rm -rf "$rstl_work"
+    ok "rstl assets ready: vmlinuz $(du -h "$cache/rstl-vmlinuz" | cut -f1), \
+00modules.sfs $(du -h "$cache/rstl-00modules.sfs" | cut -f1), \
+firmware $(du -h "$cache/rstl-firmware.sfs" | cut -f1), kernel $rstl_modver"
 }
 
-if [ "$fetch_microz_mode" -eq 1 ]; then
-    fetch_microz_assets
-    for f in microz-vmlinuz microz-00modules.sfs microz-firmware.sfs; do
+if [ "$fetch_rstl_mode" -eq 1 ]; then
+    fetch_rstl_assets
+    for f in rstl-vmlinuz rstl-00modules.sfs rstl-firmware.sfs; do
         [ -e "$cache/$f" ] && printf '  %s (%s)\n' "$f" "$(du -h "$cache/$f" | cut -f1)"
     done
-    printf '  microz-modules/ (plain tree, %s)\n' "$(du -sh "$cache/microz-modules" | cut -f1)"
+    printf '  rstl-modules/ (plain tree, %s)\n' "$(du -sh "$cache/rstl-modules" | cut -f1)"
     exit 0
 fi
 
@@ -439,19 +471,19 @@ arch-chroot "$ROOTFS" pacman -Syu --noconfirm
 
 # ---------------------------------------------------------------------------
 # 3. kernel: linux-cachyos (default), FirstRib huge kernel "vdpup"
-#    (kernel 6.1.52-vdpup, a retro LTS build), or the ozsouth "microz"
-#    (kernel 6.1.96, Puppy Linux huge kernel, loop/squashfs/overlay built-in).
-#    Both vdpup and microz have no pacman package: their vmlinuz + module trees
-#    come as stock assets, so the vanilla `linux` that base pulled in is
+#    (kernel 6.1.52-vdpup, a retro LTS build), or the "rstl" kernel
+#    (github.com/arozoid/rstl.linuz latest release, 7.x, the rstl.sway
+#    mainline).  vdpup and rstl have no pacman package: their vmlinuz + module
+#    trees come as stock assets, so the vanilla `linux` that base pulled in is
 #    dropped and no arch kernel package is installed at all.
 # ---------------------------------------------------------------------------
 header "Installing kernel $kernel_pkg"
 if [ "$kernel_vdpup" -eq 1 ]; then
     arch-chroot "$ROOTFS" pacman -Rns --noconfirm linux >/dev/null 2>&1 || true
     ok "vdpup: no pacman kernel; huge-kernel assets fetched below"
-elif [ "$kernel_microz" -eq 1 ]; then
+elif [ "$kernel_rstl" -eq 1 ]; then
     arch-chroot "$ROOTFS" pacman -Rns --noconfirm linux >/dev/null 2>&1 || true
-    ok "microz: no pacman kernel; ozsouth huge-kernel assets fetched below"
+    ok "rstl: no pacman kernel; rstl.linuz kernel assets fetched below"
 else
     arch-chroot "$ROOTFS" pacman -S --noconfirm "$kernel_pkg"
     kernelver="$(ls -1 "$ROOTFS/usr/lib/modules" | tail -1)"
@@ -472,19 +504,20 @@ if [ "$kernel_vdpup" -eq 1 ]; then
     ok "kernel assets ready: $kernelver (stock FirstRib huge kernel)"
 fi
 
-# --- ozsouth "microz" kernel: fetch + install modules into the rootfs -------
-# The Puppy Linux ozsouth huge kernel (6.1.96) has no pacman package and no
-# paired initrd.  fetch_microz_assets() extracts vmlinuz + modules from the
-# ozsouth archive and reorganizes the tree to usrmerge.  The modules are copied
-# into the rootfs so the standard mkFRkernel workflow (section 8) can build the
-# initrd with the microz kernel's modules baked in, and squash 00modules.sfs.
-if [ "$kernel_microz" -eq 1 ]; then
-    fetch_microz_assets
-    kernelver="6.1.96-64oz-nr-ao"
+# --- "rstl" kernel: fetch + install modules into the rootfs ----------------
+# The rstl kernel (github.com/arozoid/rstl.linuz latest release, 7.x) has no
+# pacman package and no paired initrd.  fetch_rstl_assets() downloads the
+# release's -long tar.zst and reorganizes the tree to usrmerge.  The modules
+# are copied into the rootfs so the standard mkFRkernel workflow (section 8)
+# can build the initrd with the rstl kernel's modules baked in, and squash
+# 00modules.sfs.
+if [ "$kernel_rstl" -eq 1 ]; then
+    fetch_rstl_assets
+    kernelver="$(ls -1 "$cache/rstl-modules/usr/lib/modules" | head -1)"
     rm -rf "$ROOTFS/usr/lib/modules"
     mkdir -p "$ROOTFS/usr/lib/modules"
-    cp -a "$cache/microz-modules"/usr/lib/modules/. "$ROOTFS/usr/lib/modules/"
-    ok "microz modules installed into rootfs: $kernelver"
+    cp -a "$cache/rstl-modules"/usr/lib/modules/. "$ROOTFS/usr/lib/modules/"
+    ok "rstl modules installed into rootfs: $kernelver"
 fi
 
 # ---------------------------------------------------------------------------
@@ -586,7 +619,12 @@ replicate_symlinks() { # $1 = home dir whose $1/.config/rstl.sway is the source
     home="$1"
     cfg="$home/.config/rstl.sway"
     DEST="$home/.config"
-    for d in sway swaylock swayidle yambar rofi fish foot nvim mako lf rovr fastfetch; do
+    linklist="sway swaylock swayidle yambar rofi fish foot mako lf fastfetch"
+    case "$program" in
+        mouse) linklist="$linklist rovr" ;;
+        *)     linklist="$linklist nvim" ;;
+    esac
+    for d in $linklist; do
         if [ -e "$cfg/$d" ] && [ ! -e "$DEST/$d" ]; then
             ln -s "$cfg/$d" "$DEST/$d"
         fi
@@ -644,7 +682,7 @@ install_as_rustle() {
     chr chown -R rustle:rustle /home/rustle/.config
     printf '%%wheel ALL=(ALL:ALL) NOPASSWD: ALL\n' > "$ROOTFS/etc/sudoers.d/10-installer"
     chmod 440 "$ROOTFS/etc/sudoers.d/10-installer"
-    if ! chr /bin/su - rustle -c "cd \$HOME/.config/rstl.sway && ./${1} ${FLAG_YES}" \
+    if ! chr /bin/su - rustle -c "cd \$HOME/.config/rstl.sway && RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox ./${1} ${FLAG_YES}" \
             1>"$target/installer.log" 2>&1; then
         tail -40 "$target/installer.log" >&2 || true
         die "${1} failed while running as rustle"
@@ -669,7 +707,7 @@ set_passwords() {
 header "Installing flavor: $flavor"
 case "$flavor" in
     install-min)
-        chr /bin/sh /root/.config/rstl.sway/install-min.sh $FLAG_YES
+        chr /bin/sh -c "RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox /root/.config/rstl.sway/install-min.sh $FLAG_YES"
         ensure_rustle_user
         # surface the root-staged desktop config for the rustle login too
         home="$ROOTFS/home/rustle"
@@ -683,7 +721,7 @@ case "$flavor" in
         ;;
 
     install-base)
-        chr /bin/sh /root/.config/rstl.sway/install-base.sh $FLAG_YES
+        chr /bin/sh -c "RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox /root/.config/rstl.sway/install-base.sh $FLAG_YES"
         ensure_rustle_user
         # surface the root-staged desktop config for the rustle login too
         home="$ROOTFS/home/rustle"
@@ -775,7 +813,7 @@ fi
 header "Assembling frugal at '$target'"
 
 # --- initrd ---------------------------------------------------------------
-# cachyos + microz: rebuild the FirstRib skeleton with this kernel's modules
+# cachyos + rstl: rebuild the FirstRib skeleton with this kernel's modules
 # baked in (mkFRkernel). vdpup: FirstRib's own initrd-latest.gz is a complete
 # huge-kernel initrd already, so it is used unmodified (no mkFRkernel).
 if [ "$kernel_vdpup" -eq 1 ]; then
@@ -794,35 +832,30 @@ else
     )
     mv "$initrd_work/initrd-latest.img" "$target/initrd.gz"
     rm -rf "$initrd_work"
-    if [ "$kernel_microz" -eq 1 ]; then
-        # microz has loop + squashfs + overlay ALL built into the kernel, so the
-        # built initrd intentionally carries no loop.ko module.
-        ok "initrd.gz built (microz: loop/squashfs/overlay built-in, no module needed)"
-    else
-        # Guard: a module-less initrd cannot mount the sfs layers (loop mounts
-        # fail and the kernel panics on boot). Fail loudly instead of shipping a
-        # brick.
-        if ! zcat "$target/initrd.gz" 2>/dev/null | cpio -it 2>/dev/null | grep -q 'block/loop\.ko$'; then
-            die "initrd.gz contains no loop kernel module - the frugal would not boot (check mkFRkernel and \$ROOTFS/usr/lib/modules)"
-        fi
-        ok "initrd.gz carries the loop kernel module"
+    # Guard: a module-less initrd cannot mount the sfs layers (loop mounts
+    # fail and the kernel panics on boot). The rstl kernel has CONFIG_BLK_DEV_LOOP=m
+    # (a module), so its initrd must carry loop.ko. Fail loudly instead of
+    # shipping a brick.
+    if ! zcat "$target/initrd.gz" 2>/dev/null | cpio -it 2>/dev/null | grep -q 'block/loop\.ko$'; then
+        die "initrd.gz contains no loop kernel module - the frugal would not boot (check mkFRkernel and \$ROOTFS/usr/lib/modules)"
     fi
+    ok "initrd.gz carries the loop kernel module"
 fi
 ok "initrd.gz -> $(du -h "$target/initrd.gz" | cut -f1)"
 
 # --- 00modules.sfs (full module tree) --------------------------------------
-# vdpup: FirstRib's own 00modules.sfs is copied unmodified. microz: the ozsouth
-# modules sfs is reorganized to usr/lib/modules/ and re-squashed by
-# fetch_microz_assets(). cachyos: w_init mounts NN=00 as an overlay LAYER, so
+# vdpup: FirstRib's own 00modules.sfs is copied unmodified. rstl: the kernel's
+# module tree is reorganized to usr/lib/modules/ and re-squashed by
+# fetch_rstl_assets(). cachyos: w_init mounts NN=00 as an overlay LAYER, so
 # the archive must be laid out at usr/lib/modules/... (usrmerge), not at a bare
 # modules/ top-level dir, and is squashed at zstd level 19.
 if [ "$kernel_vdpup" -eq 1 ]; then
     cp -a "$cache/vdpup-00modules.sfs" "$target/00modules.sfs"
     ok "00modules.sfs (stock vdpup) -> $(du -h "$target/00modules.sfs" | cut -f1)"
     unsquashfs -s "$target/00modules.sfs" 2>/dev/null | grep -m1 Compression | sed 's/^/    /' || true
-elif [ "$kernel_microz" -eq 1 ]; then
-    cp -a "$cache/microz-00modules.sfs" "$target/00modules.sfs"
-    ok "00modules.sfs (microz, usrmerge) -> $(du -h "$target/00modules.sfs" | cut -f1)"
+elif [ "$kernel_rstl" -eq 1 ]; then
+    cp -a "$cache/rstl-00modules.sfs" "$target/00modules.sfs"
+    ok "00modules.sfs (rstl, usrmerge) -> $(du -h "$target/00modules.sfs" | cut -f1)"
     unsquashfs -s "$target/00modules.sfs" 2>/dev/null | grep -m1 Compression | sed 's/^/    /' || true
 else
     info "building 00modules.sfs (zstd level 19)"
@@ -871,13 +904,14 @@ else
 fi
 
 # --- 01firmware.sfs (huge-kernel firmware) ---------------------------------
-# cachyos/vdpup: FirstRib huge-kernel firmware (already zstd 19). microz: the
-# Puppy ozsouth 'fdrv' firmware sfs (already fetched/prepared with the kernel).
+# cachyos/vdpup: FirstRib huge-kernel firmware (already zstd 19). rstl: the
+# firmware tree shipped inside the rstl.linuz release (already fetched/prepared
+# with the kernel as usr/lib/firmware, zstd 19).
 if [ -n "$opt_firmware" ]; then
     [ -f "$opt_firmware" ] || die "--firmware file not found: $opt_firmware"
     cp -a "$opt_firmware" "$target/01firmware.sfs"
-elif [ "$kernel_microz" -eq 1 ]; then
-    cp -a "$cache/microz-firmware.sfs" "$target/01firmware.sfs"
+elif [ "$kernel_rstl" -eq 1 ]; then
+    cp -a "$cache/rstl-firmware.sfs" "$target/01firmware.sfs"
 else
     mkdir -p "$cache"
     if [ ! -s "$cache/01firmware.sfs" ]; then
@@ -908,8 +942,8 @@ ok "01firmware.sfs -> $(du -h "$target/01firmware.sfs" | cut -f1)"
 # --- kernel image ----------------------------------------------------------
 if [ "$kernel_vdpup" -eq 1 ]; then
     cp -a "$cache/vdpup-vmlinuz" "$target/vmlinuz"
-elif [ "$kernel_microz" -eq 1 ]; then
-    cp -a "$cache/microz-vmlinuz" "$target/vmlinuz"
+elif [ "$kernel_rstl" -eq 1 ]; then
+    cp -a "$cache/rstl-vmlinuz" "$target/vmlinuz"
 else
     cp -a "$ROOTFS/boot/vmlinuz-$kernel_pkg" "$target/vmlinuz" 2>/dev/null \
         || cp -a "$(ls -1 "$ROOTFS"/boot/vmlinuz-* 2>/dev/null | head -1)" "$target/vmlinuz"
@@ -951,6 +985,7 @@ printf '%s\n' \
     "flavor: $flavor" \
     "arch:   x86-64-v$arch_level" \
     "kernel: $kernel_pkg ($kernelver)" \
+    "program: $program${opt_firefox:+, firefox}" \
     "build:  $(date -u '+%Y-%m-%d %H:%M UTC')" \
     > "$target/readme_kernel_version.txt"
 

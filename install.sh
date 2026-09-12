@@ -17,6 +17,14 @@ if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   exit 0
 fi
 
+# Program configuration (selected at build time by mkfrugal-rstl.sh).
+#   vim   = nvim editor + superfile (spf) file manager
+#   mouse = micro editor (cachyos-micro-settings) + rovr file manager
+# RSTL_FIREFOX=1 bundles firefox on top of either configuration.
+RSTL_PROGRAM="${RSTL_PROGRAM:-vim}"
+RSTL_FIREFOX="${RSTL_FIREFOX:-0}"
+case "$RSTL_PROGRAM" in vim|mouse) ;; *) RSTL_PROGRAM="vim" ;; esac
+
 # ---------------------------------------------------------------------------
 # Colors / styling
 # ---------------------------------------------------------------------------
@@ -287,7 +295,7 @@ curl
 wget
 unzip
 ripgrep
-fd
+fd-find
 noto-fonts-emoji
 xorg-xwayland
 xdg-utils
@@ -325,6 +333,30 @@ fzf-tab
 zsh-auto-notify
 PKGS
   } > /dev/null
+
+  # program-configuration packages, fed into the same per-package loop below:
+  # vim = superfile (binary spf); mouse = micro + cachyos-micro-settings
+  # (CachyOS) + rovr-bin (rstl-repo)
+  case "$RSTL_PROGRAM" in
+    mouse)
+      { cat > "$GCDIR/packages-program" <<'PKGS'
+micro
+cachyos-micro-settings
+rovr-bin
+PKGS
+      } > /dev/null
+      ;;
+    *)
+      { cat > "$GCDIR/packages-program" <<'PKGS'
+superfile
+PKGS
+      } > /dev/null
+      ;;
+  esac
+  if [ "$RSTL_FIREFOX" = "1" ]; then
+    printf '%s\n' 'firefox' >> "$GCDIR/packages-program"
+  fi
+  cat "$GCDIR/packages-program" >> "$GCDIR/packages-extra"
 
   printf "  ${C_DIM}installing: %s${C_RESET}\n" "$(tr '\n' ' ' < "$GCDIR/packages")"
   pac_retry -S --needed --noconfirm $(cat "$GCDIR/packages")
@@ -386,9 +418,17 @@ step_3() {
   link_dir "$DOTFILES_DIR/rofi"      "$HOME/.config/rofi"
 # link_dir "$DOTFILES_DIR/fish"      "$HOME/.config/fish"
   link_dir "$DOTFILES_DIR/foot"      "$HOME/.config/foot"
-  link_dir "$DOTFILES_DIR/nvim"      "$HOME/.config/nvim"
+  case "$RSTL_PROGRAM" in
+    mouse)
+      link_dir "$DOTFILES_DIR/rovr"  "$HOME/.config/rovr"
+      printf "  ${C_DIM}program config 'mouse': rovr file manager, micro editor${C_RESET}\n"
+      ;;
+    *)
+      link_dir "$DOTFILES_DIR/nvim"  "$HOME/.config/nvim"
+      printf "  ${C_DIM}program config 'vim': nvim editor, superfile file manager${C_RESET}\n"
+      ;;
+  esac
   link_dir "$DOTFILES_DIR/mako"      "$HOME/.config/mako"
-  link_dir "$DOTFILES_DIR/rovr"      "$HOME/.config/rovr"
   link_dir "$DOTFILES_DIR/lf"        "$HOME/.config/lf"
   link_dir "$DOTFILES_DIR/fastfetch" "$HOME/.config/fastfetch"
   link_dir "$DOTFILES_DIR/.zshrc"    "$HOME/.zshrc"
@@ -415,6 +455,14 @@ step_3() {
     ok "preferred termfilechooser in ${portals_conf}"
   else
     ok "portals.conf already present: ${portals_conf}"
+  fi
+
+  # point the shell's editor at the installed one (mouse mode has no nvim)
+  if [ "$RSTL_PROGRAM" = "mouse" ]; then
+    sed -i 's/^export EDITOR=nvim$/export EDITOR=micro/' \
+      "$DOTFILES_DIR/.zshrc" "$HOME/.zshrc" 2>/dev/null || true
+    sed -i "s/^alias vim='nvim'\$/alias vim='micro'/" \
+      "$DOTFILES_DIR/.zshrc" "$HOME/.zshrc" 2>/dev/null || true
   fi
 }
 

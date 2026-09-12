@@ -20,6 +20,15 @@ if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   exit 0
 fi
 
+# Program configuration (selected at build time by mkfrugal-rstl.sh).  The
+# minimal variant keeps ONLY the program's file manager (no editor bundle):
+#   vim   = superfile (spf)
+#   mouse = rovr
+# RSTL_FIREFOX=1 bundles firefox on top.
+RSTL_PROGRAM="${RSTL_PROGRAM:-vim}"
+RSTL_FIREFOX="${RSTL_FIREFOX:-0}"
+case "$RSTL_PROGRAM" in vim|mouse) ;; *) RSTL_PROGRAM="vim" ;; esac
+
 SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
 DOTFILES_DIR="${HOME}/.config/rstl.sway"
 
@@ -193,7 +202,7 @@ step_2() {
         pipewire wireplumber pipewire-pulse pipewire-alsa alsa-utils \
         libnotify sound-theme-freedesktop \
         greetd greetd-tuigreet \
-        foot lf \
+        foot \
         git curl wget unzip \
         xdg-utils xdg-desktop-portal-wlr \
         cronie \
@@ -204,6 +213,21 @@ step_2() {
         rstlpk dssd xdg-desktop-portal-termfilechooser yambar \
         bluetui clipse wiremix rstl-pick \
         util-linux less
+
+    # program file manager: vim = superfile (spf), mouse = rovr (rstl-repo)
+    # installed one at a time so a missing package skips instead of aborting
+    case "$RSTL_PROGRAM" in
+        mouse) pm_pkgs="rovr-bin" ;;
+        *)      pm_pkgs="superfile" ;;
+    esac
+    [ "$RSTL_FIREFOX" = "1" ] && pm_pkgs="$pm_pkgs firefox"
+    for pm in $pm_pkgs; do
+        if run_sudo pacman -Ssq "^${pm}$" 2>/dev/null | grep -qx "$pm"; then
+            pac_retry -S --needed --noconfirm "$pm"
+        else
+            printf "  ${pm} not found in repos, skipping\n"
+        fi
+    done
 
     # note: latuicon (icon picker) is intentionally omitted from this
     # minimal variant; it is only installed by the full installer.
@@ -225,7 +249,9 @@ step_3() {
     link_file "$DOTFILES_DIR/rofi"     "$HOME/.config/rofi"
     link_file "$DOTFILES_DIR/foot"     "$HOME/.config/foot"
     link_file "$DOTFILES_DIR/mako"     "$HOME/.config/mako"
-    link_file "$DOTFILES_DIR/lf"       "$HOME/.config/lf"
+    if [ "$RSTL_PROGRAM" = "mouse" ]; then
+        link_file "$DOTFILES_DIR/rovr" "$HOME/.config/rovr"
+    fi
     link_file "$DOTFILES_DIR/.zshrc"   "$HOME/.zshrc"
     link_file "$DOTFILES_DIR/greetd"   "/etc/greetd" yes
 

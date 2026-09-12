@@ -25,6 +25,11 @@ if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   exit 0
 fi
 
+# The base variant carries no program configuration (RSTL_PROGRAM is ignored
+# here): vim/mouse editions are install/install-min only.  RSTL_FIREFOX=1
+# bundles firefox on top of the base desktop.
+RSTL_FIREFOX="${RSTL_FIREFOX:-0}"
+
 SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
 DOTFILES_DIR="${HOME}/.config/rstl.sway"
 
@@ -214,6 +219,15 @@ step_2() {
     # wiremix, latuicon). cliphist replaces clipse as the clipboard store.
 
     install_or_fallback notwaita-cursors-grey adwaita-cursors
+
+    # base has no program config; an optional firefox bundle is still honored
+    if [ "$RSTL_FIREFOX" = "1" ]; then
+        if run_sudo pacman -Ssq "^(firefox)$" 2>/dev/null | grep -qx "firefox"; then
+            pac_retry -S --needed --noconfirm firefox
+        else
+            echo "  firefox not found in repos, skipping"
+        fi
+    fi
 
     echo "packages installed"
 }

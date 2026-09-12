@@ -14,7 +14,7 @@ libnotify sound-theme-freedesktop
 networkmanager bluez bluez-utils
 pipewire wireplumber pipewire-pulse pipewire-alsa alsa-utils
 foot fish bat eza zoxide jq lf
-neovim git curl wget unzip ripgrep fd
+neovim git curl wget unzip ripgrep fd-find
 
 # explicitly required dependencies
 mesa vulkan-icd-loader
@@ -28,6 +28,13 @@ xorg-xwayland xdg-utils xdg-desktop-portal-wlr
 # codecs
 flac mpg123 opus libvorbis speex speexdsp sbc
 dav1d libvpx openh264 
+
+# program configuration packages (added by the --program matche in mkfrugal):
+#   vim   = superfile (binary spf, Arch extra)
+#   mouse = micro + cachyos-micro-settings (CachyOS) + rovr-bin (rstl-repo)
+# firefox is a build-time option on top of either program configuration.
+superfile
+# micro cachyos-micro-settings rovr-bin
 
 # AUR/custom packages (installed via rstl.repo)
 ttf-jetbrains-mono-nerd-min
