@@ -87,75 +87,37 @@ jobs:
         timeout-minutes: 120
         run: |
           set -uo pipefail
-          trap 'echo "::error::build step received SIGTERM/SIGINT (base ${{ matrix.arch }}); runner may be reclaiming resources"; exit 143' TERM INT
           chmod +x mkfrugal-rstl.sh
           ARCH="${{ matrix.arch }}"
           STAGE="$GITHUB_WORKSPACE/base/$ARCH/stage"
           mkdir -p "$STAGE" "$GITHUB_WORKSPACE/cache"
-          # setsid: give the build its own process group so the stall guard can
-          # kill the whole tree (incl. pacman/curl children). stdbuf: the log
-          # is redirected to a file, and bash block-buffers that - line-buffer
-          # so mkfrugal's own markers are visible to the heartbeat / log tail.
-          setsid bash -c '
-            set -euo pipefail
-            chmod +x mkfrugal-rstl.sh
-            export RSTL_TRACE=1
-            exec timeout 110m stdbuf -oL -eL ./mkfrugal-rstl.sh \
-              "$1" --arch "$2" --flavor install-base --stage-base --yes \
-              --kernel linux-cachyos --cache "$3"
-          ' bash "$STAGE/rstlsway" "$ARCH" "$GITHUB_WORKSPACE/cache" > build.log 2>&1 &
-          BUILDPID=$!
-          LASTSZ=""
-          STALLS=0
-          while kill -0 "$BUILDPID" 2>/dev/null; do
-            sleep 90
-            SZ=$(stat -c %s build.log 2>/dev/null || echo 0)
-            TL=$(tail -c 400 build.log 2>/dev/null | tr '\r' '\n' | tail -1 | cut -c1-180)
-            PROC=$(ps -eo comm,etime 2>/dev/null | grep -E 'pacman|curl|arch-chroot|mkfrugal|mkFRkernel|tar|zstd|mksquashfs|gen_init|mkfs|grub|xorriso|chroot ' | grep -v grep | head -4 | tr '\n' ' ; ')
-            AV=$(free -m 2>/dev/null | awk '/Mem:/{print $7}')
-            echo "still building base ($(date -u +%H:%M:%S)Z, log ${SZ}B, ${AV}M avail) - $TL"
-            [ -n "$PROC" ] && echo "  active: $PROC"
-            if [ -n "$LASTSZ" ] && [ "$SZ" -eq "$LASTSZ" ] && [ -z "$PROC" ]; then
-              STALLS=$((STALLS+1))
-              if [ "$STALLS" -ge 6 ]; then
-                echo "::error::no log growth for 9m and no active child; aborting stalled build (base $ARCH)"
-                kill -TERM -- -"$BUILDPID" 2>/dev/null || kill -KILL "$BUILDPID" 2>/dev/null || true
-                break
-              fi
-            else
-              STALLS=0
-            fi
-            LASTSZ="$SZ"
-          done
-          # --- teardown ---
-          # From here on errexit must be OFF: the step runs as `sh -e`, and a
-          # single unguarded failing command (e.g. a non-glob-matching rm, an
-          # empty `wait`) used to kill the step silently with exit 1 *after*
-          # the build had already succeeded, so no artifact was ever produced.
+          # Foreground + pipefail + tee on purpose: earlier versions backgrounded
+          # the build (setsid) and watched it from a heartbeat loop, and the step
+          # shell got hard-killed (exit 1, no output, no trap, no errexit trip)
+          # at the exact moment the background builder exited - even when the
+          # build had finished successfully (build.log always ended at
+          # '== Base rootfs staged'). There is no background job to reap here, so
+          # the step and the build succeed or fail together. stdbuf line-buffers
+          # the build log so the runner streams it live; tee keeps build.log for
+          # the upload-on-failure artifact.
+          export RSTL_TRACE=1
           set +e
-          STATUS=0
-          if wait "$BUILDPID"; then STATUS=0; else STATUS=$?; fi
-          echo "build process reaped (base $ARCH), exit status ${STATUS}"
-          if [ "$STATUS" -eq 127 ]; then
-            # `wait` can report "not a child" once the shell has already reaped
-            # the setsid job; fall back to what the build itself wrote.
-            if grep -q '^== Base rootfs staged' build.log; then
-              echo "::notice::wait reported 127 but build.log shows a staged rootfs; treating as success"
-              STATUS=0
-            fi
-          fi
-          if [ "$STATUS" -eq 124 ]; then
+          timeout 110m stdbuf -oL -eL ./mkfrugal-rstl.sh \
+            "$STAGE/rstlsway" --arch "$ARCH" --flavor install-base --stage-base --yes \
+            --kernel linux-cachyos --cache "$GITHUB_WORKSPACE/cache" 2>&1 | tee build.log
+          RC=$?
+          set -e
+          if [ "$RC" -eq 124 ]; then
             echo "::error::mkfrugal-rstl.sh timed out after 110m (base $ARCH)"
-          elif [ "$STATUS" -ne 0 ]; then
-            echo "::error::mkfrugal-rstl.sh failed (base $ARCH) exit $STATUS"
-          else
-            echo "mkfrugal-rstl.sh OK (base $ARCH)"
+            exit 1
           fi
-          if [ "$STATUS" -ne 0 ]; then
+          if [ "$RC" -ne 0 ]; then
+            echo "::error::mkfrugal-rstl.sh failed (base $ARCH) exit $RC"
             tail -80 build.log >&2
             echo "::warning::full build.log stored in the buildlog artifact"
             exit 1
           fi
+          echo "mkfrugal-rstl.sh OK (base $ARCH)"
           # purge caches/logs so the artifact only carries the live system
           # (linux-cachyos is installed into the rootfs; layered builds never
           # re-download or reinstall it). -mindepth/-delete avoids the
