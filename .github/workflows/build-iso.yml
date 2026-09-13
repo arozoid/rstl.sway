@@ -292,30 +292,60 @@ jobs:
             ARGS_PROG=""
             if [ "$PROGMODE" != "standard" ]; then ARGS_PROG="--program $PROGMODE"; fi
             LABEL="$FLAVOR-$PROG-$ARCH"
-
             STAGE="$GITHUB_WORKSPACE/stage/$LABEL"
-            rm -rf "$STAGE"
-            mkdir -p "$STAGE" "$GITHUB_WORKSPACE/dist"
             T="$STAGE/rstlsway"
-            mkdir -p "$T"
-            echo "--- $LABEL: extracting base rootfs (reused, never rebuilt)"
-            tar --zstd -xf "$BASE" -C "$T"
 
-            # 1/3 cachyos: the ONLY layer build - reuse the base rootfs, re-stage
-            # the dotfiles, run the flavor installer, assemble the frugal. No
-            # pacstrap / CachyOS bootstrap / -Syu / kernel install happens here.
-            run_build "$LABEL cachyos" "build-cachyos.log" \
-              ./mkfrugal-rstl.sh \
-                "$T" \
-                --arch "$ARCH" \
-                --flavor "$FLAVOR" \
-                $ARGS_PROG $BROBRA \
-                --reuse-rootfs "$T/07rootfs" \
-                --force \
-                --yes \
-                --kernel linux-cachyos \
-                --firmware "$CACHE/01firmware.sfs" \
-                --cache "$CACHE"
+            if [ "$FLAVOR" = "install-base" ] && [ "$PROG" != "standard" ]; then
+              # install-base browser variant: install-base-standard's iteration
+              # forked this stage and preinstalled eolie (see below), so skip
+              # the extract and the heavy layer build and go straight to the
+              # ISO assembly from the forked rootfs.
+              mkdir -p "$GITHUB_WORKSPACE/dist"
+              [ -d "$T/07rootfs" ] || {
+                echo "::error::$LABEL: forked stage missing 07rootfs/ (install-base-standard must run first)"
+                exit 1
+              }
+              echo "--- $LABEL: deriving ISO set from install-base-standard-$ARCH (eolie preinstalled, no rebuild)"
+            else
+              rm -rf "$STAGE"
+              mkdir -p "$STAGE" "$GITHUB_WORKSPACE/dist"
+              mkdir -p "$T"
+              echo "--- $LABEL: extracting base rootfs (reused, never rebuilt)"
+              tar --zstd -xf "$BASE" -C "$T"
+
+              # 1/3 cachyos: the ONLY layer build - reuse the base rootfs,
+              # re-stage the dotfiles, run the flavor installer, assemble the
+              # frugal. No pacstrap / CachyOS bootstrap / -Syu / kernel install
+              # happens here.
+              run_build "$LABEL cachyos" "build-cachyos.log" \
+                ./mkfrugal-rstl.sh \
+                  "$T" \
+                  --arch "$ARCH" \
+                  --flavor "$FLAVOR" \
+                  $ARGS_PROG $BROBRA \
+                  --reuse-rootfs "$T/07rootfs" \
+                  --force \
+                  --yes \
+                  --kernel linux-cachyos \
+                  --firmware "$CACHE/01firmware.sfs" \
+                  --cache "$CACHE"
+
+              # install-base browser variant: fork THIS pristine pre-squash
+              # stage (mkfrugal-iso squashes 07rootfs/ in place below) and
+              # preinstall eolie, so the eolie/ loop iteration only wraps ISOs -
+              # one heavy layer build serves both install-base configs.
+              if [ "$FLAVOR" = "install-base" ] && [ "$PROG" = "standard" ]; then
+                ET="$GITHUB_WORKSPACE/stage/install-base-eolie-$ARCH/rstlsway"
+                mkdir -p "$(dirname "$ET")"
+                echo "--- forking install-base-eolie-$ARCH stage from standard, installing eolie"
+                cp -al "$T" "$ET"
+                arch-chroot "$ET/07rootfs" pacman -S --needed --noconfirm eolie || {
+                  echo "::error::eolie install into forked install-base-eolie-$ARCH stage failed"
+                  exit 1
+                }
+                find "$ET/07rootfs/var/cache/pacman/pkg" -mindepth 1 -delete 2>/dev/null || true
+              fi
+            fi
             ./mkfrugal-iso.sh \
               -d "$T" \
               -S "$STAGE" \

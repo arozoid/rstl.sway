@@ -288,12 +288,12 @@ fetch_rstl_assets() {
             || die "cannot resolve the latest rstl.linuz release (network up?)"
         rstl_tag="$(printf '%s\n' "$rstl_json" | sed -n 's/^  "tag_name": "\([^"]*\)",$/\1/p' | head -1)"
         [ -n "$rstl_tag" ] || die "rstl.linuz release JSON: no tag_name found"
-        # prefer the -long kernel archive (matches the canonical unzipped tree)
+        # prefer the plain kernel archive; fall back to any .tar.zst
         rstl_asset="$(printf '%s\n' "$rstl_json" \
-            | sed -n 's/^    "name": "\(rstl-linuz-push-.*-long\.tar\.zst\)",$/\1/p' | head -1)"
+            | sed -n 's/^      "name": "\(rstl-linuz-daily-[0-9][0-9][0-9][0-9]\.[0-9][0-9]\.[0-9][0-9]\.tar\.zst\)",$/\1/p' | head -1)"
         [ -n "$rstl_asset" ] \
             || rstl_asset="$(printf '%s\n' "$rstl_json" \
-                   | sed -n 's/^    "name": "\(rstl-linuz-push-.*\.tar\.zst\)",$/\1/p' | head -1)"
+                   | sed -n 's/^      "name": "\(rstl-linuz-.*\.tar\.zst\)",$/\1/p' | head -1)"
         [ -n "$rstl_asset" ] || die "rstl.linuz latest release has no kernel tar.zst asset"
         rstl_url="$(printf '%s\n' "$rstl_json" | grep -A40 -F "\"name\": \"$rstl_asset\"" \
             | sed -n 's/^      "browser_download_url": "\([^"]*\)".*$/\1/p' | head -1)"
