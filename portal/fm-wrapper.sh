@@ -31,11 +31,12 @@ done
 
 case "$fm" in
     spf)
-        # superfile: -chooser-file writes the opened file's path on exit;
-        # -print-last-dir prints the last browsed dir to stdout (directory
-        # mode redirects it into $out).
-        args='-chooser-file'
-        [ "$directory" = "1" ] && args='-print-last-dir'
+        # superfile: --chooser-file writes the focused item's path (file OR
+        # directory) to $out on the open key, then quits. Used for every mode,
+        # matching the official xdg-desktop-portal-termfilechooser contrib
+        # wrapper. (--print-last-dir is NOT used: it only echoes the dir you
+        # were in when pressing the *quit* key, i.e. wrong selection UX.)
+        args='--chooser-file'
         ;;
     rovr)
         # rovr can't open a file that doesn't exist yet (save mode), so start
@@ -58,11 +59,13 @@ esac
 
 escaped_out=$(printf "%s" "$out" | sed 's/"/\\"/g')
 escaped_path=$(printf "%s" "$path" | sed 's/"/\\"/g')
-command="$termcmd $fm $args \"$escaped_out\" \"$escaped_path\""
 
-if [ "$fm" = spf ] && [ "$directory" = "1" ]; then
-    # superfile directory mode: capture the printed last dir
-    sh -c "$command" > "$out"
-else
-    sh -c "$command"
-fi
+# The portal hands us a temp "out" file (by default
+# /tmp/termfilechooser/<uid>.portal) that the file manager must write the
+# selected path into, but the portal never creates that directory. Without
+# it, superfile's chooser write fails and it silently falls back to launching
+# its editor/xdg-open instead of selecting. Make sure the parent exists.
+mkdir -p "$(dirname "$out")"
+
+command="$termcmd $fm $args \"$escaped_out\" \"$escaped_path\""
+sh -c "$command"
