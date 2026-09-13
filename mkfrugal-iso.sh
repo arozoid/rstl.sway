@@ -137,17 +137,19 @@ EOF
 }
 
 stage=""
+frugal=""
 if [ -n "$source_root" ]; then
     [ "$source_root/$name" = "$dir" ] || \
         die "--source-root expects the frugal to live at \$source_root/\$name (got '$dir')"
-    stage="$source_root"
-    info "building ISO in place from '$source_root'"
+    frugal="$dir"
+    info "building ISO from frugal at '$frugal' (squash applies in place)"
 else
     stage="$(mktemp -d "${TMPDIR:-/tmp}/rstl-iso.XXXXXX")"
     trap 'rm -rf "$stage"' EXIT
-    info "staging frugal '$dir' -> '$stage/$name'"
-    mkdir -p "$stage/$name"
-    tar -C "$dir" -cf - . | tar -C "$stage/$name" -xf -
+    frugal="$stage/$name"
+    info "staging frugal '$dir' -> '$frugal'"
+    mkdir -p "$frugal"
+    tar -C "$dir" -cf - . | tar -C "$frugal" -xf -
 fi
 
 # ---------------------------------------------------------------------------
@@ -160,8 +162,8 @@ fi
 # (In --source-root mode the default converts the 07rootfs/ dir in the frugal
 # in place; in copy mode only the staged tree is changed.)
 # ---------------------------------------------------------------------------
-rootfs_dir="$stage/$name/07rootfs"
-rootfs_sfs="$stage/$name/07rootfs.sfs"
+rootfs_dir="$frugal/07rootfs"
+rootfs_sfs="$frugal/07rootfs.sfs"
 if [ -d "$rootfs_dir" ]; then
     if [ "$no_squash_rootfs" -eq 1 ]; then
         rm -f "$rootfs_sfs" # stale archive would duplicate the NN=07 layer
@@ -179,7 +181,23 @@ elif [ -e "$rootfs_sfs" ]; then
     ok "07rootfs.sfs already present - using as-is"
     check_compression "$rootfs_sfs"
 else
-    die "07rootfs is neither a directory nor an .sfs in '$stage/$name'"
+    die "07rootfs is neither a directory nor an .sfs in '$frugal'"
+fi
+
+# ISO tree: the image must contain ONLY this frugal plus boot/grub. In copy
+# mode $stage already holds just that. In --source-root mode the source root
+# also holds the sibling wrap frugals (rstlsway-vdpup, rstlsway-rstl), so stage
+# a dedicated tree with just this frugal. The layers are hardlinked (cp -al) so
+# the squashed sfs files' data is not copied a second time. The in-place squash
+# above still mutated the real frugal directory, which the chained wraps depend
+# on (they cp -al it into their own subdirectories).
+if [ -n "$source_root" ]; then
+    isostage="$(mktemp -d "${TMPDIR:-/tmp}/rstl-iso.XXXXXX")"
+    trap 'rm -rf "$isostage"' EXIT
+    mkdir -p "$isostage/$name"
+    cp -al "$frugal"/. "$isostage/$name"/
+    stage="$isostage"
+    info "ISO tree staged (single frugal) at '$stage'"
 fi
 
 grubcfg "$stage"
