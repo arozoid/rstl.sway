@@ -111,7 +111,8 @@ jobs:
             SZ=$(stat -c %s build.log 2>/dev/null || echo 0)
             TL=$(tail -c 400 build.log 2>/dev/null | tr '\r' '\n' | tail -1 | cut -c1-180)
             PROC=$(ps -eo comm,etime 2>/dev/null | grep -E 'pacman|curl|arch-chroot|mkfrugal|mkFRkernel|tar|zstd|mksquashfs|gen_init|mkfs|grub|xorriso|chroot ' | grep -v grep | head -4 | tr '\n' ' ; ')
-            echo "still building base ($(date -u +%H:%M:%S)Z, log ${SZ}B) - $TL"
+            AV=$(free -m 2>/dev/null | awk '/Mem:/{print $7}')
+            echo "still building base ($(date -u +%H:%M:%S)Z, log ${SZ}B, ${AV}M avail) - $TL"
             [ -n "$PROC" ] && echo "  active: $PROC"
             if [ -n "$LASTSZ" ] && [ "$SZ" -eq "$LASTSZ" ] && [ -z "$PROC" ]; then
               STALLS=$((STALLS+1))
@@ -144,8 +145,23 @@ jobs:
           # re-download or reinstall it)
           rm -rf "$STAGE/rstlsway/07rootfs/var/cache/pacman/pkg"/*
           rm -rf "$STAGE/rstlsway/07rootfs/var/log"/*
-          tar --zstd -C "$STAGE/rstlsway" -cf \
+          echo "df before rootfs tar:"
+          df -h "$STAGE" "$GITHUB_WORKSPACE" | sed 's/^/  /'
+          free -m | head -2 | sed 's/^/  /'
+          # 3 matrix jobs compress multi-GB rootfs in parallel; keep zstd cheap
+          # (level 1, 2 threads) to avoid exhausting the shared runner memory.
+          set +e
+          tar --zstd -I 'zstd -1 -T2' -C "$STAGE/rstlsway" -cf \
             "$GITHUB_WORKSPACE/baserootfs-$ARCH.tar.zst" 07rootfs
+          TARRC=$?
+          set -e
+          if [ "$TARRC" -ne 0 ]; then
+            echo "::error::tar of base rootfs failed rc=$TARRC"
+            df -h "$STAGE" "$GITHUB_WORKSPACE" | sed 's/^/  /'
+            free -m | head -2 | sed 's/^/  /'
+            rm -f "$GITHUB_WORKSPACE/baserootfs-$ARCH.tar.zst"
+            exit "$TARRC"
+          fi
           ls -lh "$GITHUB_WORKSPACE/baserootfs-$ARCH.tar.zst"
 
       - name: Upload build.log on failure
@@ -276,7 +292,8 @@ jobs:
               sz=$(stat -c %s "$log" 2>/dev/null || echo 0)
               tl=$(tail -c 400 "$log" 2>/dev/null | tr '\r' '\n' | tail -1 | cut -c1-180)
               proc=$(ps -eo comm,etime 2>/dev/null | grep -E 'pacman|curl|arch-chroot|mkfrugal|mkFRkernel|tar|zstd|mksquashfs|gen_init|mkfs|grub|xorriso|chroot ' | grep -v grep | head -4 | tr '\n' ' ; ')
-              echo "still building $label ($(date -u +%H:%M:%S)Z, log ${sz}B) - $tl"
+              av=$(free -m 2>/dev/null | awk '/Mem:/{print $7}')
+              echo "still building $label ($(date -u +%H:%M:%S)Z, log ${sz}B, ${av}M avail) - $tl"
               [ -n "$proc" ] && echo "  active: $proc"
               if [ -n "$lastsz" ] && [ "$sz" -eq "$lastsz" ] && [ -z "$proc" ]; then
                 stalls=$((stalls+1))
