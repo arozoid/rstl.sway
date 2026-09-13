@@ -91,20 +91,39 @@ jobs:
           ARCH="${{ matrix.arch }}"
           STAGE="$GITHUB_WORKSPACE/base/$ARCH/stage"
           mkdir -p "$STAGE" "$GITHUB_WORKSPACE/cache"
-          export RSTL_TRACE=1
-          ( timeout 110m ./mkfrugal-rstl.sh \
-              "$STAGE/rstlsway" \
-              --arch "$ARCH" \
-              --flavor install-base \
-              --stage-base \
-              --yes \
-              --kernel linux-cachyos \
-              --cache "$GITHUB_WORKSPACE/cache" \
-          ) > build.log 2>&1 &
+          # setsid: give the build its own process group so the stall guard can
+          # kill the whole tree (incl. pacman/curl children). stdbuf: the log
+          # is redirected to a file, and bash block-buffers that - line-buffer
+          # so mkfrugal's own markers are visible to the heartbeat / log tail.
+          setsid bash -c '
+            set -euo pipefail
+            chmod +x mkfrugal-rstl.sh
+            export RSTL_TRACE=1
+            exec timeout 110m stdbuf -oL -eL ./mkfrugal-rstl.sh \
+              "$1" --arch "$2" --flavor install-base --stage-base --yes \
+              --kernel linux-cachyos --cache "$3"
+          ' bash "$STAGE/rstlsway" "$ARCH" "$GITHUB_WORKSPACE/cache" > build.log 2>&1 &
           BUILDPID=$!
+          LASTSZ=""
+          STALLS=0
           while kill -0 "$BUILDPID" 2>/dev/null; do
             sleep 90
-            echo "still building base ($(date -u +%H:%M:%S)Z) - $(tail -1 build.log 2>/dev/null | cut -c1-180)"
+            SZ=$(stat -c %s build.log 2>/dev/null || echo 0)
+            TL=$(tail -c 400 build.log 2>/dev/null | tr '\r' '\n' | tail -1 | cut -c1-180)
+            PROC=$(ps -eo comm,etime 2>/dev/null | grep -E 'pacman|curl|arch-chroot|mkfrugal|mkFRkernel|tar|zstd|mksquashfs|gen_init|mkfs|grub|xorriso|chroot ' | grep -v grep | head -4 | tr '\n' ' ; ')
+            echo "still building base ($(date -u +%H:%M:%S)Z, log ${SZ}B) - $TL"
+            [ -n "$PROC" ] && echo "  active: $PROC"
+            if [ -n "$LASTSZ" ] && [ "$SZ" -eq "$LASTSZ" ] && [ -z "$PROC" ]; then
+              STALLS=$((STALLS+1))
+              if [ "$STALLS" -ge 6 ]; then
+                echo "::error::no log growth for 9m and no active child; aborting stalled build (base $ARCH)"
+                kill -TERM -- -"$BUILDPID" 2>/dev/null || kill -KILL "$BUILDPID" 2>/dev/null || true
+                break
+              fi
+            else
+              STALLS=0
+            fi
+            LASTSZ="$SZ"
           done
           STATUS=0
           wait "$BUILDPID" || STATUS=$?
@@ -243,15 +262,33 @@ jobs:
             install-base)        CONFIGS="standard firefox" ;;
           esac
 
-          # run a build in the background with a 90s heartbeat; on failure
-          # print the log tail and abort
+          # run a build in the background with a 90s heartbeat + stall guard;
+          # on failure print the log tail and abort. stdbuf keeps the log
+          # line-buffered (it's redirected to a file) so tails are truthful.
           run_build() { # $1=label  $2=log  rest=command...
             local label="$1" log="$2"; shift 2
-            ( timeout 90m "$@" ) > "$log" 2>&1 &
+            setsid bash -c 'exec timeout 90m stdbuf -oL -eL "$@"' bash "$@" > "$log" 2>&1 &
             local pid=$!
+            local lastsz="" stalls=0
             while kill -0 "$pid" 2>/dev/null; do
               sleep 90
-              echo "still building $label ($(date -u +%H:%M:%S)Z) - $(tail -1 "$log" 2>/dev/null | cut -c1-180)"
+              local sz tl proc
+              sz=$(stat -c %s "$log" 2>/dev/null || echo 0)
+              tl=$(tail -c 400 "$log" 2>/dev/null | tr '\r' '\n' | tail -1 | cut -c1-180)
+              proc=$(ps -eo comm,etime 2>/dev/null | grep -E 'pacman|curl|arch-chroot|mkfrugal|mkFRkernel|tar|zstd|mksquashfs|gen_init|mkfs|grub|xorriso|chroot ' | grep -v grep | head -4 | tr '\n' ' ; ')
+              echo "still building $label ($(date -u +%H:%M:%S)Z, log ${sz}B) - $tl"
+              [ -n "$proc" ] && echo "  active: $proc"
+              if [ -n "$lastsz" ] && [ "$sz" -eq "$lastsz" ] && [ -z "$proc" ]; then
+                stalls=$((stalls+1))
+                if [ "$stalls" -ge 6 ]; then
+                  echo "::error::$label: no log growth for 9m and no active child; aborting stalled build"
+                  kill -TERM -- -"$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+                  break
+                fi
+              else
+                stalls=0
+              fi
+              lastsz="$sz"
             done
             local rc=0
             wait "$pid" || rc=$?
