@@ -15,3 +15,8 @@ archiso/airootfs/root/*
 
 # rstl-first-login ran marker
 .first-login-done
+
+# micro runtime state (auto-generated through the ~/.config/micro symlink);
+# settings.json + colorschemes/ + syntax/ are the vendored package content
+micro/bindings.json
+micro/buffers/
