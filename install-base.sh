@@ -208,7 +208,7 @@ step_2() {
         xdg-utils xdg-desktop-portal-wlr \
         cronie wpa_supplicant \
         mesa vulkan-icd-loader \
-        ttf-jetbrains-mono-nerd-min adwaita-icon-theme-dark \
+        ttf-jetbrains-mono-nerd-min hicolor-icon-theme \
         rstlpk dssd yambar xdg-desktop-portal-termfilechooser \
         util-linux less
 

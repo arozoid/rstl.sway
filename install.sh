@@ -370,9 +370,11 @@ PKGS
   done < "$GCDIR/packages-extra"
 
   # theme/cursor packages with official-repo fallbacks (kept separate so a
-  # missing AUR package cannot fail the whole install)
+  # missing AUR package cannot fail the whole install). The base icon theme
+  # is hicolor; papirus-dark supplies the themed set; adwaita-icon-theme
+  # arrives with eolie when the browser bundle is enabled.
+  pac_retry -S --needed --noconfirm hicolor-icon-theme
   install_or_fallback notwaita-cursors-grey adwaita-cursors
-  install_or_fallback adwaita-icon-theme-dark adwaita-icon-theme
   install_or_fallback papirus-icon-theme-dark-only adwaita-icon-theme
 
   ok "packages installed"

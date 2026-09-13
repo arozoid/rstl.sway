@@ -415,10 +415,12 @@ jobs:
               echo "::error::rstl initrd carries no loop.ko - not bootable (rstl $LABEL)"
               exit 1
             fi
-            for f in vmlinuz 00modules.sfs 01firmware.sfs; do
+            for f in vmlinuz 00modules.sfs; do
               rm -f "$R/$f"
               cp -a "$CACHE/rstl-$f" "$R/$f"
             done
+            rm -f "$R/01firmware.sfs"
+            cp -a "$CACHE/rstl-firmware.sfs" "$R/01firmware.sfs"
             sed -i 's/rstlsway/rstlsway-rstl/g' "$R/grub_config.txt"
             printf '%s\n' \
               "name:   rstlsway-rstl" \

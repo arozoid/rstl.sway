@@ -39,7 +39,7 @@ superfile
 # AUR/custom packages (installed via rstl.repo)
 ttf-jetbrains-mono-nerd-min
 papirus-icon-theme-dark-only
-adwaita-icon-theme-dark
+hicolor-icon-theme
 notwaita-cursors-grey
 adwaita-cursors
 

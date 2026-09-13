@@ -209,7 +209,7 @@ step_2() {
         flac mpg123 opus libvorbis speex speexdsp sbc \
         dav1d libvpx openh264 \
         mesa vulkan-icd-loader \
-        ttf-jetbrains-mono-nerd-min adwaita-icon-theme-dark \
+        ttf-jetbrains-mono-nerd-min hicolor-icon-theme \
         rstlpk dssd xdg-desktop-portal-termfilechooser yambar \
         bluetui clipse wiremix rstl-pick \
         util-linux less
