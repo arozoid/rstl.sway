@@ -339,10 +339,16 @@ jobs:
                 mkdir -p "$(dirname "$ET")"
                 echo "--- forking install-base-eolie-$ARCH stage from standard, installing eolie"
                 cp -al "$T" "$ET"
-                arch-chroot "$ET/07rootfs" pacman -S --needed --noconfirm eolie || {
+                # pacman's CheckSpace needs a real mountpoint for the chroot
+                # root (arch-chroot adds none); mkfrugal does the same self
+                # bind-mount before every chrooted pacman call.
+                mount --bind "$ET/07rootfs" "$ET/07rootfs"
+                if ! arch-chroot "$ET/07rootfs" pacman -S --needed --noconfirm eolie; then
+                  umount "$ET/07rootfs" 2>/dev/null || true
                   echo "::error::eolie install into forked install-base-eolie-$ARCH stage failed"
                   exit 1
-                }
+                fi
+                umount "$ET/07rootfs" 2>/dev/null || true
                 find "$ET/07rootfs/var/cache/pacman/pkg" -mindepth 1 -delete 2>/dev/null || true
               fi
             fi
@@ -401,8 +407,11 @@ jobs:
                  exit 1
                }
             mv "$STAGE/initrd-latest.img" "$R/initrd.gz"
+            # plain grep, NOT grep -q: -q exits on first match and SIGPIPEs
+            # the upstream cpio|zcat, which pipefail turns into rc=141 and a
+            # false failure even when loop.ko is present
             if ! zcat "$R/initrd.gz" 2>/dev/null | cpio -it 2>/dev/null \
-                | grep -q 'block/loop\.ko$'; then
+                | grep 'block/loop\.ko$' >/dev/null; then
               echo "::error::rstl initrd carries no loop.ko - not bootable (rstl $LABEL)"
               exit 1
             fi
