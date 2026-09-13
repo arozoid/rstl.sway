@@ -99,6 +99,12 @@ if [ ! -f "$MARKER" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# dark theme bootstrap: export session env (sway inherits it) and materialize
+# toolkit config files. Runs on every login so the files stay in sync.
+# ---------------------------------------------------------------------------
+[ -f "$CFG/scripts/dark-env.sh" ] && . "$CFG/scripts/dark-env.sh"
+
+# ---------------------------------------------------------------------------
 # carry into the rest of the session (e.g. sway) when a command was given;
 # with none, exit 0 so `... && sway` chains keep rolling too
 # ---------------------------------------------------------------------------

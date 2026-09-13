@@ -194,4 +194,4 @@ mouse_warping none
 smart_gaps off
 
 ### startup
-exec_always sh -c 'export XDG_CURRENT_DESKTOP=sway XDG_SESSION_DESKTOP=sway; dbus-update-activation-environment --systemd XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP WAYLAND_DISPLAY DISPLAY'
+exec_always sh -c 'export XDG_CURRENT_DESKTOP=sway XDG_SESSION_DESKTOP=sway; dbus-update-activation-environment --systemd XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP WAYLAND_DISPLAY DISPLAY GTK_THEME QT_QPA_PLATFORMTHEME'
