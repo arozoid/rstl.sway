@@ -675,9 +675,10 @@ copy_repo() {
     dest="$1"
     mkdir -p "$dest"
     # Exclude build/CI workspace artifacts, which can be GB in CI (cache
-    # firmware, stage/ rootfs with pacman caches, dist/, build.log) — they must
-    # never ship in staged dotfiles, and stage/ is also the tar *destination*,
-    # so excluding it avoids tar streaming a tree it is writing into.
+    # firmware, stage/ + base/ rootfs trees with pacman caches, dist/,
+    # baserootfs-*.tar.zst artifacts, build.log) — they must never ship in
+    # staged dotfiles. base/ and stage/ also hold an in-progress rootfs that
+    # tar would otherwise stream INTO the staged tree while reading it.
     tar --exclude='./build_work' \
         --exclude='./build_output' \
         --exclude='./archiso' \
@@ -685,8 +686,11 @@ copy_repo() {
         --exclude='./rstl-pick/target' \
         --exclude='./cache' \
         --exclude='./stage' \
+        --exclude='./base' \
         --exclude='./dist' \
         --exclude='./build.log' \
+        --exclude='./*.tar.zst' \
+        --exclude='./*.sfs' \
         --exclude='./.git' \
         --exclude='./.gitmodules' \
         --exclude='./.gitignore' \
