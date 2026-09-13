@@ -1,3 +1,4 @@
+#:schema https://raw.githubusercontent.com/NSPC911/rovr/refs/tags/v0.10.1.post1/src/rovr/assets/schema.json
 # rstl — rovr config for the full install flavor.
 # Border/styling overrides that match the rice live in style.tcss next to this.
 
