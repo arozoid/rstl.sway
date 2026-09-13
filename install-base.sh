@@ -361,7 +361,12 @@ step_8() {
         rm -f /usr/lib/libasan.so* /usr/lib/libtsan.so* 2>/dev/null || true
         rm -rf /usr/lib/gprofng* 2>/dev/null || true
         rm -rf /usr/share/gir-1.0 /usr/share/gtk-doc /usr/share/vala /usr/share/licenses 2>/dev/null || true
-        if command -v strip >/dev/null 2>&1; then
+        if command -v strip >/dev/null 2>&1 && [ ! -e /etc/.rstl-sway-rootfs ]; then
+            # Rootfs builds defer the ELF strip to mkfrugal-rstl.sh (host-side,
+            # after the chroot teardown): stripping the chroot's *live*
+            # interpreter/libraries in-place has been observed to segfault the
+            # chrooted bash at exit under CI. Real installs (no rootfs marker)
+            # keep stripping here.
             find /usr/bin /usr/lib -type f \( -executable -o -name "*.so*" \) \
                 -exec strip --strip-unneeded {} + 2>/dev/null || true
         fi

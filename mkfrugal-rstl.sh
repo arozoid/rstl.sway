@@ -897,6 +897,18 @@ case "$flavor" in
         ;;
 esac
 
+# ---- host-side ELF trim ----
+# install-base.sh / install-min.sh defer their strip for rootfs builds: doing
+# it inside the chroot strips the chroot's LIVE interpreter/libs, which has
+# been observed to segfault the chrooted bash at exit under CI. Nothing runs
+# from the rootfs binaries now, so strip them here from the build machine.
+if [ -e "$ROOTFS/etc/.rstl-sway-rootfs" ] && command -v strip >/dev/null 2>&1; then
+    info "stripping rootfs ELFs host-side (post chroot teardown)"
+    find "$ROOTFS/usr/bin" "$ROOTFS/usr/lib" -type f \( -executable -o -name "*.so*" \) \
+        -exec strip --strip-unneeded {} + 2>/dev/null || true
+    ok "strip done"
+fi
+
 # ---------------------------------------------------------------------------
 # 7. rstl-inst TUI (batch 4): boot tty1 straight into the installer TUI
 # ---------------------------------------------------------------------------

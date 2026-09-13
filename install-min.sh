@@ -376,8 +376,11 @@ step_8() {
         rm -rf /usr/share/gir-1.0 /usr/share/gtk-doc /usr/share/vala /usr/share/licenses 2>/dev/null || true
         # glibc i18n source; compiled en_US/C locales live in /usr/lib/locale
         #rm -rf /usr/share/i18n 2>/dev/null || true
-        # strip debug/unused symbols from binaries and shared libs
-        if command -v strip >/dev/null 2>&1; then
+        # strip debug/unused symbols from binaries and shared libs.
+        # Rootfs builds defer the strip to mkfrugal-rstl.sh (host-side after
+        # the chroot teardown): stripping the chroot's live interpreter/libs
+        # has been observed to segfault the chrooted bash at exit under CI.
+        if command -v strip >/dev/null 2>&1 && [ ! -e /etc/.rstl-sway-rootfs ]; then
             find /usr/bin /usr/lib -type f \( -executable -o -name "*.so*" \) \
                 -exec strip --strip-unneeded {} + 2>/dev/null || true
         fi
