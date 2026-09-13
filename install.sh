@@ -20,9 +20,9 @@ fi
 # Program configuration (selected at build time by mkfrugal-rstl.sh).
 #   vim   = nvim editor + superfile (spf) file manager
 #   mouse = micro editor (settings vendored in ./micro) + rovr file manager
-# RSTL_FIREFOX=1 bundles firefox on top of either configuration.
+# RSTL_EOLIE=1 bundles the eolie browser on top of either configuration.
 RSTL_PROGRAM="${RSTL_PROGRAM:-vim}"
-RSTL_FIREFOX="${RSTL_FIREFOX:-0}"
+RSTL_EOLIE="${RSTL_EOLIE:-0}"
 case "$RSTL_PROGRAM" in vim|mouse) ;; *) RSTL_PROGRAM="vim" ;; esac
 
 # ---------------------------------------------------------------------------
@@ -352,8 +352,8 @@ PKGS
       } > /dev/null
       ;;
   esac
-  if [ "$RSTL_FIREFOX" = "1" ]; then
-    printf '%s\n' 'firefox' >> "$GCDIR/packages-program"
+  if [ "$RSTL_EOLIE" = "1" ]; then
+    printf '%s\n' 'eolie' >> "$GCDIR/packages-program"
   fi
   cat "$GCDIR/packages-program" >> "$GCDIR/packages-extra"
 
@@ -430,6 +430,7 @@ step_3() {
   esac
   link_dir "$DOTFILES_DIR/mako"      "$HOME/.config/mako"
   link_dir "$DOTFILES_DIR/lf"        "$HOME/.config/lf"
+  link_dir "$DOTFILES_DIR/chawan"    "$HOME/.config/chawan"
   link_dir "$DOTFILES_DIR/fastfetch" "$HOME/.config/fastfetch"
   link_dir "$DOTFILES_DIR/.zshrc"    "$HOME/.zshrc"
   link_dir "$DOTFILES_DIR/greetd"    "/etc/greetd" yes

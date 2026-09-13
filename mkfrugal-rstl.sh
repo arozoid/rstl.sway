@@ -38,7 +38,7 @@
 #                           The desktop flavor decides how much of it is kept:
 #                           install = everything, install-min = file manager
 #                           only, install-base = none. (default: vim)
-#       --firefox           also install firefox (browser bundle variant)
+#       --eolie            also install the eolie browser (browser bundle variant)
 #       --rstl-source DIR   reuse a pre-extracted rstl kernel tree (boot/ +
 #                           lib/ + config, e.g. ~/Downloads/rstl.krnl) instead
 #                           of resolving + downloading the latest rstl.linuz
@@ -71,7 +71,7 @@
 #                           instead of pacstrapping a fresh one: skips pacstrap,
 #                           CachyOS bootstrap, -Syu and the kernel install; re-
 #                           stages the dotfiles and runs the selected flavor (the
-#                           "type x program x firefox" layer), then assembles the
+#                           "type x program x eolie" layer), then assembles the
 #                           frugal + kernel ISOs. linux-cachyos needs no reinstall
 #                           (modules come from DIR); rstl/vdpup fetch their assets.
 #       --force             rebuild into --target even if it is not empty
@@ -93,7 +93,7 @@
 # Program configurations (--program):
 #   vim        nvim + superfile (spf) file manager
 #   mouse      micro editor (cachyos-micro-settings) + rovr file manager
-#   --firefox  bundles firefox on top of either program configuration
+#   --eolie   bundles the eolie browser on top of either program configuration
 
 set -eu
 
@@ -135,7 +135,7 @@ stage_base=0
 reuse_rootfs=""
 opt_rstl_source=""
 program="vim"
-opt_firefox=0
+opt_eolie=0
 opt_firmware=""
 opt_modules_build=""
 opt_modules_source=""
@@ -185,7 +185,7 @@ while [ "$#" -gt 0 ]; do
         --program) [ "$#" -ge 2 ] || die "--program requires vim|mouse"
             program="$2"; shift 2 ;;
         --program=*) program="${1#*=}"; shift ;;
-        --firefox) opt_firefox=1; shift ;;
+        --eolie) opt_eolie=1; shift ;;
         --rstl-source) [ "$#" -ge 2 ] || die "--rstl-source requires a directory"
             opt_rstl_source="$2"; shift 2 ;;
         --rstl-source=*) opt_rstl_source="${1#*=}"; shift ;;
@@ -759,7 +759,7 @@ replicate_symlinks() { # $1 = home dir whose $1/.config/rstl.sway is the source
     home="$1"
     cfg="$home/.config/rstl.sway"
     DEST="$home/.config"
-    linklist="sway swaylock swayidle yambar rofi fish foot mako lf fastfetch"
+    linklist="sway swaylock swayidle yambar rofi fish foot mako lf chawan fastfetch"
     case "$program" in
         mouse) linklist="$linklist rovr" ;;
         *)     linklist="$linklist nvim" ;;
@@ -822,7 +822,7 @@ install_as_rustle() {
     chr chown -R rustle:rustle /home/rustle/.config
     printf '%%wheel ALL=(ALL:ALL) NOPASSWD: ALL\n' > "$ROOTFS/etc/sudoers.d/10-installer"
     chmod 440 "$ROOTFS/etc/sudoers.d/10-installer"
-    if ! chr /bin/su - rustle -c "cd \$HOME/.config/rstl.sway && RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox ./${1} ${FLAG_YES}" \
+    if ! chr /bin/su - rustle -c "cd \$HOME/.config/rstl.sway && RSTL_PROGRAM=$program RSTL_EOLIE=$opt_eolie ./${1} ${FLAG_YES}" \
             1>"$target/installer.log" 2>&1; then
         tail -40 "$target/installer.log" >&2 || true
         die "${1} failed while running as rustle"
@@ -847,7 +847,7 @@ set_passwords() {
 header "Installing flavor: $flavor"
 case "$flavor" in
     install-min)
-        chr /bin/sh -c "RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox /root/.config/rstl.sway/install-min.sh $FLAG_YES"
+        chr /bin/sh -c "RSTL_PROGRAM=$program RSTL_EOLIE=$opt_eolie /root/.config/rstl.sway/install-min.sh $FLAG_YES"
         ensure_rustle_user
         # surface the root-staged desktop config for the rustle login too
         home="$ROOTFS/home/rustle"
@@ -861,7 +861,7 @@ case "$flavor" in
         ;;
 
     install-base)
-        chr /bin/sh -c "RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox /root/.config/rstl.sway/install-base.sh $FLAG_YES"
+        chr /bin/sh -c "RSTL_PROGRAM=$program RSTL_EOLIE=$opt_eolie /root/.config/rstl.sway/install-base.sh $FLAG_YES"
         ensure_rustle_user
         # surface the root-staged desktop config for the rustle login too
         home="$ROOTFS/home/rustle"
@@ -1148,7 +1148,7 @@ printf '%s\n' \
     "flavor: $flavor" \
     "arch:   x86-64-v$arch_level" \
     "kernel: $kernel_pkg ($kernelver)" \
-    "program: $program${opt_firefox:+, firefox}" \
+    "program: $program${opt_eolie:+, eolie}" \
     "build:  $(date -u '+%Y-%m-%d %H:%M UTC')" \
     > "$target/readme_kernel_version.txt"
 

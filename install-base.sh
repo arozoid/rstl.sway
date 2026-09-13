@@ -26,9 +26,9 @@ if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
 fi
 
 # The base variant carries no program configuration (RSTL_PROGRAM is ignored
-# here): vim/mouse editions are install/install-min only.  RSTL_FIREFOX=1
-# bundles firefox on top of the base desktop.
-RSTL_FIREFOX="${RSTL_FIREFOX:-0}"
+# here): vim/mouse editions are install/install-min only.  RSTL_EOLIE=1
+# bundles the eolie browser on top of the base desktop.
+RSTL_EOLIE="${RSTL_EOLIE:-0}"
 
 SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
 DOTFILES_DIR="${HOME}/.config/rstl.sway"
@@ -220,12 +220,12 @@ step_2() {
 
     install_or_fallback notwaita-cursors-grey adwaita-cursors
 
-    # base has no program config; an optional firefox bundle is still honored
-    if [ "$RSTL_FIREFOX" = "1" ]; then
-        if run_sudo pacman -Ssq "^(firefox)$" 2>/dev/null | grep -qx "firefox"; then
-            pac_retry -S --needed --noconfirm firefox
+    # base has no program config; an optional eolie bundle is still honored
+    if [ "$RSTL_EOLIE" = "1" ]; then
+        if run_sudo pacman -Ssq "^(eolie)$" 2>/dev/null | grep -qx "eolie"; then
+            pac_retry -S --needed --noconfirm eolie
         else
-            echo "  firefox not found in repos, skipping"
+            echo "  eolie not found in repos, skipping"
         fi
     fi
 

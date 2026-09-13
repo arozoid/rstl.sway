@@ -1,11 +1,30 @@
 {
   "default": [
-    { "name": "HOME", "path": "$HOME" }
+    {
+      "name": "HOME",
+      "path": "$HOME"
+    },
+    {
+      "name": "Trash",
+      "path": "$TRASH"
+    }
   ],
   "pins": [
-    { "name": "Documents", "path": "$DOCUMENTS" },
-    { "name": "Downloads", "path": "$DOWNLOADS" },
-    { "name": "Pictures",  "path": "$PICTURES" },
-    { "name": "rstl",      "path": "$CONFIG/rstl.sway" }
+    {
+      "name": "Documents",
+      "path": "$DOCUMENTS"
+    },
+    {
+      "name": "Downloads",
+      "path": "$DOWNLOADS"
+    },
+    {
+      "name": "Pictures",
+      "path": "$PICTURES"
+    },
+    {
+      "name": "rstl",
+      "path": "$CONFIG/rstl.sway"
+    }
   ]
 }

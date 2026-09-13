@@ -1,0 +1,17 @@
+# chawan (chw): terminal web browser
+# Canonical path: ~/.config/chawan/config.toml
+
+[buffer]
+# JavaScript. "app" additionally exposes fingerprintable APIs (window size,
+# etc.) for better app-site compatibility at a privacy cost; plain `true`
+# keeps those APIs off while running scripts.
+scripting = true
+
+# Inline image display. Requires a terminal that speaks sixel or the Kitty
+# image protocol (foot supports both).
+images = true
+
+[display]
+# "auto" probes the terminal for sixel/kitty support and disables images when
+# neither is present. Keep "none" only to disable rendering entirely.
+image-mode = "auto"

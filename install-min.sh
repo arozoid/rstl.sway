@@ -24,9 +24,9 @@ fi
 # minimal variant keeps ONLY the program's file manager (no editor bundle):
 #   vim   = superfile (spf)
 #   mouse = rovr
-# RSTL_FIREFOX=1 bundles firefox on top.
+# RSTL_EOLIE=1 bundles the eolie browser on top.
 RSTL_PROGRAM="${RSTL_PROGRAM:-vim}"
-RSTL_FIREFOX="${RSTL_FIREFOX:-0}"
+RSTL_EOLIE="${RSTL_EOLIE:-0}"
 case "$RSTL_PROGRAM" in vim|mouse) ;; *) RSTL_PROGRAM="vim" ;; esac
 
 SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -220,7 +220,7 @@ step_2() {
         mouse) pm_pkgs="rovr-bin" ;;
         *)      pm_pkgs="superfile" ;;
     esac
-    [ "$RSTL_FIREFOX" = "1" ] && pm_pkgs="$pm_pkgs firefox"
+    [ "$RSTL_EOLIE" = "1" ] && pm_pkgs="$pm_pkgs eolie"
     for pm in $pm_pkgs; do
         if run_sudo pacman -Ssq "^${pm}$" 2>/dev/null | grep -qx "$pm"; then
             pac_retry -S --needed --noconfirm "$pm"

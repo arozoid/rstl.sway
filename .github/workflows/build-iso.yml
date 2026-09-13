@@ -18,9 +18,9 @@
 #                              frugal + an initrd freshly built via mkFRkernel
 #                              from the cached rstl module tree, so loop.ko -
 #                              CONFIG_BLK_DEV_LOOP=m - rides inside)
-#                install / install-min layer 4 configs (vim · mouse · vim+firefox
-#                · mouse+firefox) x 3 kernels = 12 ISOs; install-base layers
-#                standard · standard+firefox x 3 kernels = 6 ISOs. 90 ISOs total.
+#                install / install-min layer 4 configs (vim · mouse · vim+eolie
+#                · mouse+eolie) x 3 kernels = 12 ISOs; install-base layers
+#                standard · standard+eolie x 3 kernels = 6 ISOs. 90 ISOs total.
 #
 # Artifacts: the ISO artifact names follow iso-<flavor>-<arch>; the release job
 # downloads everything matching iso-*.
@@ -129,7 +129,7 @@ jobs:
           free -m | head -2 | sed 's/^/  /'
           # 3 matrix jobs compress multi-GB rootfs in parallel; keep zstd cheap
           # (level 1, 2 threads) to avoid exhausting the shared runner memory.
-          tar --zstd -I 'zstd -1 -T2' -C "$STAGE/rstlsway" -cf \
+          tar -I 'zstd -1 -T2' -C "$STAGE/rstlsway" -cf \
             "$GITHUB_WORKSPACE/baserootfs-$ARCH.tar.zst" 07rootfs
           TARRC=$?
           if [ "$TARRC" -ne 0 ]; then
@@ -251,41 +251,19 @@ jobs:
           [ -s "$BASE" ] || { echo "::error::base artifact missing: $BASE"; exit 1; }
 
           case "$FLAVOR" in
-            install|install-min) CONFIGS="vim vim-firefox mouse mouse-firefox" ;;
-            install-base)        CONFIGS="standard firefox" ;;
+            install|install-min) CONFIGS="vim vim-eolie mouse mouse-eolie" ;;
+            install-base)        CONFIGS="standard eolie" ;;
           esac
 
-          # run a build in the background with a 90s heartbeat + stall guard;
-          # on failure print the log tail and abort. stdbuf keeps the log
-          # line-buffered (it's redirected to a file) so tails are truthful.
+          # Foreground build: the old setsid-background + 90s-heartbeat + wait
+          # design kept getting the step shell hard-killed at the exact moment
+          # the builder exited (even on success), so builds run in the
+          # foreground now and stream straight to the runner via tee.
           run_build() { # $1=label  $2=log  rest=command...
             local label="$1" log="$2"; shift 2
-            setsid bash -c 'exec timeout 90m stdbuf -oL -eL "$@"' bash "$@" > "$log" 2>&1 &
-            local pid=$!
-            local lastsz="" stalls=0
-            while kill -0 "$pid" 2>/dev/null; do
-              sleep 90
-              local sz tl proc
-              sz=$(stat -c %s "$log" 2>/dev/null || echo 0)
-              tl=$(tail -c 400 "$log" 2>/dev/null | tr '\r' '\n' | tail -1 | cut -c1-180)
-              proc=$(ps -eo comm,etime 2>/dev/null | grep -E 'pacman|curl|arch-chroot|mkfrugal|mkFRkernel|tar|zstd|mksquashfs|gen_init|mkfs|grub|xorriso|chroot ' | grep -v grep | head -4 | tr '\n' ' ; ')
-              av=$(free -m 2>/dev/null | awk '/Mem:/{print $7}')
-              echo "still building $label ($(date -u +%H:%M:%S)Z, log ${sz}B, ${av}M avail) - $tl"
-              [ -n "$proc" ] && echo "  active: $proc"
-              if [ -n "$lastsz" ] && [ "$sz" -eq "$lastsz" ] && [ -z "$proc" ]; then
-                stalls=$((stalls+1))
-                if [ "$stalls" -ge 6 ]; then
-                  echo "::error::$label: no log growth for 9m and no active child; aborting stalled build"
-                  kill -TERM -- -"$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
-                  break
-                fi
-              else
-                stalls=0
-              fi
-              lastsz="$sz"
-            done
-            local rc=0
-            wait "$pid" || rc=$?
+            echo "--- $label: starting $(date -u +%H:%M:%S)Z"
+            timeout 90m stdbuf -oL -eL "$@" 2>&1 | tee "$log"
+            local rc=${PIPESTATUS[0]}
             if [ "$rc" -eq 124 ]; then
               echo "::error::$label timed out after 90m"
             elif [ "$rc" -ne 0 ]; then
@@ -301,14 +279,14 @@ jobs:
 
           for PROG in $CONFIGS; do
             case "$PROG" in
-              vim|vim-firefox)     PROGMODE=vim ;;
-              mouse|mouse-firefox) PROGMODE=mouse ;;
+              vim|vim-eolie)         PROGMODE=vim ;;
+              mouse|mouse-eolie)     PROGMODE=mouse ;;
               *) PROGMODE=standard ;;
             esac
-            FIRE=0
-            case "$PROG" in *-firefox|firefox) FIRE=1 ;; esac
-            FIREBRA=""
-            [ "$FIRE" -eq 1 ] && FIREBRA="--firefox"
+            BRO=0
+            case "$PROG" in *-eolie|eolie) BRO=1 ;; esac
+            BROBRA=""
+            [ "$BRO" -eq 1 ] && BROBRA="--eolie"
             # program flags are meaningless for install-base (mkfrugal rejects
             # --program standard); pass them only for install/install-min
             ARGS_PROG=""
@@ -331,7 +309,7 @@ jobs:
                 "$T" \
                 --arch "$ARCH" \
                 --flavor "$FLAVOR" \
-                $ARGS_PROG $FIREBRA \
+                $ARGS_PROG $BROBRA \
                 --reuse-rootfs "$T/07rootfs" \
                 --force \
                 --yes \
@@ -363,7 +341,7 @@ jobs:
             printf '%s\n' \
               "name:   rstlsway-vdpup" \
               "flavor: $FLAVOR" \
-              "program: $PROGMODE${FIREBRA:+ + firefox}" \
+              "program: $PROGMODE${BROBRA:+ + eolie}" \
               "arch:   x86-64-v${ARCH#v}" \
               "kernel: vdpup (FirstRib huge kernel 6.1.52)" \
               "build:  $(date -u '+%Y-%m-%d %H:%M UTC')" \
@@ -406,7 +384,7 @@ jobs:
             printf '%s\n' \
               "name:   rstlsway-rstl" \
               "flavor: $FLAVOR" \
-              "program: $PROGMODE${FIREBRA:+ + firefox}" \
+              "program: $PROGMODE${BROBRA:+ + eolie}" \
               "arch:   x86-64-v${ARCH#v}" \
               "kernel: rstl 7.x (github.com/arozoid/rstl.linuz latest release)" \
               "build:  $(date -u '+%Y-%m-%d %H:%M UTC')" \
@@ -483,9 +461,9 @@ jobs:
           - install · install-min · install-base
 
           Program configs:
-          - install: vim (nvim + superfile) · mouse (micro + cachyos-micro-settings + rovr) · vim + firefox · mouse + firefox
+          - install: vim (nvim + superfile) · mouse (micro + cachyos-micro-settings + rovr) · vim + eolie · mouse + eolie
           - install-min: same program configs, keeping only each program's file manager
-          - install-base: standard · standard + firefox (no program variants)
+          - install-base: standard · standard + eolie (no program variants)
 
           Builds are autogenerated weekly and pruned to keep only the 2 most recent releases.
           EOF
