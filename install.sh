@@ -19,7 +19,7 @@ fi
 
 # Program configuration (selected at build time by mkfrugal-rstl.sh).
 #   vim   = nvim editor + superfile (spf) file manager
-#   mouse = micro editor (cachyos-micro-settings) + rovr file manager
+#   mouse = micro editor (settings vendored in ./micro) + rovr file manager
 # RSTL_FIREFOX=1 bundles firefox on top of either configuration.
 RSTL_PROGRAM="${RSTL_PROGRAM:-vim}"
 RSTL_FIREFOX="${RSTL_FIREFOX:-0}"
@@ -335,13 +335,12 @@ PKGS
   } > /dev/null
 
   # program-configuration packages, fed into the same per-package loop below:
-  # vim = superfile (binary spf); mouse = micro + cachyos-micro-settings
-  # (CachyOS) + rovr-bin (rstl-repo)
+  # vim = superfile (binary spf); mouse = micro (settings vendored in ./micro)
+  # + rovr-bin (rstl-repo)
   case "$RSTL_PROGRAM" in
     mouse)
       { cat > "$GCDIR/packages-program" <<'PKGS'
 micro
-cachyos-micro-settings
 rovr-bin
 PKGS
       } > /dev/null
@@ -420,7 +419,8 @@ step_3() {
   link_dir "$DOTFILES_DIR/foot"      "$HOME/.config/foot"
   case "$RSTL_PROGRAM" in
     mouse)
-      link_dir "$DOTFILES_DIR/rovr"  "$HOME/.config/rovr"
+      link_dir "$DOTFILES_DIR/rovr"   "$HOME/.config/rovr"
+      link_dir "$DOTFILES_DIR/micro"  "$HOME/.config/micro"
       printf "  ${C_DIM}program config 'mouse': rovr file manager, micro editor${C_RESET}\n"
       ;;
     *)

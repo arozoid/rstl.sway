@@ -1,0 +1,46 @@
+# rstl-green — black background, rice terminal text colors, forest-green bar.
+# Palette taken from foot/themes/rstl-term.ini; the bar green is sway's
+# client.focused border (#76a882) with its foreground (#e8f5ea).
+
+color-link default "#d4d4d4,#000000"
+color-link comment "#5f875f"
+
+color-link identifier "#81a1c1"
+color-link identifier.class "#81a1c1"
+color-link identifier.var "#88c0d0"
+
+color-link constant "#d2943e"
+color-link constant.number "#d2943e"
+color-link constant.string "#70b489"
+
+color-link symbol "#b48ead"
+color-link symbol.brackets "#88c0d0"
+color-link symbol.tag "#81a1c1"
+
+color-link type "#81a1c1"
+color-link type.keyword "#d2943e"
+
+color-link special "#b48ead"
+color-link statement "#70b489"
+color-link preproc "#b48ead"
+
+color-link underlined "#81a1c1"
+color-link error "bold #fc6b83"
+color-link todo "bold #d2943e"
+
+color-link diff-added "#3fa266"
+color-link diff-modified "#d2943e"
+color-link diff-deleted "#fc6b83"
+
+color-link gutter-error "#fc6b83"
+color-link gutter-warning "#d2943e"
+
+color-link statusline "#000000,#76a882"
+color-link tabbar "#e8f5ea,#76a882"
+color-link indent-char "#3f6047"
+color-link line-number "#3f6047"
+color-link current-line-number "#70b489"
+
+color-link cursor-line "#0e1f14"
+color-link color-column "#0e1f14"
+color-link type.extended "default"
