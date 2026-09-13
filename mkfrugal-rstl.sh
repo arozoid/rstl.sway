@@ -63,6 +63,17 @@
 #       --fetch-rstl        download + prepare the latest 'rstl' kernel assets
 #                           (vmlinuz, reorganized modules sfs, firmware) into
 #                           --cache and exit (no build is started).
+#       --stage-base        build a REUSABLE base rootfs (install-base flavor,
+#                           linux-cachyos kernel + modules + /boot kept) and exit
+#                           before the frugal is assembled. The workflow's first
+#                           3 jobs use this to cache one rootfs per microarch.
+#       --reuse-rootfs DIR  layer this build onto an existing base rootfs DIR
+#                           instead of pacstrapping a fresh one: skips pacstrap,
+#                           CachyOS bootstrap, -Syu and the kernel install; re-
+#                           stages the dotfiles and runs the selected flavor (the
+#                           "type x program x firefox" layer), then assembles the
+#                           frugal + kernel ISOs. linux-cachyos needs no reinstall
+#                           (modules come from DIR); rstl/vdpup fetch their assets.
 #       --force             rebuild into --target even if it is not empty
 #   -h, --help
 #
@@ -120,6 +131,8 @@ kernel_vdpup=0
 kernel_rstl=0
 fetch_vdpup_mode=0
 fetch_rstl_mode=0
+stage_base=0
+reuse_rootfs=""
 opt_rstl_source=""
 program="vim"
 opt_firefox=0
@@ -165,6 +178,10 @@ while [ "$#" -gt 0 ]; do
         --force) force=1; shift ;;
         --fetch-vdpup) fetch_vdpup_mode=1; shift ;;
         --fetch-rstl) fetch_rstl_mode=1; shift ;;
+        --stage-base) stage_base=1; shift ;;
+        --reuse-rootfs) [ "$#" -ge 2 ] || die "--reuse-rootfs requires a rootfs directory"
+            reuse_rootfs="$2"; shift 2 ;;
+        --reuse-rootfs=*) reuse_rootfs="${1#*=}"; shift ;;
         --program) [ "$#" -ge 2 ] || die "--program requires vim|mouse"
             program="$2"; shift 2 ;;
         --program=*) program="${1#*=}"; shift ;;
@@ -381,6 +398,11 @@ export FLAG_YES=""
 if [ "$assume_yes" -eq 1 ]; then FLAG_YES="--yes"; fi
 
 ROOTFS="$target/07rootfs"
+if [ -n "$reuse_rootfs" ]; then
+    ROOTFS="${reuse_rootfs%/}"
+fi
+[ "$stage_base" -eq 1 ] && [ -n "$reuse_rootfs" ] && \
+    die "--stage-base and --reuse-rootfs are mutually exclusive"
 mkdir -p "$target"
 
 # ---------------------------------------------------------------------------
@@ -420,12 +442,16 @@ cleanup() {
 }
 trap cleanup EXIT
 
-header "Bootstrapping base system into '$ROOTFS'"
-mkdir -p "$ROOTFS"
-pacstrap -C "$REPO/pacman-base.conf" -K "$ROOTFS" --noconfirm base sudo git
-
-# marker so install-min.sh / install-base.sh may run as root inside a rootfs
-touch "$ROOTFS/etc/.rstl-sway-rootfs"
+header "Preparing rootfs at '$ROOTFS'"
+if [ -n "$reuse_rootfs" ]; then
+    [ -d "$ROOTFS" ] || die "--reuse-rootfs '$ROOTFS' is not a directory"
+    info "reusing base rootfs '$ROOTFS' (skip pacstrap / CachyOS bootstrap / -Syu / kernel)"
+else
+    mkdir -p "$ROOTFS"
+    pacstrap -C "$REPO/pacman-base.conf" -K "$ROOTFS" --noconfirm base sudo git
+    # marker so install-min.sh / install-base.sh may run as root inside a rootfs
+    touch "$ROOTFS/etc/.rstl-sway-rootfs"
+fi
 
 # make sure DNS works inside the chroot while pacman talks to the mirrors
 if [ -s /etc/resolv.conf ]; then
@@ -463,9 +489,85 @@ bootstrap_cachyos() {
     arch-chroot "$ROOTFS" pacman-key --populate cachyos 2>/dev/null || true
     ok "CachyOS keyring + mirrorlists installed"
 }
-bootstrap_cachyos
+if [ -z "$reuse_rootfs" ]; then
+    bootstrap_cachyos
 
-cp -a "$REPO/$pacman_conf_name" "$ROOTFS/etc/pacman.conf"
+    cp -a "$REPO/$pacman_conf_name" "$ROOTFS/etc/pacman.conf"
+
+# The linux-cachyos kernel package is ~150MB; the CDN edge the build container
+# happens to hit can serve a truncated copy of it, which torches the whole
+# -Syu/-S transaction (PGP verify fails on every retry).  Pre-download it on
+# the host into the rootfs pacman cache, byte-verified against the sha256 in
+# the mirror's repo db, so the chroot pacman never has to pull that one file
+# from its (often flaky) first-hop mirror.
+kernel_pkg_cache_guard=""
+kernel_pkg_db_sha=""
+kernel_pkg_mirror_sha=""
+preload_kernel_pkg() {
+    [ "$kernel_pkg" = "linux-cachyos" ] || return 0
+    local tier repo dbname
+    case "$arch_level" in
+        1|2) tier="x86_64";    repo="cachyos";    dbname="cachyos.db" ;;
+        3)   tier="x86_64_v3"; repo="cachyos-v3"; dbname="cachyos-v3.db" ;;
+        *)   return 0 ;;
+    esac
+    local tmp
+    tmp="$(mktemp -d)" || die "cannot mktemp for kernel preload"
+    trap 'rm -rf "$tmp"' RETURN
+    local base
+    base="https://mirror.cachyos.org/repo/$tier/$repo"
+    if ! curl -fsSL --connect-timeout 20 --max-time 180 --retry 3 --retry-delay 5 \
+        -o "$tmp/$dbname" "$base/$dbname"; then
+        warn "cannot fetch $base/$dbname to resolve $kernel_pkg; falling back to chroot pacman"
+        return 0
+    fi
+    local entry
+    entry="$(zstd -dc "$tmp/$dbname" | tar -tf - | grep -E '^linux-cachyos-[0-9][^/]*/desc$' | sed 's|/desc$||' | sort -V | tail -1)"
+    [ -n "$entry" ] || return 0
+    zstd -dc "$tmp/$dbname" | tar -xf - -C "$tmp" "$entry/desc" 2>/dev/null || return 0
+    [ "$(awk '/^%NAME%/{getline;print;exit}' "$tmp/$entry/desc")" = "linux-cachyos" ] || return 0
+    local filename sha csize
+    filename="$(awk '/^%FILENAME%/{getline;print;exit}' "$tmp/$entry/desc")"
+    sha="$(awk '/^%SHA256SUM%/{getline;print;exit}' "$tmp/$entry/desc")"
+    csize="$(awk '/^%CSIZE%/{getline;print;exit}' "$tmp/$entry/desc")"
+    case "$filename" in *"-$tier.pkg.tar.zst") ;; *) return 0 ;; esac
+    [ -n "$sha" ] || return 0
+    kernel_pkg_db_sha="$sha"
+    local cache_dir target
+    cache_dir="$ROOTFS/var/cache/pacman/pkg"
+    mkdir -p "$cache_dir" 2>/dev/null || return 0
+    target="$cache_dir/$filename"
+    if [ -f "$target" ] && [ "$(sha256sum "$target" | awk '{print $1}')" = "$sha" ]; then
+        ok "kernel package already cached + verified: $filename ($csize bytes)"
+        kernel_pkg_cache_guard="$filename"
+        return 0
+    fi
+    info "preloading $kernel_pkg -> $filename (sha256 verified against repo db)"
+    local mirror
+    for mirror in "$base" "https://cdn77.cachyos.org/repo/$tier/$repo" "https://us.cachyos.org/repo/$tier/$repo"; do
+        rm -f "$target" "$target.sig"
+        if curl -fsSL --connect-timeout 20 --max-time 900 --retry 2 --retry-delay 5 \
+            -o "$target" "$mirror/$filename"; then
+            kernel_pkg_mirror_sha="$(sha256sum "$target" | awk '{print $1}')"
+            if [ "$kernel_pkg_mirror_sha" = "$sha" ]; then
+                curl -fsSL --max-time 60 -o "$target.sig" "$mirror/$filename.sig" 2>/dev/null || true
+                ok "kernel package preloaded + verified: $filename"
+                kernel_pkg_cache_guard="$filename"
+                return 0
+            fi
+        fi
+    done
+    rm -f "$target" "$target.sig"
+    warn "kernel preload failed from all mirrors; falling back to chroot pacman retries"
+}
+preload_kernel_pkg
+
+# if the repo db and every mirror payload disagree for the kernel package, the
+# package was rebuilt without the db being republished: no pacman retry can
+# help, so fail now with the evidence instead of burning four 150MB downloads.
+if [ -n "$kernel_pkg_db_sha" ] && [ -z "$kernel_pkg_cache_guard" ] && [ -n "$kernel_pkg_mirror_sha" ]; then
+    die "repo db sha256=${kernel_pkg_db_sha} but mirror payload sha256=${kernel_pkg_mirror_sha} for $kernel_pkg: CachyOS rebuilt the package without republishing the repo db (rebuild raced the db sync). No retry can fix this - wait for their re-sync/version bump, or run 'pacman -Sy' on a host to smoke-test."
+fi
 
 # retry a chroot pacman transaction against transient mirror/CDN trouble. A
 # mirror occasionally serves a truncated/corrupt package (PGP verification
@@ -478,16 +580,26 @@ chroot_pac() {
     until arch-chroot "$ROOTFS" pacman "$@"; do
         attempt=$((attempt + 1))
         if [ "$attempt" -ge 4 ]; then
+            if [ -n "$kernel_pkg_db_sha" ] && [ -n "$kernel_pkg_cache_guard" ] \
+                && [ -f "$ROOTFS/var/cache/pacman/pkg/$kernel_pkg_cache_guard" ]; then
+                actual="$(sha256sum "$ROOTFS/var/cache/pacman/pkg/$kernel_pkg_cache_guard" | awk '{print $1}')"
+                if [ "$actual" != "$kernel_pkg_db_sha" ]; then
+                    die "repo db sha256=${kernel_pkg_db_sha} but mirror payload sha256=${actual} for $kernel_pkg: CachyOS rebuilt the package without republishing the repo db (rebuild raced the db sync). No retry can fix this - wait for their re-sync/version bump, or run 'pacman -Sy' on a host to smoke-test."
+                fi
+            fi
             die "chroot pacman '$*' failed after ${attempt} attempts (mirror/CDN serving corrupt packages?)"
         fi
         warn "chroot pacman '$*' failed (attempt ${attempt}); clearing package cache + retrying"
-        rm -rf "$ROOTFS/var/cache/pacman/pkg/"* 2>/dev/null || true
+        find "$ROOTFS/var/cache/pacman/pkg" -mindepth 1 -maxdepth 1 \
+            ! -name "$kernel_pkg_cache_guard" ! -name "$kernel_pkg_cache_guard.sig" \
+            -delete 2>/dev/null || true
         sleep 10
     done
 }
 
 info "syncing + upgrading the rootfs (CachyOS repos)"
 chroot_pac -Syu --noconfirm
+fi
 
 # ---------------------------------------------------------------------------
 # 3. kernel: linux-cachyos (default), FirstRib huge kernel "vdpup"
@@ -499,18 +611,22 @@ chroot_pac -Syu --noconfirm
 # ---------------------------------------------------------------------------
 header "Installing kernel $kernel_pkg"
 if [ "$kernel_vdpup" -eq 1 ]; then
-    arch-chroot "$ROOTFS" pacman -Rns --noconfirm linux >/dev/null 2>&1 || true
+    [ -z "$reuse_rootfs" ] && arch-chroot "$ROOTFS" pacman -Rns --noconfirm linux >/dev/null 2>&1 || true
     ok "vdpup: no pacman kernel; huge-kernel assets fetched below"
 elif [ "$kernel_rstl" -eq 1 ]; then
-    arch-chroot "$ROOTFS" pacman -Rns --noconfirm linux >/dev/null 2>&1 || true
+    [ -z "$reuse_rootfs" ] && arch-chroot "$ROOTFS" pacman -Rns --noconfirm linux >/dev/null 2>&1 || true
     ok "rstl: no pacman kernel; rstl.linuz kernel assets fetched below"
 else
-    chroot_pac -S --noconfirm "$kernel_pkg"
+    if [ -n "$reuse_rootfs" ]; then
+        info "reuse: linux-cachyos already installed (modules from base rootfs)"
+    else
+        chroot_pac -S --noconfirm "$kernel_pkg"
+        if [ "$kernel_pkg" != "linux" ] && [ -d "$ROOTFS/usr/lib/modules" ]; then
+            arch-chroot "$ROOTFS" pacman -Rns --noconfirm linux >/dev/null 2>&1 || true
+        fi
+    fi
     kernelver="$(ls -1 "$ROOTFS/usr/lib/modules" | tail -1)"
     ok "kernel modules: $kernelver"
-    if [ "$kernel_pkg" != "linux" ] && [ -d "$ROOTFS/usr/lib/modules" ]; then
-        arch-chroot "$ROOTFS" pacman -Rns --noconfirm linux >/dev/null 2>&1 || true
-    fi
 fi
 
 # --- FirstRib huge kernel "vdpup": fetch kernel + modules + initrd ----------
@@ -694,7 +810,7 @@ EOMKAN
 # install_dotfiles() function in rstl-install.sh).
 install_as_rustle() {
     info "running ${1} as user 'rustle' (NOPASSWD wheel, restored afterwards)"
-    chr useradd -m -G wheel,video,audio,storage,input -s /usr/bin/bash rustle
+    ensure_rustle_user
     as_rustle_dir="$ROOTFS/home/rustle/.config/rstl.sway"
     rm -rf "$as_rustle_dir"
     mkdir -p "$ROOTFS/home/rustle/.config"
@@ -825,6 +941,17 @@ ExecStart=
 ExecStart=-/usr/bin/agetty --autologin root --noclear %I $TERM
 EOF
     ok "tty1 autologin root -> rstl-inst"
+fi
+
+# --stage-base: the rootfs is now the reusable base (linux-cachyos kernel with
+# /boot + /usr/lib/modules intact, install-base done, users + passwords set).
+# Stop BEFORE the frugal assembly, which strips /boot + modules from the rootfs
+# and compresses it into 07rootfs.sfs. The workflow tars this directory as the
+# baserootfs artifact; layered jobs --reuse-rootfs it.
+if [ "$stage_base" -eq 1 ]; then
+    header "Base rootfs staged at '$ROOTFS'"
+    info "stage-base: stopping before frugal assembly (keeping /boot + /usr/lib/modules)"
+    exit 0
 fi
 
 # ---------------------------------------------------------------------------
