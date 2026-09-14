@@ -192,10 +192,16 @@ fi
 # above still mutated the real frugal directory, which the chained wraps depend
 # on (they cp -al it into their own subdirectories).
 if [ -n "$source_root" ]; then
-    isostage="$(mktemp -d "${TMPDIR:-/tmp}/rstl-iso.XXXXXX")"
+    # staging dir must live on the SAME filesystem as the frugal (hardlinks
+    # cannot cross devices, and /tmp is a different mount than the workspace
+    # on CI runners). Fall back to a full copy if hardlinking still fails.
+    isostage="$(mktemp -d "$source_root/.rstl-iso.XXXXXX" 2>/dev/null || mktemp -d "${TMPDIR:-/tmp}/rstl-iso.XXXXXX")"
     trap 'rm -rf "$isostage"' EXIT
     mkdir -p "$isostage/$name"
-    cp -al "$frugal"/. "$isostage/$name"/
+    if ! cp -al "$frugal"/. "$isostage/$name"/ 2>/dev/null; then
+        rm -rf "$isostage/$name"
+        cp -a "$frugal"/. "$isostage/$name"/
+    fi
     stage="$isostage"
     info "ISO tree staged (single frugal) at '$stage'"
 fi
