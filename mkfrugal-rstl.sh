@@ -778,6 +778,12 @@ replicate_symlinks() { # $1 = home dir whose $1/.config/rstl.sway is the source
     [ -f "$DEST/xdg-desktop-portal/portals.conf" ] || \
         printf '[preferred]\norg.freedesktop.impl.portal.FileChooser=termfilechooser\n' \
             > "$DEST/xdg-desktop-portal/portals.conf"
+    # point the shell's editor at the installed one (mouse mode has no nvim);
+    # sed the source copy so the skel/root config converges too
+    if [ "$program" = "mouse" ] && [ -f "$cfg/.zshrc" ]; then
+        sed -i 's/^export EDITOR=nvim$/export EDITOR=micro/' "$cfg/.zshrc"
+        sed -i "s/^alias vim='nvim'\$/alias vim='micro'/" "$cfg/.zshrc"
+    fi
 }
 
 ensure_rustle_user() {

@@ -67,9 +67,11 @@ prefer doing everything by hand? see [MANUAL_INSTALL.md](MANUAL_INSTALL.md)
 ---
 
 - foot: fast, feature-rich terminal (rust)
-- rovr-bin ([rstl.repo](https://github.com/arozoid/rstl.repo)): post-modern terminal file explorer, used by the file chooser if installed (try superfile `spf`, or lf too)
+- superfile: a fancy and modern terminal file manager, prioritized by the file chooser if installed
+- rovr-bin ([rstl.repo](https://github.com/arozoid/rstl.repo)): post-modern terminal file explorer, used by the file chooser if installed 
 - nvim: vim alternative
-- fish: friendly interactive shell
+- micro: nano, but much more customizable
+- zsh: highly customizable shell
 
 ## keybinds
 

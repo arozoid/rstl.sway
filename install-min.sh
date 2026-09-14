@@ -263,6 +263,14 @@ step_3() {
         '[preferred]
 org.freedesktop.impl.portal.FileChooser=termfilechooser'
     echo "configured file chooser portal"
+
+    # point the shell's editor at the installed one (mouse mode has no nvim)
+    if [ "$RSTL_PROGRAM" = "mouse" ]; then
+        sed -i 's/^export EDITOR=nvim$/export EDITOR=micro/' \
+            "$DOTFILES_DIR/.zshrc" "$HOME/.zshrc" 2>/dev/null || true
+        sed -i "s/^alias vim='nvim'\$/alias vim='micro'/" \
+            "$DOTFILES_DIR/.zshrc" "$HOME/.zshrc" 2>/dev/null || true
+    fi
 }
 
 step_4() {
