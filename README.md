@@ -113,3 +113,5 @@ prefer doing everything by hand? see [MANUAL_INSTALL.md](MANUAL_INSTALL.md)
 [melatonia/meloworld-dotfiles](https://github.com/melatonia/meloworld-dotfiles) for the chime startup desktop sound and the default wallpaper :3
 
 [firstrib/firstrib](https://gitlab.com/firstrib/firstrib) for the "firstrib" initrd and for some initrd and frugal install scripts (which i had remastered for this repo)
+
+[CachyOS](https://cachyos.org) for the CachyOS kernel and the linux-cachyos-bore base for [rstl.linuz](https://github.com/arozoid/rstl.linuz)!
