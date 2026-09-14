@@ -70,7 +70,7 @@ sudo pacman -S --needed foot fish fastfetch bat eza zoxide jq
 ```
 
 no terminal file manager is installed; the file chooser portal uses the first
-of `superfile` (`spf`) / `rovr` / `lf` that it finds on your system — install
+of `superfile` (`spf`) / `rovr` / `lf` that it finds on your system. install
 and configure the one you like (e.g. `rovr-bin` from rstl.repo, or `lf`)
 
 ### editor
@@ -150,5 +150,5 @@ sudo ln -s ~/.config/rstl.sway/greetd /etc/greetd
   sudo install -Dm755 ~/.config/rstl.sway/scripts/first-login.sh /usr/local/bin/rstl-first-login
   ```
 - drop your wallpaper at `~/Pictures/Wallpapers/wallpaper.jpg` or edit `~/.config/rstl.sway/wallpaper`
-- battery alerts run via cronie — add `~/.config/rstl.sway/scripts/batt.sh` to your crontab (see step 6 of `install.sh`)
-- `rstlpk` (our minimal polkit agent) — fetches from GitHub releases: `sudo rstlpk/install.sh`
+- battery alerts run via cronie. add `~/.config/rstl.sway/scripts/batt.sh` to your crontab (see step 6 of `install.sh`)
+- `rstlpk` (our minimal polkit agent) fetches from GitHub releases: `sudo rstlpk/install.sh`
