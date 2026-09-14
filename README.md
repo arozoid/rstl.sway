@@ -1,4 +1,4 @@
-# rstl.sway ⋅ 370 MiB desktop
+# rstl.sway ⋅ ~0.8 GiB desktop
 
 ultra lean & minimalistic sway config (based on arch linux) for those who want to make the most of their screen space while keeping all the features and storage space (optimized for laptops)
 
@@ -21,7 +21,7 @@ this setup includes but is not limited to:
 - papirus icon theme
 - [rstl-pick](https://github.com/arozoid/rstl-pick) app picker
 
-and several more features, such as [polkit authentication](https://github.com/arozoid/rstlpk) + dssd secret service + xdg portal integration. (~0.92 GiB full size on base arch linux install)
+and several more features, such as [polkit authentication](https://github.com/arozoid/rstlpk) + dssd secret service + xdg portal integration. (full rootfs: \~1.0 GiB installed; a bare arch base install is \~0.2 GiB, so the desktop itself adds \~0.8 GiB over base)
 
 ## installation
 
@@ -33,7 +33,7 @@ cd ~/.config/rstl.sway/
 ./install.sh
 ```
 
-follow the steps to select what you wanna do and not do, and that's basically it. after installation, the net installation size is ~
+follow the steps to select what you wanna do and not do, and that's basically it. after installation, the net installed rootfs is \~1.0 GiB (\~0.8 GiB of desktop on top of a \~0.2 GiB arch base install)
 
 ### manual install
 
