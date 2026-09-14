@@ -113,9 +113,16 @@ sudo pacman -S --needed dav1d libvpx openh264 mesa vulkan-icd-loader
 
 ```bash
 printf '\n[rstl-repo]\nSigLevel = Optional TrustAll\nServer = https://arozoid.github.io/rstl.repo\n' \
-| run_sudo tee -a "$conf" >/dev/null
-sudo pacman -Sy --needed yambar xdg-desktop-portal-termfilechooser ttf-jetbrains-mono-nerd-min papirus-icon-theme-dark-only adwaita-cursors dssd
+| sudo tee -a /etc/pacman.conf >/dev/null
+sudo pacman -Sy --needed \
+  yambar xdg-desktop-portal-termfilechooser ttf-jetbrains-mono-nerd-min \
+  papirus-icon-theme-dark-only notwaita-cursors-grey adwaita-cursors dssd
 ```
+
+`notwaita-cursors-grey` is the default cursor package; `adwaita-cursors` is
+installed as a fallback if notwaita isn't available. `hicolor-icon-theme` (the
+base icon set) is pulled in automatically by other packages and doesn't need
+explicit installation.
 
 ### symlink the configs
 
