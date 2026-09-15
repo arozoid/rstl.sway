@@ -40,7 +40,7 @@ for_window [app_id="calpopup"] border pixel 1
 for_window [app_id="rstl-pick"] floating enable
 for_window [app_id="rstl-pick"] border pixel 1
 for_window [app_id="rstl-pick"] move position center
-for_window [app_id="rstl-pick"] resize set width 600 px height 500 px
+for_window [app_id="rstl-pick"] resize set width 700 px height 550 px
 
 ### session
 bindsym $mod+Shift+q kill
