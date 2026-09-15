@@ -143,14 +143,14 @@ jobs:
 
       - name: Upload build.log on failure
         if: failure()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: buildlog-base-${{ matrix.arch }}
           path: build.log
           if-no-files-found: ignore
 
       - name: Upload baserootfs artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: baserootfs-${{ matrix.arch }}
           path: baserootfs-${{ matrix.arch }}.tar.zst
@@ -197,7 +197,7 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Cache huge-kernel firmware
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/cache/01firmware.sfs
           key: cachyos-firmware
@@ -211,7 +211,7 @@ jobs:
           curl -fL --connect-timeout 30 --max-time 1800 --retry 3 --retry-delay 5 "$URL" -o "$GITHUB_WORKSPACE/cache/01firmware.sfs"
 
       - name: Cache vdpup huge kernel (vmlinuz + modules sfs + initrd)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ${{ github.workspace }}/cache/vdpup-vmlinuz
@@ -220,7 +220,7 @@ jobs:
           key: vdpup-kernel-6.1.52
 
       - name: Cache rstl kernel (latest rstl.linuz release assets)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ${{ github.workspace }}/cache/rstl-kernel.tar.zst
@@ -231,7 +231,7 @@ jobs:
           key: rstl-kernel
 
       - name: Download base rootfs (baserootfs-${{ matrix.arch }})
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           pattern: baserootfs-${{ matrix.arch }}
           path: ${{ github.workspace }}/base
@@ -446,14 +446,14 @@ jobs:
 
       - name: Upload build.log on failure
         if: failure()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: buildlog-${{ matrix.flavor }}-${{ matrix.arch }}
           path: build.log
           if-no-files-found: ignore
 
       - name: Upload ISO artifact (all kernels)
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: iso-${{ matrix.flavor }}-${{ matrix.arch }}
           path: dist/*.iso
@@ -464,7 +464,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download all ISOs
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           pattern: iso-*
           path: dist
