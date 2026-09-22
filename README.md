@@ -5,20 +5,24 @@ ultra lean & minimalistic sway config (based on arch linux) for those who want t
 ![preview](./assets/images/preview.png)
 
 this setup includes but is not limited to:
-- window manager
-- minimal bar
-- launcher
-- notifications
-- no file manager installed; the file chooser portal uses superfile -> rovr -> lf (whichever exists)
-- lock screen
-- screenshots
-- clipboard history
-- neovim text editor
+- window manager (sway)
+- minimal bar (yambar)
+- launcher (rofi)
+- notifications (mako)
+- file manager (spf / rovr)
+- emoji / unicode / nerd emoji picker (latuicon)
+- audio mixer (wiremix)
+- bluetooth management (bluetui)
+- clipboard history & interface (clipse)
+- calculator (eva)
+- lock screen (swaylock)
+- screenshots (grim / slurp)
+- text editor (neovim / micro)
 - multimedia codecs
 - audio protocols
-- network manager
-- login screen
-- papirus icon theme
+- network manager (nmtui)
+- login screen (tuigreet)
+- browser (firefox)
 - [rstl-pick](https://github.com/arozoid/rstl-pick) app picker
 
 and several more features, such as [polkit authentication](https://github.com/arozoid/rstlpk) + dssd secret service + xdg portal integration. (full rootfs: \~1.0 GiB installed; a bare arch base install is \~0.2 GiB, so the desktop itself adds \~0.8 GiB over base)
@@ -45,15 +49,15 @@ prefer doing everything by hand? see [MANUAL_INSTALL.md](MANUAL_INSTALL.md)
 - yambar ([rstl.repo](https://github.com/arozoid/rstl.repo)): modular status bar for wayland
 - sway: tiling window manager
 - mako: lightweight notification daemon
-- rofi: minimal and customizable launcher
+- rofi: minimal and customizable launcher (used for app picker and power menu)
 
 ---
 
 - grim/slurp: screenshot tools
-- wl-clipboard/clipse: wayland clipboard manager
+- wl-clipboard: wayland clipboard manager
 - greetd/tuigreet: ultra minimal greet program
-- ttf-jetbrains-mono-nerd-min ([rstl.repo](https://github.com/arozoid/rstl.repo))/noto-fonts-emoji: for terminal and other apps
-- papirus-icon-theme-dark-only ([rstl.repo](https://github.com/arozoid/rstl.repo)): for rofi launcher and other utilities
+- ttf-jetbrains-mono-nerd-min ([rstl.repo](https://github.com/arozoid/rstl.repo)) / noto-fonts-emoji: fonts for terminal and other apps
+- papirus-icon-theme-dark-only ([rstl.repo](https://github.com/arozoid/rstl.repo)) / hicolor-icon-theme: icons for rofi launcher and other utilities
 
 ---
 
@@ -67,11 +71,18 @@ prefer doing everything by hand? see [MANUAL_INSTALL.md](MANUAL_INSTALL.md)
 ---
 
 - foot: fast, feature-rich terminal (rust)
-- superfile: a fancy and modern terminal file manager, prioritized by the file chooser if installed
-- rovr-bin ([rstl.repo](https://github.com/arozoid/rstl.repo)): post-modern terminal file explorer, used by the file chooser if installed 
 - nvim: vim alternative
-- micro: nano, but much more customizable
+- micro: customizable nano alternative
 - zsh: highly customizable shell
+
+---
+
+- eva: simple and capable REPL calculator
+- latuicon ([rstl.repo](https://github.com/arozoid/rstl.repo)): emoji / kaomoji / unicode / nerd font symbol TUI picker
+- clipse ([rstl.repo](https://github.com/arozoid/rstl.repo): clipboard history and TUI manager 
+- rovr ([rstl.repo](https://github.com/arozoid/rstl.repo)): post-modern terminal file explorer, used by the file chooser if installed 
+- superfile: a fancy and modern terminal file manager, prioritized by the file chooser if installed
+- bluetui: bluetooth TUI manager
 
 ## keybinds
 
@@ -79,6 +90,7 @@ prefer doing everything by hand? see [MANUAL_INSTALL.md](MANUAL_INSTALL.md)
 - win+enter: foot terminal
 - win+shift+s: screenshot to clipboard and Pictures/Screenshots/*
 - win+backspace: power menu (3x2 grid, wlogout-style)
+- win+o: rstl-pick (calculator, file manager, bluetooth, wifi, etc.)
 
 ---
 
@@ -97,16 +109,18 @@ prefer doing everything by hand? see [MANUAL_INSTALL.md](MANUAL_INSTALL.md)
 
 ---
 
-- win+shift+r: resize mode
+- win+r: resize mode
     - hjkl/arrow keys: directional window resize
-    - win+escape/return: back to default mode
-    - win+shift+r: back to default mode
+    - escape/return: back to default mode
+    - win+r: back to default mode
     - mouse: manually resize windows
+- win+lmb (left mouse button): move windows with the mouse
+- win+rmb (right mouse button): resize windows with the mouse
 
 ---
 
 - keyboard f1-12 function keys: desktop actions (lower/higher brightness, keyboard backlight, volume, etc)
-- win+r: reload config
+- win+shift+c: reload config
 
 ## credits
 

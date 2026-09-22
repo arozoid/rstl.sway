@@ -38,7 +38,7 @@
 #                           The desktop flavor decides how much of it is kept:
 #                           install = everything, install-min = file manager
 #                           only, install-base = none. (default: vim)
-#       --eolie            also install the eolie browser (browser bundle variant)
+#       --firefox            also install the firefox browser (browser bundle variant)
 #       --rstl-source DIR   reuse a pre-extracted rstl kernel tree (boot/ +
 #                           lib/ + config, e.g. ~/Downloads/rstl.krnl) instead
 #                           of resolving + downloading the latest rstl.linuz
@@ -71,7 +71,7 @@
 #                           instead of pacstrapping a fresh one: skips pacstrap,
 #                           CachyOS bootstrap, -Syu and the kernel install; re-
 #                           stages the dotfiles and runs the selected flavor (the
-#                           "type x program x eolie" layer), then assembles the
+#                           "type x program x firefox" layer), then assembles the
 #                           frugal + kernel ISOs. linux-cachyos needs no reinstall
 #                           (modules come from DIR); rstl/vdpup fetch their assets.
 #       --force             rebuild into --target even if it is not empty
@@ -93,7 +93,7 @@
 # Program configurations (--program):
 #   vim        nvim + superfile (spf) file manager
 #   mouse      micro editor (cachyos-micro-settings) + rovr file manager
-#   --eolie   bundles the eolie browser on top of either program configuration
+#   --firefox   bundles the firefox browser on top of either program configuration
 
 set -eu
 
@@ -135,7 +135,7 @@ stage_base=0
 reuse_rootfs=""
 opt_rstl_source=""
 program="vim"
-opt_eolie=0
+opt_firefox=0
 opt_firmware=""
 opt_modules_build=""
 opt_modules_source=""
@@ -185,7 +185,7 @@ while [ "$#" -gt 0 ]; do
         --program) [ "$#" -ge 2 ] || die "--program requires vim|mouse"
             program="$2"; shift 2 ;;
         --program=*) program="${1#*=}"; shift ;;
-        --eolie) opt_eolie=1; shift ;;
+        --firefox) opt_firefox=1; shift ;;
         --rstl-source) [ "$#" -ge 2 ] || die "--rstl-source requires a directory"
             opt_rstl_source="$2"; shift 2 ;;
         --rstl-source=*) opt_rstl_source="${1#*=}"; shift ;;
@@ -828,7 +828,7 @@ install_as_rustle() {
     chr chown -R rustle:rustle /home/rustle/.config
     printf '%%wheel ALL=(ALL:ALL) NOPASSWD: ALL\n' > "$ROOTFS/etc/sudoers.d/10-installer"
     chmod 440 "$ROOTFS/etc/sudoers.d/10-installer"
-    if ! chr /bin/su - rustle -c "cd \$HOME/.config/rstl.sway && RSTL_PROGRAM=$program RSTL_EOLIE=$opt_eolie ./${1} ${FLAG_YES}" \
+    if ! chr /bin/su - rustle -c "cd \$HOME/.config/rstl.sway && RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox ./${1} ${FLAG_YES}" \
             1>"$target/installer.log" 2>&1; then
         tail -40 "$target/installer.log" >&2 || true
         die "${1} failed while running as rustle"
@@ -853,7 +853,7 @@ set_passwords() {
 header "Installing flavor: $flavor"
 case "$flavor" in
     install-min)
-        chr /bin/sh -c "RSTL_PROGRAM=$program RSTL_EOLIE=$opt_eolie /root/.config/rstl.sway/install-min.sh $FLAG_YES"
+        chr /bin/sh -c "RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox /root/.config/rstl.sway/install-min.sh $FLAG_YES"
         ensure_rustle_user
         # surface the root-staged desktop config for the rustle login too
         home="$ROOTFS/home/rustle"
@@ -867,7 +867,7 @@ case "$flavor" in
         ;;
 
     install-base)
-        chr /bin/sh -c "RSTL_PROGRAM=$program RSTL_EOLIE=$opt_eolie /root/.config/rstl.sway/install-base.sh $FLAG_YES"
+        chr /bin/sh -c "RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox /root/.config/rstl.sway/install-base.sh $FLAG_YES"
         ensure_rustle_user
         # surface the root-staged desktop config for the rustle login too
         home="$ROOTFS/home/rustle"
@@ -1002,13 +1002,21 @@ else
     mv "$initrd_work/initrd-latest.img" "$target/initrd.gz"
     rm -rf "$initrd_work"
     # Guard: a module-less initrd cannot mount the sfs layers (loop mounts
-    # fail and the kernel panics on boot). The rstl kernel has CONFIG_BLK_DEV_LOOP=m
-    # (a module), so its initrd must carry loop.ko. Fail loudly instead of
-    # shipping a brick.
-    if ! zcat "$target/initrd.gz" 2>/dev/null | cpio -it 2>/dev/null | grep -q 'block/loop\.ko$'; then
-        die "initrd.gz contains no loop kernel module - the frugal would not boot (check mkFRkernel and \$ROOTFS/usr/lib/modules)"
+    # fail and the kernel panics on boot). The cachyos kernel ships loop as a
+    # module (=m), so its initrd must carry loop.ko. The rstl kernel instead
+    # builds loop INTO the image (CONFIG_BLK_DEV_LOOP=y, see arozoid/rstl.linuz
+    # config/minimize.sh) and its release ships no loop.ko module, so no module
+    # is needed there. Fail loudly only when the module tree really carries a
+    # loop module that the initrd is missing - never ship a brick.
+    if [ -n "$(find "$ROOTFS/usr/lib/modules" \
+        -path '*kernel/drivers/block/loop*.ko*' -print -quit)" ]; then
+        if ! zcat "$target/initrd.gz" 2>/dev/null | cpio -it 2>/dev/null | grep -q 'block/loop\.ko$'; then
+            die "initrd.gz contains no loop kernel module - the frugal would not boot (check mkFRkernel and \$ROOTFS/usr/lib/modules)"
+        fi
+        ok "initrd.gz carries the loop kernel module"
+    else
+        ok "kernel provides loop builtin (no loop.ko module needed)"
     fi
-    ok "initrd.gz carries the loop kernel module"
 fi
 ok "initrd.gz -> $(du -h "$target/initrd.gz" | cut -f1)"
 
@@ -1154,7 +1162,7 @@ printf '%s\n' \
     "flavor: $flavor" \
     "arch:   x86-64-v$arch_level" \
     "kernel: $kernel_pkg ($kernelver)" \
-    "program: $program${opt_eolie:+, eolie}" \
+    "program: $program${opt_firefox:+, firefox}" \
     "build:  $(date -u '+%Y-%m-%d %H:%M UTC')" \
     > "$target/readme_kernel_version.txt"
 

@@ -20,9 +20,9 @@ fi
 # Program configuration (selected at build time by mkfrugal-rstl.sh).
 #   vim   = nvim editor + superfile (spf) file manager
 #   mouse = micro editor (settings vendored in ./micro) + rovr file manager
-# RSTL_EOLIE=1 bundles the eolie browser on top of either configuration.
+# RSTL_FIREFOX=1 bundles the firefox browser on top of either configuration.
 RSTL_PROGRAM="${RSTL_PROGRAM:-vim}"
-RSTL_EOLIE="${RSTL_EOLIE:-0}"
+RSTL_FIREFOX="${RSTL_FIREFOX:-0}"
 case "$RSTL_PROGRAM" in vim|mouse) ;; *) RSTL_PROGRAM="vim" ;; esac
 
 # ---------------------------------------------------------------------------
@@ -327,6 +327,7 @@ yambar
 latuicon
 clipse
 wiremix
+eva
 awww
 rstl-pick
 fzf-tab
@@ -352,8 +353,8 @@ PKGS
       } > /dev/null
       ;;
   esac
-  if [ "$RSTL_EOLIE" = "1" ]; then
-    printf '%s\n' 'eolie' >> "$GCDIR/packages-program"
+  if [ "$RSTL_FIREFOX" = "1" ]; then
+    printf '%s\n' 'firefox' >> "$GCDIR/packages-program"
   fi
   cat "$GCDIR/packages-program" >> "$GCDIR/packages-extra"
 
@@ -372,7 +373,7 @@ PKGS
   # theme/cursor packages with official-repo fallbacks (kept separate so a
   # missing AUR package cannot fail the whole install). The base icon theme
   # is hicolor; papirus-dark supplies the themed set; adwaita-icon-theme
-  # arrives with eolie when the browser bundle is enabled.
+  # arrives with firefox when the browser bundle is enabled.
   pac_retry -S --needed --noconfirm hicolor-icon-theme
   install_or_fallback notwaita-cursors-grey adwaita-cursors
   install_or_fallback papirus-icon-theme-dark-only adwaita-icon-theme

@@ -16,11 +16,12 @@
 #                  - rstl     (rstl.sway's own kernel from the latest
 #                              arozoid/rstl.linuz release: rewrap of the cachyos
 #                              frugal + an initrd freshly built via mkFRkernel
-#                              from the cached rstl module tree, so loop.ko -
-#                              CONFIG_BLK_DEV_LOOP=m - rides inside)
-#                install / install-min layer 4 configs (vim · mouse · vim+eolie
-#                · mouse+eolie) x 3 kernels = 12 ISOs; install-base layers
-#                standard · standard+eolie x 3 kernels = 6 ISOs. 90 ISOs total.
+#                              from the cached rstl module tree; the rstl kernel
+#                              builds loop in (CONFIG_BLK_DEV_LOOP=y), so its
+#                              initrd needs no loop.ko and boots standalone)
+#                install / install-min layer 4 configs (vim · mouse · vim+firefox
+#                · mouse+firefox) x 3 kernels = 12 ISOs; install-base layers
+#                standard · standard+firefox x 3 kernels = 6 ISOs. 90 ISOs total.
 #
 # Artifacts: the ISO artifact names follow iso-<flavor>-<arch>; the release job
 # downloads everything matching iso-*.
@@ -251,8 +252,8 @@ jobs:
           [ -s "$BASE" ] || { echo "::error::base artifact missing: $BASE"; exit 1; }
 
           case "$FLAVOR" in
-            install|install-min) CONFIGS="vim vim-eolie mouse mouse-eolie" ;;
-            install-base)        CONFIGS="standard eolie" ;;
+            install|install-min) CONFIGS="vim vim-firefox mouse mouse-firefox" ;;
+            install-base)        CONFIGS="standard firefox" ;;
           esac
 
           # Foreground build: the old setsid-background + 90s-heartbeat + wait
@@ -279,14 +280,14 @@ jobs:
 
           for PROG in $CONFIGS; do
             case "$PROG" in
-              vim|vim-eolie)         PROGMODE=vim ;;
-              mouse|mouse-eolie)     PROGMODE=mouse ;;
+              vim|vim-firefox)         PROGMODE=vim ;;
+              mouse|mouse-firefox)     PROGMODE=mouse ;;
               *) PROGMODE=standard ;;
             esac
             BRO=0
-            case "$PROG" in *-eolie|eolie) BRO=1 ;; esac
+            case "$PROG" in *-firefox|firefox) BRO=1 ;; esac
             BROBRA=""
-            [ "$BRO" -eq 1 ] && BROBRA="--eolie"
+            [ "$BRO" -eq 1 ] && BROBRA="--firefox"
             # program flags are meaningless for install-base (mkfrugal rejects
             # --program standard); pass them only for install/install-min
             ARGS_PROG=""
@@ -297,7 +298,7 @@ jobs:
 
             if [ "$FLAVOR" = "install-base" ] && [ "$PROG" != "standard" ]; then
               # install-base browser variant: install-base-standard's iteration
-              # forked this stage and preinstalled eolie (see below), so skip
+              # forked this stage and preinstalled firefox (see below), so skip
               # the extract and the heavy layer build and go straight to the
               # ISO assembly from the forked rootfs.
               mkdir -p "$GITHUB_WORKSPACE/dist"
@@ -305,7 +306,7 @@ jobs:
                 echo "::error::$LABEL: forked stage missing 07rootfs/ (install-base-standard must run first)"
                 exit 1
               }
-              echo "--- $LABEL: deriving ISO set from install-base-standard-$ARCH (eolie preinstalled, no rebuild)"
+              echo "--- $LABEL: deriving ISO set from install-base-standard-$ARCH (firefox preinstalled, no rebuild)"
             else
               rm -rf "$STAGE"
               mkdir -p "$STAGE" "$GITHUB_WORKSPACE/dist"
@@ -332,20 +333,20 @@ jobs:
 
               # install-base browser variant: fork THIS pristine pre-squash
               # stage (mkfrugal-iso squashes 07rootfs/ in place below) and
-              # preinstall eolie, so the eolie/ loop iteration only wraps ISOs -
+              # preinstall firefox, so the firefox/ loop iteration only wraps ISOs -
               # one heavy layer build serves both install-base configs.
               if [ "$FLAVOR" = "install-base" ] && [ "$PROG" = "standard" ]; then
-                ET="$GITHUB_WORKSPACE/stage/install-base-eolie-$ARCH/rstlsway"
+                ET="$GITHUB_WORKSPACE/stage/install-base-firefox-$ARCH/rstlsway"
                 mkdir -p "$(dirname "$ET")"
-                echo "--- forking install-base-eolie-$ARCH stage from standard, installing eolie"
+                echo "--- forking install-base-firefox-$ARCH stage from standard, installing firefox"
                 cp -al "$T" "$ET"
                 # pacman's CheckSpace needs a real mountpoint for the chroot
                 # root (arch-chroot adds none); mkfrugal does the same self
                 # bind-mount before every chrooted pacman call.
                 mount --bind "$ET/07rootfs" "$ET/07rootfs"
-                if ! arch-chroot "$ET/07rootfs" pacman -S --needed --noconfirm eolie; then
+                if ! arch-chroot "$ET/07rootfs" pacman -S --needed --noconfirm firefox; then
                   umount "$ET/07rootfs" 2>/dev/null || true
-                  echo "::error::eolie install into forked install-base-eolie-$ARCH stage failed"
+                  echo "::error::firefox install into forked install-base-firefox-$ARCH stage failed"
                   exit 1
                 fi
                 umount "$ET/07rootfs" 2>/dev/null || true
@@ -377,7 +378,7 @@ jobs:
             printf '%s\n' \
               "name:   rstlsway-vdpup" \
               "flavor: $FLAVOR" \
-              "program: $PROGMODE${BROBRA:+ + eolie}" \
+              "program: $PROGMODE${BROBRA:+ + firefox}" \
               "arch:   x86-64-v${ARCH#v}" \
               "kernel: vdpup (FirstRib huge kernel 6.1.52)" \
               "build:  $(date -u '+%Y-%m-%d %H:%M UTC')" \
@@ -395,7 +396,8 @@ jobs:
             # 3/3 rstl variant: the rstl kernel has no pacman package. Rewrap
             # the cachyos frugal (07rootfs.sfs content is kernel-independent)
             # with the rstl vmlinuz + its module/firmware sfs, plus a freshly
-            # built initrd from the cached rstl module tree so loop.ko rides in.
+            # built initrd from the cached rstl module tree (loop is built
+            # into the rstl kernel, so the initrd needs no loop.ko).
             ./mkfrugal-rstl.sh --fetch-rstl --cache "$CACHE"
             R="$STAGE/rstlsway-rstl"
             cp -al "$T" "$R"
@@ -407,13 +409,31 @@ jobs:
                  exit 1
                }
             mv "$STAGE/initrd-latest.img" "$R/initrd.gz"
-            # plain grep, NOT grep -q: -q exits on first match and SIGPIPEs
-            # the upstream cpio|zcat, which pipefail turns into rc=141 and a
-            # false failure even when loop.ko is present
-            if ! zcat "$R/initrd.gz" 2>/dev/null | cpio -it 2>/dev/null \
-                | grep 'block/loop\.ko$' >/dev/null; then
-              echo "::error::rstl initrd carries no loop.ko - not bootable (rstl $LABEL)"
-              exit 1
+            # The rstl kernel builds loop INTO the image (CONFIG_BLK_DEV_LOOP=y,
+            # see arozoid/rstl.linuz config/minimize.sh), so its release ships
+            # no loop.ko module and the initrd needs none: the kernel itself
+            # provides loop for the sfs overlay mounts. Only demand loop.ko in
+            # the initrd when the release actually ships loop as a module.
+            # -print -quit avoids the SIGPIPE/pipefail trap of grep -q on a
+            # find pipeline.
+            if [ -n "$(find "$CACHE/rstl-modules" \
+                -path '*kernel/drivers/block/loop*.ko*' -print -quit)" ]; then
+              # plain grep, NOT grep -q: -q exits on first match and SIGPIPEs
+              # the upstream cpio|zcat, which pipefail turns into rc=141 and a
+              # false failure even when loop.ko is present
+              if ! zcat "$R/initrd.gz" 2>/dev/null | cpio -it 2>/dev/null \
+                  | grep 'block/loop\.ko$' >/dev/null; then
+                echo "::error::rstl initrd carries no loop.ko - not bootable (rstl $LABEL)"
+                exit 1
+              fi
+            else
+              # no loop module: the kernel must provide loop builtin, otherwise
+              # the frugal cannot mount its sfs layers
+              if ! tar -xOf "$CACHE/rstl-kernel.tar.zst" ./config 2>/dev/null \
+                  | grep -qx 'CONFIG_BLK_DEV_LOOP=y'; then
+                echo "::error::rstl kernel has no loop.ko and CONFIG_BLK_DEV_LOOP!=y - not bootable (rstl $LABEL)"
+                exit 1
+              fi
             fi
             for f in vmlinuz 00modules.sfs; do
               rm -f "$R/$f"
@@ -425,7 +445,7 @@ jobs:
             printf '%s\n' \
               "name:   rstlsway-rstl" \
               "flavor: $FLAVOR" \
-              "program: $PROGMODE${BROBRA:+ + eolie}" \
+              "program: $PROGMODE${BROBRA:+ + firefox}" \
               "arch:   x86-64-v${ARCH#v}" \
               "kernel: rstl 7.x (github.com/arozoid/rstl.linuz latest release)" \
               "build:  $(date -u '+%Y-%m-%d %H:%M UTC')" \
@@ -502,9 +522,9 @@ jobs:
           - `install` · `install-min` · `install-base`
 
           **program configs:**
-          - `install`: vim (nvim + superfile) · mouse (micro + cachyos-micro-settings + rovr) · vim + eolie · mouse + eolie
+          - `install`: vim (nvim + superfile) · mouse (micro + cachyos-micro-settings + rovr) · vim + firefox · mouse + firefox
           - `install-min`: same program configs, keeping only each program's file manager
-          - `install-base`: standard · standard + eolie (no program variants)
+          - `install-base`: standard · standard + firefox (no program variants)
 
           builds are autogenerated weekly and pruned to keep only the 2 most recent releases.
           EOF

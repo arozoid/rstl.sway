@@ -32,7 +32,7 @@ dav1d libvpx openh264
 # program configuration packages (added by the --program matche in mkfrugal):
 #   vim   = superfile (binary spf, Arch extra)
 #   mouse = micro (settings vendored in ./micro) + rovr-bin (rstl-repo)
-# eolie is a build-time option on top of either program configuration.
+# firefox is a build-time option on top of either program configuration.
 superfile
 # micro rovr-bin
 
@@ -52,6 +52,7 @@ bluetui
 latuicon
 clipse
 wiremix
+eva
 rstl-pick
 fzf-tab
 zsh-auto-notify
