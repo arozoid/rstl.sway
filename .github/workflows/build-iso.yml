@@ -429,8 +429,11 @@ jobs:
             else
               # no loop module: the kernel must provide loop builtin, otherwise
               # the frugal cannot mount its sfs layers
+              # plain grep, NOT grep -qx: -qx exits on first match and SIGPIPEs
+              # the upstream tar -xOf, which pipefail turns into rc=141 and a
+              # false failure even when CONFIG_BLK_DEV_LOOP=y is present
               if ! tar -xOf "$CACHE/rstl-kernel.tar.zst" ./config 2>/dev/null \
-                  | grep -qx 'CONFIG_BLK_DEV_LOOP=y'; then
+                  | grep -x 'CONFIG_BLK_DEV_LOOP=y' >/dev/null; then
                 echo "::error::rstl kernel has no loop.ko and CONFIG_BLK_DEV_LOOP!=y - not bootable (rstl $LABEL)"
                 exit 1
               fi

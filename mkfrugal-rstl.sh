@@ -1010,7 +1010,11 @@ else
     # loop module that the initrd is missing - never ship a brick.
     if [ -n "$(find "$ROOTFS/usr/lib/modules" \
         -path '*kernel/drivers/block/loop*.ko*' -print -quit)" ]; then
-        if ! zcat "$target/initrd.gz" 2>/dev/null | cpio -it 2>/dev/null | grep -q 'block/loop\.ko$'; then
+        # plain grep, NOT grep -q: -q exits on first match and SIGPIPEs the
+        # upstream cpio|zcat, which pipefail turns into rc=141 and a false
+        # failure even when loop.ko is present
+        if ! zcat "$target/initrd.gz" 2>/dev/null | cpio -it 2>/dev/null \
+            | grep 'block/loop\.ko$' >/dev/null; then
             die "initrd.gz contains no loop kernel module - the frugal would not boot (check mkFRkernel and \$ROOTFS/usr/lib/modules)"
         fi
         ok "initrd.gz carries the loop kernel module"
