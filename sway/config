@@ -161,6 +161,11 @@ bindsym XF86WLAN exec nmcli radio wifi toggle
 bindsym XF86RFKill exec rfkill toggle wlan
 bindsym XF86Bluetooth exec rfkill toggle bluetooth
 
+### displays
+# toggle ALL outputs off (headless session), then back on, restoring
+# each output's mode/scale and the workspace that lived on it
+bindsym $mod+Shift+o exec ~/.config/rstl.sway/scripts/toggle-monitors.sh
+
 ### screenshots
 bindsym $mod+Shift+s exec grim -g "$(slurp)" - | tee "$HOME/Pictures/Screenshots/$(date +%Y-%m-%d_%H-%M-%S).png" | wl-copy 
 
