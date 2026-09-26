@@ -115,6 +115,83 @@ ok()     { printf "  ${C_GREEN}%s${C_RESET}\n" "$*"; }
 warn()   { printf "  ${C_RED}! %s${C_RESET}\n" "$*" >&2; }
 die()    { printf "${C_RED}error: %s${C_RESET}\n" "$*" >&2; exit 1; }
 
+# net_retry <label> <max-attempts> <cmd...>: run <cmd>, retrying on ANY
+# failure. curl --retry only retries on connection-level/5xx trouble and will
+# NOT retry HTTP 403, which is exactly what the GitHub API serves to
+# unauthenticated clients from shared CI egress IPs (this took down the CI
+# --fetch-rstl step with "error: cannot resolve the latest rstl.linuz release
+# (network up?)"). Every kernel download therefore runs inside this attempt
+# loop, in the same style as the chroot_pac() loop further down.
+net_retry() {
+    _nr_label=$1
+    _nr_max=$2
+    shift 2
+    _nr_try=0
+    until "$@"; do
+        _nr_try=$(( _nr_try + 1 ))
+        if [ "$_nr_try" -ge "$_nr_max" ]; then
+            warn "$_nr_label failed after $_nr_max attempts"
+            return 1
+        fi
+        warn "$_nr_label attempt $_nr_try failed; retrying"
+        sleep 5
+    done
+    return 0
+}
+
+# resolve_rstl_release: set rstl_tag / rstl_asset / rstl_url for the latest
+# rstl.linuz release. Primary path is the GitHub API (releases/latest). The
+# API rate-limits unauthenticated requests from shared CI egress IPs with
+# HTTP 403, which curl --retry does NOT retry, so the API call runs in the
+# net_retry() loop above; if it still fails, fall back to the API-free HTML
+# pages (separate quota): GET /releases/latest returns a 302 Location header
+# carrying the tag, and /releases/expanded_assets/<tag> lists the download
+# hrefs.
+resolve_rstl_release() {
+    rstl_tag=""
+    rstl_asset=""
+    rstl_url=""
+    # 1) GitHub API lookup
+    if net_retry "rstl.linuz release lookup (GitHub API)" 4 \
+        curl -fsSL --connect-timeout 30 --max-time 120 -o "$cache/.rstl-release.json" \
+        "https://api.github.com/repos/arozoid/rstl.linuz/releases/latest"; then
+        rstl_json="$(cat "$cache/.rstl-release.json" 2>/dev/null)"
+        rstl_tag="$(printf '%s\n' "$rstl_json" | sed -n 's/^  "tag_name": "\([^"]*\)",$/\1/p' | head -1)"
+        # prefer the plain kernel archive; fall back to any .tar.zst
+        rstl_asset="$(printf '%s\n' "$rstl_json" \
+            | sed -n 's/^      "name": "\(rstl-linuz-daily-[0-9][0-9][0-9][0-9]\.[0-9][0-9]\.[0-9][0-9]\.tar\.zst\)",$/\1/p' | head -1)"
+        [ -n "$rstl_asset" ] \
+            || rstl_asset="$(printf '%s\n' "$rstl_json" \
+                   | sed -n 's/^      "name": "\(rstl-linuz-.*\.tar\.zst\)",$/\1/p' | head -1)"
+        rstl_url="$(printf '%s\n' "$rstl_json" | grep -A40 -F "\"name\": \"$rstl_asset\"" \
+            | sed -n 's/^      "browser_download_url": "\([^"]*\)".*$/\1/p' | head -1)"
+    fi
+    if [ -n "$rstl_tag" ] && [ -n "$rstl_asset" ] && [ -n "$rstl_url" ]; then
+        return 0
+    fi
+    # 2) API-free HTML fallback
+    warn "rstl.linuz release lookup via GitHub API failed; using the HTML release pages"
+    if net_retry "rstl.linuz release tag (HTML)" 4 \
+        curl -fsS --connect-timeout 30 --max-time 120 -D "$cache/.rstl-loc" -o /dev/null \
+        "https://github.com/arozoid/rstl.linuz/releases/latest"; then
+        rstl_tag="$(sed -n 's#^[Ll]ocation: .*/releases/tag/\([^/]*\).*#\1#p' "$cache/.rstl-loc" | tr -d '\r' | head -1)"
+    fi
+    [ -n "$rstl_tag" ] || die "cannot resolve the latest rstl.linuz release (network up?)"
+    if net_retry "rstl.linuz asset list (HTML)" 4 \
+        curl -fsSL --connect-timeout 30 --max-time 120 \
+        -o "$cache/.rstl-assets.html" \
+        "https://github.com/arozoid/rstl.linuz/releases/expanded_assets/$rstl_tag"; then
+        # prefer the plain kernel archive; fall back to any .tar.zst
+        rstl_asset="$(grep -o 'href="[^"]*rstl-linuz-daily-[0-9][0-9][0-9][0-9]\.[0-9][0-9]\.[0-9][0-9]\.tar\.zst"' "$cache/.rstl-assets.html" \
+            | sed 's#.*/##; s#"$##' | head -1)"
+        [ -n "$rstl_asset" ] \
+            || rstl_asset="$(grep -o 'href="[^"]*rstl-linuz-.*\.tar\.zst"' "$cache/.rstl-assets.html" \
+                   | sed 's#.*/##; s#"$##' | head -1)"
+    fi
+    [ -n "$rstl_asset" ] || die "rstl.linuz latest release has no kernel tar.zst asset"
+    rstl_url="https://github.com/arozoid/rstl.linuz/releases/download/$rstl_tag/$rstl_asset"
+}
+
 usage() {
     sed -n '4,/^#   -h, --help/p' "$0" | sed 's/^# //; s/^#//'
 }
@@ -228,10 +305,12 @@ fetch_vdpup_assets() {
             cached="$cache/vdpup-$f"
             [ -s "$cached" ] && continue
             if command -v curl >/dev/null 2>&1; then
-                curl -fL --connect-timeout 30 --max-time 1200 --retry 3 --retry-delay 5 \
+                net_retry "vdpup $f download" 4 \
+                    curl -fL --connect-timeout 30 --max-time 1200 --retry 3 --retry-delay 5 \
                     "$url" -o "$cached.part" || return 1
             else
-                wget --timeout=30 --tries=3 -O "$cached.part" "$url" || return 1
+                net_retry "vdpup $f download" 4 \
+                    wget --timeout=30 --tries=3 -O "$cached.part" "$url" || return 1
             fi
             mv "$cached.part" "$cached"
         done
@@ -283,21 +362,7 @@ fetch_rstl_assets() {
         info "rstl kernel: using pre-extracted tree $rstl_src"
     else
         info "resolving latest rstl.linuz release (github.com/arozoid/rstl.linuz)"
-        rstl_json="$(curl -fsSL --connect-timeout 30 --max-time 120 --retry 3 --retry-delay 5 \
-            "https://api.github.com/repos/arozoid/rstl.linuz/releases/latest")" \
-            || die "cannot resolve the latest rstl.linuz release (network up?)"
-        rstl_tag="$(printf '%s\n' "$rstl_json" | sed -n 's/^  "tag_name": "\([^"]*\)",$/\1/p' | head -1)"
-        [ -n "$rstl_tag" ] || die "rstl.linuz release JSON: no tag_name found"
-        # prefer the plain kernel archive; fall back to any .tar.zst
-        rstl_asset="$(printf '%s\n' "$rstl_json" \
-            | sed -n 's/^      "name": "\(rstl-linuz-daily-[0-9][0-9][0-9][0-9]\.[0-9][0-9]\.[0-9][0-9]\.tar\.zst\)",$/\1/p' | head -1)"
-        [ -n "$rstl_asset" ] \
-            || rstl_asset="$(printf '%s\n' "$rstl_json" \
-                   | sed -n 's/^      "name": "\(rstl-linuz-.*\.tar\.zst\)",$/\1/p' | head -1)"
-        [ -n "$rstl_asset" ] || die "rstl.linuz latest release has no kernel tar.zst asset"
-        rstl_url="$(printf '%s\n' "$rstl_json" | grep -A40 -F "\"name\": \"$rstl_asset\"" \
-            | sed -n 's/^      "browser_download_url": "\([^"]*\)".*$/\1/p' | head -1)"
-        [ -n "$rstl_url" ] || die "rstl.linuz asset $rstl_asset: no download URL found"
+        resolve_rstl_release
 
         rstl_tok="$rstl_tag|$rstl_asset"
         rstl_cached="$cache/rstl-kernel.tar.zst"
@@ -307,10 +372,12 @@ fetch_rstl_assets() {
         else
             info "downloading $rstl_asset"
             if command -v curl >/dev/null 2>&1; then
-                curl -fL --connect-timeout 30 --max-time 3000 --retry 3 --retry-delay 5 \
+                net_retry "rstl kernel archive download" 4 \
+                    curl -fL --connect-timeout 30 --max-time 3000 --retry 3 --retry-delay 5 \
                     "$rstl_url" -o "$rstl_cached.part" || return 1
             else
-                wget --timeout=30 --tries=3 -O "$rstl_cached.part" "$rstl_url" || return 1
+                net_retry "rstl kernel archive download" 4 \
+                    wget --timeout=30 --tries=3 -O "$rstl_cached.part" "$rstl_url" || return 1
             fi
             mv "$rstl_cached.part" "$rstl_cached"
             printf '%s\n' "$rstl_tok" > "$rstl_stamp"
@@ -1101,9 +1168,11 @@ else
         fetch_fw() {
             [ -s "$cache/01firmware.sfs" ] && return 0
             if command -v curl >/dev/null 2>&1; then
-                curl -fL --connect-timeout 30 --max-time 1800 --retry 3 --retry-delay 5 "$fw_url" -o "$cache/01firmware.sfs.part" || return 1
+                net_retry "huge-kernel firmware download" 4 \
+                    curl -fL --connect-timeout 30 --max-time 1800 --retry 3 --retry-delay 5 "$fw_url" -o "$cache/01firmware.sfs.part" || return 1
             elif command -v wget >/dev/null 2>&1; then
-                wget --timeout=30 --tries=3 -O "$cache/01firmware.sfs.part" "$fw_url" || return 1
+                net_retry "huge-kernel firmware download" 4 \
+                    wget --timeout=30 --tries=3 -O "$cache/01firmware.sfs.part" "$fw_url" || return 1
             else
                 die "need curl or wget to fetch 01firmware.sfs"
             fi
