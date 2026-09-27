@@ -1,0 +1,84 @@
+#!/bin/sh
+# rstl - run a script from the rstl.sway dotfiles directory by name.
+#
+# Usage:
+#   rstl install.sh --yes     run bin/install.sh --yes
+#   rstl install --yes        same, the .sh suffix is optional
+#   rstl update.sh            run bin/update.sh
+#   rstl                      list the available scripts
+#
+# The first argument picks the script inside ~/.config/rstl.sway/bin, the rest
+# is passed through unchanged. Installed as /usr/local/bin/rstl by the
+# installers, so it works from any directory.
+#
+# RSTL_SWAY_DIR overrides the dotfiles location (the ISO/rootfs builds run with
+# a different HOME).
+
+set -u
+
+RSTL_SWAY_DIR="${RSTL_SWAY_DIR:-${HOME}/.config/rstl.sway}"
+BIN_DIR="${RSTL_SWAY_DIR}/bin"
+
+die() {
+    printf 'rstl: %s\n' "$*" >&2
+    exit 1
+}
+
+usage() {
+    sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+# every runnable script in bin/, one per line
+available() {
+    for f in "${BIN_DIR}"/*; do
+        [ -f "$f" ] && [ -x "$f" ] || continue
+        [ "${f##*/}" = "rstl" ] && continue
+        printf '  %s\n' "${f##*/}"
+    done
+}
+
+if [ "$#" -eq 0 ]; then
+    printf 'usage: rstl <script> [arguments...]\n' >&2
+    printf 'e.g.   rstl install.sh --yes\n\n' >&2
+    printf 'available scripts:\n' >&2
+    available >&2
+    exit 2
+fi
+
+case "$1" in
+    -h|--help)
+        usage
+        exit 0
+        ;;
+esac
+
+[ -d "$BIN_DIR" ] || die "${BIN_DIR} not found - is this an rstl.sway install?"
+
+script="$1"
+shift
+
+# a path is used as given; a bare name resolves inside bin/, with or without
+# the .sh suffix (rstl update == rstl update.sh)
+case "$script" in
+    */*) path="$script" ;;
+    *)
+        path="${BIN_DIR}/${script}"
+        [ -f "$path" ] || path="${BIN_DIR}/${script}.sh"
+        ;;
+esac
+
+[ -f "$path" ] || {
+    printf 'rstl: no script named %s\n\n' "$script" >&2
+    printf 'available scripts:\n' >&2
+    available >&2
+    exit 1
+}
+
+[ "${path##*/}" = "rstl" ] && die "refusing to call the wrapper from inside itself"
+
+if [ -x "$path" ]; then
+    exec "$path" "$@"
+fi
+
+# not executable (a checkout that lost the mode bit): run it through sh
+exec sh "$path" "$@"
