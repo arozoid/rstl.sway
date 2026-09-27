@@ -321,6 +321,6 @@ else
 fi
 
 header "done"
-printf "  reload sway to pick up the new config:  mod+Shift+c\n"
-printf "  (or:                                     mod+Shift+q, then log back in)\n"
+printf '  reload sway to pick up the new config:  $mod+Shift+c reload\n'
+printf '  (or:                                     mod+Shift+q, then log back in)\n'
 echo
