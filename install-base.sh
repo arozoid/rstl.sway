@@ -121,6 +121,45 @@ install_or_fallback() {
     fi
 }
 
+# install the package list $1 in ONE transaction, minus the names the repos do
+# not have. pacman resolves every target before installing anything, so a single
+# unresolvable name (Arch ships the fd binary as fd-find, CachyOS as fd) aborts
+# the whole transaction and silently strips the base layer that every ISO flavor
+# is then built on. $2 = core packages that must resolve or the install stops:
+# the step runner only warns on failure, so a return code alone would still ship
+# a broken image.
+pac_install_filtered() {
+    list="$1"; core="$2"
+    avail="$(mktemp)"
+    run_sudo pacman -Ssq > "$avail" 2>/dev/null || : > "$avail"
+    wanted=""
+    missing=""
+    for pkg in $list; do
+        if grep -qxF "$pkg" "$avail"; then
+            wanted="$wanted $pkg"
+        else
+            missing="$missing $pkg"
+        fi
+    done
+    rm -f "$avail"
+    wanted="${wanted# }"
+    missing="${missing# }"
+    for pkg in $core; do
+        case " $missing " in
+            *" $pkg "*)
+                echo "  required package '$pkg' is in no enabled repo (stale sync db? try: sudo pacman -Sy)" >&2
+                exit 1
+                ;;
+        esac
+    done
+    if [ -n "$missing" ]; then
+        echo "  not in any enabled repo, skipped:$missing" >&2
+    fi
+    [ -n "$wanted" ] || return 0
+    echo "  installing: $wanted"
+    pac_retry -S --needed --noconfirm $wanted
+}
+
 confirm() {
     if [ "$ASSUME_YES" -eq 1 ]; then
         echo "  [auto-yes] $1"
@@ -196,7 +235,7 @@ step_2() {
         pac_retry -Sy --noconfirm
     fi
 
-    pac_retry -S --needed --noconfirm \
+    pac_install_filtered "\
         sway swaybg rofi mako \
         grim slurp wl-clipboard cliphist \
         playerctl brightnessctl \
@@ -210,7 +249,8 @@ step_2() {
         mesa vulkan-icd-loader \
         ttf-jetbrains-mono-nerd-min hicolor-icon-theme \
         rstlpk dssd yambar xdg-desktop-portal-termfilechooser \
-        util-linux less
+        util-linux less" \
+        "sway greetd greetd-tuigreet foot mako rofi"
 
     # note: intentionally omitted from the base variant: swaylock/swayidle,
     # networkmanager, bluez/bluez-utils (wpa_cli via wpa_supplicant instead),
