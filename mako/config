@@ -16,13 +16,11 @@ default-timeout=6000
 background-color=#1d3024F5
 text-color=#b8cbbdFF
 border-color=#4d7458FF
-default-timeout=0
 
 [urgency="normal"]
 background-color=#1f3c29F5
 text-color=#d4e6d7FF
 border-color=#628c68FF
-default-timeout=0
 
 [urgency="critical"]
 background-color=#214f2b
