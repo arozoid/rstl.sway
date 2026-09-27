@@ -173,10 +173,12 @@ confirm() {
     esac
 }
 
-# prefix any line in sway/config holding literal $1 with "# [base] " (idempotent)
+# prefix any line of the sway config file $1 (relative to sway/) holding
+# literal $2 with "# [base] " (idempotent)
 sway_comment() {
-    cfg="$DOTFILES_DIR/sway/config"
-    lit="$1"
+    cfg="$DOTFILES_DIR/sway/$1"
+    lit="$2"
+    [ -f "$cfg" ] || { echo "sway config missing: $cfg" >&2; return 1; }
     rm -f "$cfg.new"
     while IFS= read -r line; do
         case "$line" in
@@ -186,7 +188,7 @@ sway_comment() {
         esac
     done < "$cfg" > "$cfg.new"
     mv -f "$cfg.new" "$cfg"
-    echo "commented sway/config: $lit"
+    echo "commented sway/$1: $lit"
 }
 
 # ===========================================================================
@@ -291,15 +293,17 @@ step_3() {
 org.freedesktop.impl.portal.FileChooser=termfilechooser'
     echo "configured file chooser portal"
 
-    # base has no swayidle/swaylock -> patch the SHARED sway/config (used by
-    # every flavor) so the base desktop does not exec missing binaries.
-    echo "patching sway/config for base (no idling/lock/clip daemon)"
-    sway_comment "exec --no-startup-id swayidle -w"
-    sway_comment "scripts/lock.sh"
+    # base has no swayidle/swaylock -> patch the SHARED sway config (used by
+    # every flavor) so the base desktop does not exec missing binaries. The
+    # lock binding lives in sway/config, the daemons in config.d/40-autostart.
+    echo "patching sway config for base (no idling/lock/clip daemon)"
+    sway_comment "config" "scripts/lock.sh"
+    sway_comment "config.d/40-autostart.conf" "exec --no-startup-id swayidle -w"
     # cliphist is an on-demand clipboard store (no boot daemon): drop the
     # clipse listener line from the shared config.
-    sed -i '/exec --no-startup-id clipse -listen/d' "$DOTFILES_DIR/sway/config"
-    echo "sway/config patched for base"
+    sed -i '/exec --no-startup-id clipse -listen/d' \
+        "$DOTFILES_DIR/sway/config.d/40-autostart.conf"
+    echo "sway config patched for base"
 }
 
 step_4() {

@@ -28,11 +28,20 @@
 
 set -u
 
-CURSOR_THEME="Notwaita-Gray"
-
 DOTFILES_DIR="$HOME/.config/rstl.sway"
 YAMBAR_SRC="$DOTFILES_DIR/yambar/config.yml"
 YAMBAR_OUT="${XDG_CACHE_HOME:-$HOME/.cache}/rstl.sway/yambar-config.yml"
+
+# ---------- cursor theme ----------
+# The theme is a user setting, so it lives with the other settings in
+# sway/config.d/20-cursor.conf. Read it from there instead of duplicating it
+# here: this script re-applies the theme (with a runtime-computed size) on every
+# start and every reload, so a second copy would silently win over the user's.
+# The fallback is only used when the config is missing or has no such line.
+CURSOR_CONF="$DOTFILES_DIR/sway/config.d/20-cursor.conf"
+CURSOR_THEME="$(sed -nE 's/^[^#]*xcursor_theme[[:space:]]+([^[:space:]]+).*/\1/p' \
+    "$CURSOR_CONF" 2>/dev/null | head -n 1)"
+[ -n "$CURSOR_THEME" ] || CURSOR_THEME="Notwaita-Gray"
 
 # ---------- reference ("on here") ----------
 REF_HEIGHT=1440
