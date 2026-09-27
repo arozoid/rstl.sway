@@ -230,18 +230,36 @@ cp -a "$repo_root/$pacman_conf_name" "$target/etc/pacman.conf"
 copy_repo() {
     local dest="$1"
     mkdir -p "$dest"
+    # Purge the destination before copying: the staged tree must be exactly the
+    # repository, not the repository plus whatever an earlier run of this script
+    # left behind (re-running it re-stages into the same tree, and a file
+    # removed from the repository would otherwise keep applying forever). The
+    # directory itself is kept - /root/.config/rstl.sway symlinks into it.
+    find "$dest" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+    # .git and its companions never enter the rootfs: the build is not a place
+    # to keep history (it would bloat the image) and the installers copy from
+    # this tree, where a stale .git would be replaced anyway (see copy_dotfiles
+    # in bin/install*.sh). .rstl-edition is per-machine state, not dotfiles.
     tar --exclude='./build_work' \
         --exclude='./build_output' \
         --exclude='./archiso' \
         --exclude='./rstl-inst/target' \
         --exclude='./rstl-pick/target' \
+        --exclude='./.git' \
+        --exclude='./.gitmodules' \
+        --exclude='./.gitignore' \
+        --exclude='./.rstl-edition' \
         -C "$repo_root" -cf - . | tar -C "$dest" -xf -
 }
 
 skel_dir="$target/etc/skel/.config/rstl.sway"
 info "copying dotfiles into '$skel_dir' (single copy; root links into it)"
 copy_repo "$skel_dir"
-chmod +x "$skel_dir"/install-min.sh "$skel_dir"/scripts/*.sh 2>/dev/null || true
+# a submodule's .git is a file pointing at ../.git/modules/...: it is
+# meaningless without the history it points into, so it must not ship either
+find "$skel_dir" \( -type d -name .git -o -type f -name .git \) \
+    -prune -exec rm -rf {} + 2>/dev/null || true
+chmod +x "$skel_dir"/bin/* "$skel_dir"/scripts/*.sh 2>/dev/null || true
 mkdir -p "$target/root/.config"
 ln -sfn /etc/skel/.config/rstl.sway "$target/root/.config/rstl.sway"
 
@@ -252,6 +270,6 @@ if ! mountpoint -q "$target"; then
     mount --bind "$target" "$target"
     SELF_BIND=1
 fi
-arch-chroot "$target" /bin/sh /root/.config/rstl.sway/install-min.sh
+arch-chroot "$target" /bin/sh /root/.config/rstl.sway/bin/install-min.sh
 
 echo "simple-rootfs: done."

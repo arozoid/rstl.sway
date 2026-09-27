@@ -96,7 +96,7 @@ if [ ! -f "$PROFILE/profiledef.sh" ]; then
 fi
 
 # ---- git submodules (nvim, ranger, rstlpk, rstl-inst) ----
-git submodule update --init --recursive
+git submodule update --init --depth 1 --recursive
 
 # ---- build the rstl-inst submodule into the airootfs ----
 build_rstl_inst() {

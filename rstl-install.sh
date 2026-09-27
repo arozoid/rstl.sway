@@ -439,13 +439,13 @@ install_dotfiles() {
   cp -a "$LIVE_DOTFILES" "$TARGET_NEW"
   arch-chroot /mnt chown -R "${USERNAME}:${USERNAME}" "/home/${USERNAME}/.config"
 
-  [ -x "$TARGET_NEW/install.sh" ] || return 1
+  [ -x "$TARGET_NEW/bin/install.sh" ] || return 1
 
   # the dotfiles installer drives most of its work through sudo; grant wheel
   # NOPASSWD just for this one-time setup, then restore normal password sudo.
   printf '%%wheel ALL=(ALL:ALL) NOPASSWD: ALL\n' > /mnt/etc/sudoers.d/10-installer
   arch-chroot /mnt /bin/su - "$USERNAME" -c \
-    "cd \$HOME/.config/rstl.sway && ./install.sh --yes"
+    "cd \$HOME/.config/rstl.sway && ./bin/install.sh --yes"
   printf '%%wheel ALL=(ALL:ALL) ALL\n' > /mnt/etc/sudoers.d/10-installer
   chmod 440 /mnt/etc/sudoers.d/10-installer
 }

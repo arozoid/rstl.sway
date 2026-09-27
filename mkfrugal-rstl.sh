@@ -741,6 +741,12 @@ rm -f "$ROOTFS/etc/localtime.bak" 2>/dev/null || true
 copy_repo() {
     dest="$1"
     mkdir -p "$dest"
+    # Purge the destination before copying: the staged tree must be exactly the
+    # repository, not the repository plus whatever an earlier build left behind
+    # (--force / --reuse-rootfs re-stage into an existing rootfs, and a file
+    # removed from the repository would otherwise keep applying forever). The
+    # directory itself is kept - /root/.config/rstl.sway symlinks into it.
+    find "$dest" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
     # Exclude build/CI workspace artifacts, which can be GB in CI (cache
     # firmware, stage/ + base/ rootfs trees with pacman caches, dist/,
     # baserootfs-*.tar.zst artifacts, build.log) — they must never ship in
@@ -761,6 +767,7 @@ copy_repo() {
         --exclude='./.git' \
         --exclude='./.gitmodules' \
         --exclude='./.gitignore' \
+        --exclude='./.rstl-edition' \
         -C "$REPO" -cf - . | tar -C "$dest" -xf -
 }
 
@@ -778,7 +785,7 @@ trim_git_dirs() {
 info "staging dotfiles into /etc/skel/.config/rstl.sway (single copy)"
 copy_repo "$ROOTFS/etc/skel/.config/rstl.sway"
 trim_git_dirs "$ROOTFS/etc/skel"
-chmod +x "$ROOTFS/etc/skel/.config/rstl.sway"/install*.sh \
+chmod +x "$ROOTFS/etc/skel/.config/rstl.sway"/bin/* \
          "$ROOTFS/etc/skel/.config/rstl.sway"/scripts/*.sh 2>/dev/null || true
 # root does NOT get a second copy: /root/.config/rstl.sway is a link into the
 # skel tree, so every root flow (install-min/install-base run as root, the
@@ -920,7 +927,7 @@ set_passwords() {
 header "Installing flavor: $flavor"
 case "$flavor" in
     install-min)
-        chr /bin/sh -c "RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox /root/.config/rstl.sway/install-min.sh $FLAG_YES"
+        chr /bin/sh -c "RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox /root/.config/rstl.sway/bin/install-min.sh $FLAG_YES"
         ensure_rustle_user
         # surface the root-staged desktop config for the rustle login too
         home="$ROOTFS/home/rustle"
@@ -934,7 +941,7 @@ case "$flavor" in
         ;;
 
     install-base)
-        chr /bin/sh -c "RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox /root/.config/rstl.sway/install-base.sh $FLAG_YES"
+        chr /bin/sh -c "RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox /root/.config/rstl.sway/bin/install-base.sh $FLAG_YES"
         ensure_rustle_user
         # surface the root-staged desktop config for the rustle login too
         home="$ROOTFS/home/rustle"
@@ -948,9 +955,9 @@ case "$flavor" in
         ;;
 
     install)
-        # install.sh refuses to run as root -> run it as rustle, exactly like
+        # bin/install.sh refuses to run as root -> run it as rustle, exactly like
         # rstl-install.sh's install_dotfiles() (NOPASSWD wheel, then restore)
-        install_as_rustle install.sh
+        install_as_rustle bin/install.sh
         set_passwords
         # root's config stays the skel copy (single repo): re-point the link in
         # case the as-rustle flow ever replaced it, then wire the root symlinks
@@ -961,9 +968,9 @@ case "$flavor" in
         ;;
 
     rstl-inst)
-        install_as_rustle install.sh
-        # root's path to the full staged repo (via the skel link; install.sh +
-        # rstl-install.sh intact) so the TUI's "Install" ->
+        install_as_rustle bin/install.sh
+        # root's path to the full staged repo (via the skel link; bin/install.sh
+        # + rstl-install.sh intact) so the TUI's "Install" ->
         # ~/.config/rstl.sway/rstl-install.sh works
         replicate_symlinks "$ROOTFS/root"
         set_passwords
