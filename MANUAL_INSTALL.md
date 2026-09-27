@@ -5,7 +5,11 @@ prefer doing everything by hand? clone the repo first:
 ```bash
 git clone https://github.com/arozoid/rstl.sway.git/ ~/.config/rstl.sway/
 cd ~/.config/rstl.sway/
+git submodule update --init --depth 1 nvim
 ```
+
+the `nvim` submodule carries the editor config you symlink at the end; without
+that line the symlink below points at an empty directory.
 
 upgrade your system:
 
@@ -152,3 +156,43 @@ sudo ln -s ~/.config/rstl.sway/greetd /etc/greetd
 - drop your wallpaper at `~/Pictures/Wallpapers/wallpaper.jpg` or edit `~/.config/rstl.sway/wallpaper`
 - battery alerts run via cronie. add `~/.config/rstl.sway/scripts/batt.sh` to your crontab (see step 6 of `install.sh`)
 - `rstlpk` (our minimal polkit agent) fetches from GitHub releases: `sudo rstlpk/install.sh`
+
+### settings you may want to change
+
+`sway/config` holds the keybindings and the window rules; the settings live in
+`sway/config.d/`, one file per topic, included in name order at the bottom of
+`sway/config`:
+
+| file | what is in it |
+| --- | --- |
+| `10-appearance.conf` | borders, gaps, client colors |
+| `20-cursor.conf` | cursor theme (the size is computed by `scripts/auto-scale.sh`) |
+| `25-displays.conf` | where per-output settings go, and why the scale is not hardcoded here |
+| `30-input.conf` | mouse and focus behavior |
+| `40-autostart.conf` | what runs at login and on every reload |
+
+drop a file of your own next to them (`50-mine.conf`), and reload with
+win+shift+c. `sway -C -c ~/.config/sway/config` checks a config without
+starting a session.
+
+the cursor theme is read from `20-cursor.conf` by `scripts/auto-scale.sh` (it
+re-applies the theme with a runtime-computed size on every start and reload), so
+`20-cursor.conf` is the only place the theme name is written down.
+
+## updating
+
+by hand, the two halves of what `bin/update.sh` does:
+
+```bash
+sudo pacman -Syu
+git -C ~/.config/rstl.sway pull --ff-only
+git -C ~/.config/rstl.sway submodule update --init --depth 1 nvim
+```
+
+then re-apply the dotfiles by hand (a `cp -a` of the repo over
+`~/.config/rstl.sway`, minus `.git`, purging `sway/config`, `sway/config.d`,
+`bin/`, the package lists and `.rstl-edition` first - see `copy_dotfiles` in
+`bin/install.sh`, which is exactly what the installers do). packages you
+installed by hand are not touched: the lists in `packages-install*.txt` are what
+the installers install, and the ones listed there for your flavor are what
+`rstl update` re-installs.
