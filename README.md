@@ -1,6 +1,6 @@
 # rstl.sway ⋅ ~0.8 GiB desktop
 
-ultra lean & minimalistic sway config (based on arch linux) for those who want to make the most of their screen space while keeping all the features and storage space (optimized for laptops)
+ultra lean & minimalistic sway config (based on arch linux) for those who want to make the most of their screen space while keeping all the features, storage space, and resources (optimized for laptops)
 
 ![preview](./assets/images/preview.png)
 
