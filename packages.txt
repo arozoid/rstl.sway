@@ -14,7 +14,9 @@ libnotify sound-theme-freedesktop
 networkmanager bluez bluez-utils
 pipewire wireplumber pipewire-pulse pipewire-alsa alsa-utils
 foot fish bat eza zoxide jq lf
-neovim git curl wget unzip ripgrep fd-find
+neovim git curl wget unzip ripgrep
+# fd: binary /usr/bin/fd. Arch packages it as fd-find, CachyOS as fd, so
+# install.sh pulls it via install_or_fallback instead of naming it here.
 
 # explicitly required dependencies
 mesa vulkan-icd-loader

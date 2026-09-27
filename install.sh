@@ -295,7 +295,6 @@ curl
 wget
 unzip
 ripgrep
-fd-find
 noto-fonts-emoji
 xorg-xwayland
 xdg-utils
@@ -358,8 +357,48 @@ PKGS
   fi
   cat "$GCDIR/packages-program" >> "$GCDIR/packages-extra"
 
-  printf "  ${C_DIM}installing: %s${C_RESET}\n" "$(tr '\n' ' ' < "$GCDIR/packages")"
-  pac_retry -S --needed --noconfirm $(cat "$GCDIR/packages")
+  # pacman resolves every target BEFORE installing anything, so one package that
+  # does not exist under that exact name aborts the whole transaction and you
+  # silently end up with none of them (this shipped an ISO without nvim, eza or
+  # zsh-autosuggestions because Arch calls it fd-find and CachyOS calls it fd).
+  # Filter the list against the repos first: install everything that resolves in
+  # a single transaction, and report the names that do not. Distro-renamed
+  # packages are added separately via install_or_fallback below.
+  repo_pkgs="$(mktemp)"
+  run_sudo pacman -Ssq > "$repo_pkgs" 2>/dev/null || : > "$repo_pkgs"
+  wanted=""
+  missing=""
+  for pkg in $(cat "$GCDIR/packages"); do
+    if grep -qxF "$pkg" "$repo_pkgs"; then
+      wanted="$wanted $pkg"
+    else
+      missing="$missing $pkg"
+    fi
+  done
+  rm -f "$repo_pkgs"
+  wanted="${wanted# }"     # drop the leading space; keeps the lists symmetric
+  missing="${missing# }"   # drop the leading space so membership tests are exact
+
+  # a session without these cannot boot into the desktop at all: refuse to
+  # continue (and let the rootfs/ISO build fail) instead of shipping a broken
+  # image. A stale sync db can cause this too - the message says so.
+  for pkg in sway greetd greetd-tuigreet foot mako rofi; do
+    case " $missing " in
+      *" $pkg "*)
+        fail "required package '$pkg' is in no enabled repo (stale sync db? try: sudo pacman -Sy)"
+        exit 1
+        ;;
+    esac
+  done
+
+  if [ -n "$missing" ]; then
+    warn "not in any enabled repo, skipped:$missing"
+  fi
+
+  if [ -n "$wanted" ]; then
+    printf "  ${C_DIM}installing: %s${C_RESET}\n" "$wanted"
+    pac_retry -S --needed --noconfirm $wanted
+  fi
 
   while IFS= read -r pkg; do
     [ -n "$pkg" ] || continue
@@ -377,6 +416,9 @@ PKGS
   pac_retry -S --needed --noconfirm hicolor-icon-theme
   install_or_fallback notwaita-cursors-grey adwaita-cursors
   install_or_fallback papirus-icon-theme-dark-only adwaita-icon-theme
+  # fd: Arch ships the binary as package fd-find, CachyOS as fd (both provide
+  # /usr/bin/fd). Kept out of the bulk list above for exactly that reason.
+  install_or_fallback fd-find fd
 
   ok "packages installed"
 }
