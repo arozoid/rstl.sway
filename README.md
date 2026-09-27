@@ -100,6 +100,26 @@ rstl install-min.sh        # switch to the minimal edition
 
 everything after the script name is passed through untouched.
 
+with no arguments at all, `rstl` is a picker: it lists everything runnable in `bin/`, one row per script with the description from that script's own header, and takes a number or a name:
+
+```bash
+rstl
+```
+
+```
+== pick a script
+==========================================================================
+  1  install-base.sh    dotfiles installer for Arch Linux (base / bare minimum)
+  2  install-min.sh     dotfiles installer for Arch Linux (minimal)
+  3  install.sh         dotfiles installer for Arch Linux
+  4  update.sh          updater - brings an existing installation up to date.
+
+  -> enter a number or a name; an empty line leaves
+  number [1-4]
+```
+
+then it prints that script's `--help`, asks for the arguments (`--program "vim mouse"` is one argument, not two), runs it, and comes back to the menu. an empty line leaves, as does `q`. without a terminal it just prints the list and exits 2, so a script asking "what can I run here?" gets an answer.
+
 ### configuring sway
 
 `sway/config` holds what you are not likely to change: the variables, the keybindings and the window rules. the settings live in `sway/config.d/`, one file per topic, included in name order at the bottom of `sway/config`:

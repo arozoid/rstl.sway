@@ -2,10 +2,24 @@
 # rstl - run a script from the rstl.sway dotfiles directory by name.
 #
 # Usage:
+#   rstl                      interactive picker: pick a script by number (or by
+#                             name), see its --help, then type its arguments.
+#                             Press enter on an empty line to leave.
 #   rstl install.sh --yes     run bin/install.sh --yes
 #   rstl install --yes        same, the .sh suffix is optional
 #   rstl update.sh            run bin/update.sh
-#   rstl                      list the available scripts
+#   rstl --help               this help
+#
+# With no arguments on a terminal, rstl is a small REPL: it lists everything
+# runnable in ~/.config/rstl.sway/bin, one line per script with the description
+# from that script's own header, takes a number (or a name), prints the
+# script's --help when it has one, asks for the arguments and runs it. When the
+# script finishes the menu comes back, so several things can be run in a row;
+# an empty line leaves.
+#
+# Without a terminal there is nobody to answer the prompts, so the plain listing
+# stands: print the scripts and exit 2. That is what a script asking "what can I
+# run here?" gets.
 #
 # The first argument picks the script inside ~/.config/rstl.sway/bin, the rest
 # is passed through unchanged. Installed as /usr/local/bin/rstl by the
@@ -19,17 +33,72 @@ set -u
 RSTL_SWAY_DIR="${RSTL_SWAY_DIR:-${HOME}/.config/rstl.sway}"
 BIN_DIR="${RSTL_SWAY_DIR}/bin"
 
+# ---------------------------------------------------------------------------
+# Colors / styling (the same palette as the installers)
+# ---------------------------------------------------------------------------
+if [ -t 1 ]; then
+    C_RESET='\033[0m'
+    C_BOLD='\033[1m'
+    C_DIM='\033[2m'
+    C_RED='\033[31m'
+    C_GREEN='\033[32m'
+    C_YELLOW='\033[33m'
+    C_PURPLE='\033[95m'
+    C_CYAN='\033[36m'
+else
+    C_RESET='' C_BOLD='' C_DIM='' C_RED='' C_GREEN='' C_YELLOW='' C_PURPLE='' C_CYAN=''
+fi
+
+COLS="${COLUMNS:-$(tput cols 2>/dev/null || echo 80)}"
+BOX_W=$(( COLS > 74 ? 74 : COLS ))
+
+rule() {
+    printf "${1:-$C_CYAN}%*s${C_RESET}\n" "$BOX_W" "" | tr ' ' '='
+}
+
+header() {
+    printf "\n${C_BOLD}${C_PURPLE}== %s${C_RESET}\n" "$*"
+    rule "$C_PURPLE"
+}
+
+info() { printf "  ${C_DIM}-> %s${C_RESET}\n" "$*"; }
+warn() { printf "  ${C_YELLOW}!${C_RESET}  %s\n" "$*" >&2; }
+
 die() {
     printf 'rstl: %s\n' "$*" >&2
     exit 1
 }
 
 usage() {
-    sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+    # the header comment: from under the shebang to the first line that is not
+    # a comment, with the leading "# " taken off
+    sed -n '2,$ { /^#/!q; s/^#[[:space:]]\{0,1\}//p; }' "$0"
 }
 
-# every runnable script in bin/, one per line
+# ---------------------------------------------------------------------------
+# what is in bin/
+# ---------------------------------------------------------------------------
+# A script describes itself: the first line of its own header comment is its
+# description, so a new script shows up in the menu with something useful
+# without a table in here to keep in sync.
+describe() {
+    sed -n '2,8p' "$1" 2>/dev/null \
+        | sed -n 's/^#[[:space:]]\{0,1\}//p' \
+        | grep -m1 . \
+        | sed 's/^rstl\.sway[[:space:]]\{1,\}//'
+}
+
+# every runnable script in bin/, one per line, as "name|description"
 available() {
+    for f in "${BIN_DIR}"/*; do
+        [ -f "$f" ] && [ -x "$f" ] || continue
+        [ "${f##*/}" = "rstl" ] && continue
+        printf '%s|%s\n' "${f##*/}" "$(describe "$f")"
+    done
+}
+
+# the plain names, for the non-interactive listing and the error messages
+available_names() {
     for f in "${BIN_DIR}"/*; do
         [ -f "$f" ] && [ -x "$f" ] || continue
         [ "${f##*/}" = "rstl" ] && continue
@@ -37,48 +106,181 @@ available() {
     done
 }
 
-if [ "$#" -eq 0 ]; then
-    printf 'usage: rstl <script> [arguments...]\n' >&2
-    printf 'e.g.   rstl install.sh --yes\n\n' >&2
-    printf 'available scripts:\n' >&2
-    available >&2
-    exit 2
-fi
+# a bare name resolves inside bin/, with or without the .sh suffix
+# (rstl update == rstl update.sh); a path is used as given
+resolve() {
+    case "$1" in
+        */*) printf '%s' "$1" ;;
+        *)
+            if [ -f "${BIN_DIR}/$1" ]; then
+                printf '%s' "${BIN_DIR}/$1"
+            else
+                printf '%s' "${BIN_DIR}/$1.sh"
+            fi
+            ;;
+    esac
+}
 
-case "$1" in
+# ---------------------------------------------------------------------------
+# the picker
+# ---------------------------------------------------------------------------
+# Prompts go to stderr on purpose: the menu is output, but a prompt you cannot
+# see is a prompt you cannot answer, and stdout may well be redirected.
+
+# run a script the way the wrapper does (through sh when the mode bit is gone)
+run_script() {
+    script_path="$1"
+    shift
+    if [ -x "$script_path" ]; then
+        "$script_path" "$@"
+    else
+        sh "$script_path" "$@"
+    fi
+}
+
+# The chosen script's --help, when it has one. It cannot be asked in advance
+# (that is the point of the menu), so the test is that the script mentions the
+# flag at all: running a script with a flag it does not know is what we want to
+# avoid, and every script here exits on --help.
+show_help() {
+    grep -q -- '--help' "$1" 2>/dev/null || return 0
+    header "${2} --help"
+    run_script "$1" --help 2>&1
+    echo
+}
+
+# one pass: menu, choice, help, arguments, run. Returns the script's exit
+# status, or 0 when nothing was run. LEAVE is set when the session is over (an
+# empty line, q, or the end of the input) so the loop below can stop.
+LEAVE=0
+
+pick() {
+    menu="$(available)"
+    count="$(printf '%s\n' "$menu" | wc -l | tr -d ' ')"
+    LEAVE=0
+
+    header "pick a script"
+    index=0
+    printf '%s\n' "$menu" | while IFS='|' read -r name desc; do
+        index=$((index + 1))
+        printf "  ${C_BOLD}%s${C_RESET}  %-18s ${C_DIM}%s${C_RESET}\n" \
+            "$index" "$name" "$desc"
+    done
+    echo
+    info "enter a number or a name; an empty line leaves"
+
+    choice=""
+    printf "  ${C_BOLD}number${C_RESET} ${C_DIM}[1-%s]${C_RESET} " "$count" >&2
+    read -r choice || { LEAVE=1; return 0; }   # end of input: leave, do not spin
+    [ -n "$choice" ] || { LEAVE=1; return 0; }
+    case "$choice" in
+        q|Q|quit|exit) LEAVE=1; return 0 ;;
+    esac
+
+    case "$choice" in
+        *[!0-9]*)
+            path="$(resolve "$choice")"
+            [ -f "$path" ] || {
+                warn "no script named $choice"
+                available_names >&2
+                return 0
+            }
+            ;;
+        *)
+            if [ "$choice" -lt 1 ] || [ "$choice" -gt "$count" ]; then
+                warn "there is no script number $choice (1-$count)"
+                return 0
+            fi
+            name="$(printf '%s\n' "$menu" | sed -n "${choice}p" | cut -d'|' -f1)"
+            path="${BIN_DIR}/${name}"
+            ;;
+    esac
+    name="${path##*/}"
+
+    show_help "$path" "$name"
+
+    argline=""
+    printf "  ${C_BOLD}arguments${C_RESET} ${C_DIM}for %s [enter for none]${C_RESET} " \
+        "$name" >&2
+    # the end of the input here means the session is over, not "no arguments"
+    read -r argline || { LEAVE=1; return 0; }
+    if [ -n "$argline" ]; then
+        # split the line the way a shell would, so quotes survive and
+        # --program "vim mouse" is one argument instead of two
+        eval "set -- $argline" 2>/dev/null || {
+            warn "could not read those arguments, skipping $name"
+            return 0
+        }
+    else
+        set --
+    fi
+
+    header "running ${name}${argline:+ $argline}"
+    run_script "$path" "$@"
+    rc=$?
+    if [ "$rc" -eq 0 ]; then
+        printf "\n  ${C_GREEN}done${C_RESET}    %s\n" "$name"
+    else
+        printf "\n  ${C_YELLOW}exit %s${C_RESET}  %s\n" "$rc" "$name"
+    fi
+    return "$rc"
+}
+
+repl() {
+    if [ -z "$(available)" ]; then
+        printf 'rstl: no runnable scripts in %s\n' "$BIN_DIR" >&2
+        return 1
+    fi
+    while :; do
+        # a script that fails does not end the session: the menu comes back
+        pick || true
+        [ "$LEAVE" -eq 1 ] && break
+    done
+}
+
+# ---------------------------------------------------------------------------
+# arguments
+# ---------------------------------------------------------------------------
+[ -d "$BIN_DIR" ] || die "${BIN_DIR} not found - is this an rstl.sway install?"
+
+case "${1:-}" in
     -h|--help)
         usage
         exit 0
         ;;
 esac
 
-[ -d "$BIN_DIR" ] || die "${BIN_DIR} not found - is this an rstl.sway install?"
+# no arguments, or an empty one, on a terminal: the picker
+if [ "$#" -eq 0 ] || [ -z "$(printf '%s' "${1:-}" | tr -d '[:space:]')" ]; then
+    if [ -t 0 ]; then
+        repl
+        exit 0
+    fi
+    printf 'usage: rstl <script> [arguments...]\n' >&2
+    printf 'e.g.   rstl install.sh --yes\n' >&2
+    printf '   or:  rstl                      interactive picker\n\n' >&2
+    printf 'available scripts:\n' >&2
+    available_names >&2
+    exit 2
+fi
 
 script="$1"
 shift
 
-# a path is used as given; a bare name resolves inside bin/, with or without
-# the .sh suffix (rstl update == rstl update.sh)
-case "$script" in
-    */*) path="$script" ;;
-    *)
-        path="${BIN_DIR}/${script}"
-        [ -f "$path" ] || path="${BIN_DIR}/${script}.sh"
-        ;;
-esac
+path="$(resolve "$script")"
 
 [ -f "$path" ] || {
     printf 'rstl: no script named %s\n\n' "$script" >&2
     printf 'available scripts:\n' >&2
-    available >&2
+    available_names >&2
     exit 1
 }
 
 [ "${path##*/}" = "rstl" ] && die "refusing to call the wrapper from inside itself"
 
+# not executable (a checkout that lost the mode bit): run it through sh
 if [ -x "$path" ]; then
     exec "$path" "$@"
 fi
 
-# not executable (a checkout that lost the mode bit): run it through sh
 exec sh "$path" "$@"
