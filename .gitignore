@@ -16,6 +16,10 @@ archiso/airootfs/root/*
 # rstl-first-login ran marker
 .first-login-done
 
+# edition indicator: written by the installers on every run, read by
+# bin/update.sh. It describes the machine, not the repository.
+.rstl-edition
+
 # micro runtime state (auto-generated through the ~/.config/micro symlink);
 # settings.json + colorschemes/ + syntax/ are the vendored package content
 micro/bindings.json

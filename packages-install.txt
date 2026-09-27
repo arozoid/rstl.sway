@@ -1,0 +1,101 @@
+# rstl.sway package list - full edition (installer: bin/install.sh)
+#
+# Sections, read by bin/install.sh:
+#   #@core             one atomic pacman transaction. A name that does not
+#                      resolve is reported and left out instead of voiding the
+#                      whole transaction (pacman resolves every target before it
+#                      installs anything).
+#   #@optional         installed one at a time, so a name that does not resolve
+#                      skips only itself. Used for the rstl-repo extras.
+#   #@program:vim      selected by RSTL_PROGRAM=vim or --program vim
+#   #@program:mouse    selected by RSTL_PROGRAM=mouse or --program mouse
+#                      (micro + rovr)
+#   #@firefox          selected by RSTL_FIREFOX=1 or --firefox
+#
+# Renamed packages are NOT listed here: they are resolved by
+# install_or_fallback in bin/install.sh (fd-find/fd, the cursor themes, ...),
+# because the name that resolves depends on the distribution.
+
+#@core
+sway
+swaybg
+rofi
+mako
+swaylock
+swayidle
+grim
+slurp
+wl-clipboard
+playerctl
+brightnessctl
+acpi
+networkmanager
+bluez
+bluez-utils
+pipewire
+wireplumber
+pipewire-pulse
+pipewire-alsa
+alsa-utils
+libnotify
+sound-theme-freedesktop
+greetd
+greetd-tuigreet
+foot
+zsh-syntax-highlighting
+zsh
+zsh-autosuggestions
+zsh-completions
+bat
+eza
+zoxide
+jq
+fastfetch
+neovim
+git
+curl
+wget
+unzip
+ripgrep
+noto-fonts-emoji
+xorg-xwayland
+xdg-utils
+xdg-desktop-portal-wlr
+cronie
+flac
+mpg123
+opus
+libvorbis
+speex
+speexdsp
+sbc
+dav1d
+libvpx
+openh264
+mesa
+vulkan-icd-loader
+
+#@optional
+ttf-jetbrains-mono-nerd-min
+rstlpk
+dssd
+xdg-desktop-portal-termfilechooser
+yambar
+latuicon
+clipse
+wiremix
+eva
+awww
+rstl-pick
+fzf-tab
+zsh-auto-notify
+
+#@program:vim
+superfile
+
+#@program:mouse
+micro
+rovr-bin
+
+#@firefox
+firefox

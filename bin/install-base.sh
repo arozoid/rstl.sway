@@ -7,9 +7,21 @@
 # sway/tuigreet/yambar/rofi/foot/mako base.
 #
 # Usage:
-#   ./install-base.sh            run every step, confirming each one
-#   ./install-base.sh --yes      run every step without asking
-#   ./install-base.sh --help     show this help
+#   bin/install-base.sh                  run every step, confirming each one
+#   bin/install-base.sh --yes            run every step without asking
+#   bin/install-base.sh --no-cleanup     every step except the last one (cleanup)
+#   bin/install-base.sh --firefox        bundle the firefox browser
+#   bin/install-base.sh --help           show this help
+#
+# The base variant carries no program configuration: the vim/mouse editions are
+# install/install-min only, so --program is accepted and ignored here.
+# RSTL_FIREFOX=1 / --firefox bundles the firefox browser on top of the base
+# desktop.
+#
+# The package list lives next to the repository root, in
+# ../packages-install-base.txt, and the edition this run installed is recorded in
+# ../.rstl-edition. bin/update.sh re-runs this installer to bring an existing
+# installation up to date.
 
 set -u
 
@@ -18,22 +30,51 @@ if [ -n "${RSTL_TRACE:-}" ]; then
     export PS4='+[install-base:$LINENO] '
 fi
 
-ASSUME_YES=0
-[ "${1:-}" = "--yes" ] || [ "${1:-}" = "-y" ] && ASSUME_YES=1
-if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
-  sed -n '2,6p' "$0"
-  exit 0
-fi
-
-# The base variant carries no program configuration (RSTL_PROGRAM is ignored
-# here): vim/mouse editions are install/install-min only.  RSTL_FIREFOX=1
-# bundles the firefox browser on top of the base desktop.
 RSTL_FIREFOX="${RSTL_FIREFOX:-0}"
+# kept only so the build can pass it to every flavor; the base desktop has no
+# program configuration and never reads it
+RSTL_PROGRAM="${RSTL_PROGRAM:-none}"
 
-SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
+ASSUME_YES=0
+SKIP_CLEANUP=0
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --yes|-y)     ASSUME_YES=1; shift ;;
+        --no-cleanup) SKIP_CLEANUP=1; shift ;;
+        --program)    [ "$#" -ge 2 ] || { echo "--program needs a value" >&2; exit 2; }
+                      shift 2 ;;                 # accepted and ignored (see above)
+        --program=*)  shift ;;
+        --firefox)    RSTL_FIREFOX=1; shift ;;
+        --no-firefox) RSTL_FIREFOX=0; shift ;;
+        --help|-h)    sed -n '2,25p' "$0"; exit 0 ;;
+        *)            echo "unknown option: $1 (try --help)" >&2; exit 2 ;;
+    esac
+done
+case "$RSTL_FIREFOX" in
+    0|1) ;;
+    *) echo "RSTL_FIREFOX must be 0 or 1, got: $RSTL_FIREFOX" >&2; exit 2 ;;
+esac
+
+# Which flavor this installer is, and which package list it reads. Both are
+# recorded in the edition indicator, so bin/update.sh can re-apply exactly this
+# flavor later.
+EDITION="install-base"
+EDITION_PROGRAM="none"   # the base edition carries no program configuration
+PKG_LIST="packages-install-base.txt"
+# the step that strips build artifacts; skipped with --no-cleanup
+CLEANUP_STEP="step_8"
+
+# The scripts live in bin/ and the package lists sit next to that, in the
+# repository root, so REPO_DIR is the checkout this script was started from.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DOTFILES_DIR="${HOME}/.config/rstl.sway"
 
-cd "$SOURCE_DIR"
+# temp dir for the generated package lists (removed on exit)
+GCDIR="$(mktemp -d)"
+trap 'rm -rf "$GCDIR"' EXIT
+
+cd "$REPO_DIR"
 
 if [ -t 1 ]; then
     C_RESET='\033[0m' C_BOLD='\033[1m'
@@ -191,6 +232,110 @@ sway_comment() {
     echo "commented sway/$1: $lit"
 }
 
+# ---------------------------------------------------------------------------
+# Package list (../packages-install-base.txt)
+# ---------------------------------------------------------------------------
+# The list is data, not code, so it lives in a plain text file next to the
+# repository root: reviewing a package change is a one-file diff, and
+# bin/update.sh reads the same file. Sections:
+#   #@core             one atomic transaction (a name that does not resolve is
+#                      reported and left out, never voids the transaction)
+#   #@optional         one package at a time (rstl-repo extras)
+#   #@program:<name>   the RSTL_PROGRAM / --program configuration
+#   #@firefox          RSTL_FIREFOX=1 / --firefox
+list_core() {
+  awk '
+    /^#@/ { sect = substr($0, 3); next }
+    /^#/  { next }
+    NF == 0 { next }
+    sect == "core" { print }
+  ' "$REPO_DIR/$PKG_LIST"
+}
+
+# Everything that is installed one package at a time: the optional tier plus
+# the program and firefox sections. A name that does not resolve here skips
+# only itself.
+# NOTE: the parentheses are required. In awk, concatenation binds looser than
+# ==, so "sect == \"program:\" program" parses as "(sect == \"program:\") program"
+# and would match every section instead of just the program one.
+list_each() {
+  awk -v program="$RSTL_PROGRAM" -v firefox="$RSTL_FIREFOX" '
+    /^#@/ { sect = substr($0, 3); next }
+    /^#/  { next }
+    NF == 0 { next }
+    sect == "optional"                  { print }
+    sect == ("program:" program)        { print }
+    sect == "firefox" && firefox == "1" { print }
+  ' "$REPO_DIR/$PKG_LIST"
+}
+
+# ===========================================================================
+# Copying the repository into ~/.config/rstl.sway
+# ===========================================================================
+# Two rules, and they are the reason this is not just `cp -a`:
+#
+#   1. .git is never copied. A checkout's history belongs to the machine that
+#      made it: bin/update.sh installs from a fresh `git clone --depth 1`, and
+#      copying its .git over a real checkout would replace the user's history
+#      (and, with */.git, their submodule registrations) with a shallow copy of
+#      someone else's. The ISO/rootfs builds purge .git the same way, see
+#      copy_repo in mkfrugal-rstl.sh.
+#
+#   2. The paths the installers own are purged BEFORE the copy, so the result is
+#      exactly the repository instead of the repository plus whatever an earlier
+#      version left behind. That matters most for sway/config.d (the user's
+#      settings: a file deleted from the repository must not keep applying), for
+#      sway/config plus the package lists and the edition indicator, and for the
+#      sway config lines this installer patches in place - without the purge,
+#      switching back to a bigger edition would leave the "# [base] " comments
+#      behind forever.
+#
+# Only the paths below are purged. Everything else in the dotfiles directory is
+# left alone, so anything you drop in there survives an install.
+copy_dotfiles() {
+    dest="$DOTFILES_DIR"
+    mkdir -p "$dest"
+    for owned in sway/config sway/config.d bin \
+                 packages-install.txt packages-install-min.txt packages-install-base.txt \
+                 .rstl-edition; do
+        [ -e "$dest/$owned" ] || continue
+        # say it out loud: anything of yours in these paths is replaced by the
+        # repository's version, on purpose
+        echo "purging $dest/$owned (replaced by the repository copy)"
+        rm -rf "${dest:?}/$owned"
+    done
+    # tar rather than cp: it is always present, it is what the ISO build uses,
+    # and it can leave .git behind with a pattern.
+    tar -C "$REPO_DIR" --exclude=./.git --exclude='*/.git' -cf - . \
+        | tar -C "$dest" -xf - || {
+        echo "copying the dotfiles from $REPO_DIR failed" >&2
+        return 1
+    }
+}
+
+# Edition indicator (~/.config/rstl.sway/.rstl-edition)
+# ---------------------------------------------------------------------------
+# Which flavor installed this dotfiles directory, with which program, so
+# bin/update.sh knows what to re-apply. Rewritten from scratch on every run
+# (never merged with whatever was there) and git-ignored: it describes the
+# machine, not the repository.
+write_edition() {
+  target="$DOTFILES_DIR/.rstl-edition"
+  if ! {
+    printf '# written by bin/install-base.sh, read by bin/update.sh - do not edit\n'
+    printf 'edition=%s\n'   "$EDITION"
+    printf 'program=%s\n'   "$EDITION_PROGRAM"
+    printf 'firefox=%s\n'   "$RSTL_FIREFOX"
+    printf 'dotfiles=%s\n'  "$DOTFILES_DIR"
+    printf 'packages=%s\n'  "$PKG_LIST"
+    printf 'installed=%s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z' 2>/dev/null)"
+  } > "$target" 2>/dev/null; then
+    echo "  could not write the edition indicator ${target}" >&2
+    return 1
+  fi
+  echo "  edition recorded in ${target} (${EDITION}, program ${EDITION_PROGRAM})"
+}
+
 # ===========================================================================
 # steps
 # ===========================================================================
@@ -201,14 +346,20 @@ step_0() {
 
 step_1() {
     header "copy dotfiles"
-    mkdir -p "$DOTFILES_DIR"
-    if [ "$(readlink -f "$SOURCE_DIR" 2>/dev/null)" != "$(readlink -f "$DOTFILES_DIR" 2>/dev/null)" ]; then
-        cp -a "$SOURCE_DIR"/. "$DOTFILES_DIR"/
-        chmod +x "$DOTFILES_DIR"/scripts/*.sh 2>/dev/null || true
+    # true when invoked from $DOTFILES_DIR (or a path that resolves to it, e.g.
+    # /root/.config/rstl.sway symlinked into /etc/skel) - nothing to copy then
+    if [ "$(readlink -f "$REPO_DIR" 2>/dev/null)" != "$(readlink -f "$DOTFILES_DIR" 2>/dev/null)" ]; then
+        copy_dotfiles || return 1
         echo "copied dotfiles to $DOTFILES_DIR"
     else
         echo "dotfiles already at $DOTFILES_DIR"
     fi
+    mkdir -p "$DOTFILES_DIR"
+    chmod +x "$DOTFILES_DIR"/scripts/*.sh "$DOTFILES_DIR"/bin/*.sh 2>/dev/null || true
+
+    # record which flavor (and program) owns this dotfiles dir; bin/update.sh
+    # reads it back to know what to re-apply
+    write_edition
 
     if [ -f "$DOTFILES_DIR/scripts/first-login.sh" ]; then
         run_sudo install -Dm755 "$DOTFILES_DIR/scripts/first-login.sh" /usr/local/bin/rstl-first-login
@@ -220,6 +371,13 @@ step_1() {
 EOF
         run_sudo chmod 644 /etc/profile.d/rstl-first-login.sh
         echo "installed rstl-first-login + profile.d hook"
+    fi
+
+    # the `rstl` wrapper: run any script in bin/ by name (rstl install.sh --yes,
+    # rstl update.sh). Installed system-wide so it works from any directory.
+    if [ -f "$DOTFILES_DIR/bin/rstl" ]; then
+        run_sudo install -Dm755 "$DOTFILES_DIR/bin/rstl" /usr/local/bin/rstl
+        echo "installed the rstl wrapper (/usr/local/bin/rstl)"
     fi
 }
 
@@ -237,22 +395,32 @@ step_2() {
         pac_retry -Sy --noconfirm
     fi
 
-    pac_install_filtered "\
-        sway swaybg rofi mako \
-        grim slurp wl-clipboard cliphist \
-        playerctl brightnessctl \
-        pipewire wireplumber pipewire-pulse pipewire-alsa alsa-utils \
-        libnotify sound-theme-freedesktop \
-        greetd greetd-tuigreet \
-        foot \
-        git curl wget unzip \
-        xdg-utils xdg-desktop-portal-wlr \
-        cronie wpa_supplicant \
-        mesa vulkan-icd-loader \
-        ttf-jetbrains-mono-nerd-min hicolor-icon-theme \
-        rstlpk dssd yambar xdg-desktop-portal-termfilechooser \
-        util-linux less" \
+    # the package list is data: ../packages-install-base.txt, next to the
+    # repository root. #@core goes in one atomic transaction, everything else
+    # one package at a time. See list_core()/list_each() for the section format.
+    if [ ! -f "$REPO_DIR/$PKG_LIST" ]; then
+        echo "package list $REPO_DIR/$PKG_LIST is missing" >&2
+        return 1
+    fi
+    list_core > "$GCDIR/packages"
+    list_each > "$GCDIR/packages-extra"
+    printf "  %s: %s core, %s per-package\n" \
+        "$PKG_LIST" \
+        "$(wc -l < "$GCDIR/packages" | tr -d ' ')" \
+        "$(wc -l < "$GCDIR/packages-extra" | tr -d ' ')"
+
+    pac_install_filtered "$(cat "$GCDIR/packages")" \
         "sway greetd greetd-tuigreet foot mako rofi"
+
+    # base has no program config; an optional firefox bundle is still honored
+    # and installed one at a time so a missing package skips instead of aborting
+    for pm in $(cat "$GCDIR/packages-extra"); do
+        if run_sudo pacman -Ssq "^${pm}$" 2>/dev/null | grep -qx "$pm"; then
+            pac_retry -S --needed --noconfirm "$pm"
+        else
+            printf "  %s not found in repos, skipping\n" "$pm"
+        fi
+    done
 
     # note: intentionally omitted from the base variant: swaylock/swayidle,
     # networkmanager, bluez/bluez-utils (wpa_cli via wpa_supplicant instead),
@@ -261,15 +429,6 @@ step_2() {
     # wiremix, latuicon). cliphist replaces clipse as the clipboard store.
 
     install_or_fallback notwaita-cursors-grey adwaita-cursors
-
-    # base has no program config; an optional firefox bundle is still honored
-    if [ "$RSTL_FIREFOX" = "1" ]; then
-        if run_sudo pacman -Ssq "^(firefox)$" 2>/dev/null | grep -qx "firefox"; then
-            pac_retry -S --needed --noconfirm firefox
-        else
-            echo "  firefox not found in repos, skipping"
-        fi
-    fi
 
     echo "packages installed"
 }
@@ -384,12 +543,13 @@ step_8() {
         "$DOTFILES_DIR/packages.txt" \
         "$DOTFILES_DIR/README.md" \
         "$DOTFILES_DIR/MANUAL_INSTALL.md" \
-        "$DOTFILES_DIR/install.sh" \
-        "$DOTFILES_DIR/install-min.sh" \
         "$DOTFILES_DIR/.git" \
         "$DOTFILES_DIR/.gitmodules" \
         "$DOTFILES_DIR/fastfetch" \
         "$DOTFILES_DIR/fish"
+    # deliberately NOT removed: bin/ (bin/update.sh re-runs this installer to
+    # update the machine), packages-install*.txt (the lists the installers read)
+    # and .rstl-edition (which flavor this machine runs).
 
     find "$DOTFILES_DIR" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
 
@@ -427,6 +587,14 @@ if [ "$(id -u)" -eq 0 ] && [ ! -e /etc/.rstl-sway-rootfs ]; then
 fi
 
 while IFS='|' read -r num label question func <&3; do
+    if [ "$func" = "$CLEANUP_STEP" ] && [ "$SKIP_CLEANUP" -eq 1 ]; then
+        # bin/update.sh re-runs the installer to refresh the dotfiles; the
+        # cleanup step is a build-time size optimization (orphan removal, cache
+        # purge, dev headers) and must not run against a live desktop.
+        echo "  step $num ($label) skipped: --no-cleanup"
+        echo
+        continue
+    fi
     if confirm "$question"; then
         "$func"
     fi

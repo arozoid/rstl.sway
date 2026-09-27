@@ -2,28 +2,60 @@
 # rstl.sway dotfiles installer for Arch Linux
 #
 # Usage:
-#   ./install.sh            run every step, confirming each one
-#   ./install.sh --yes      run every step without asking
-#   ./install.sh --help     show this help
+#   bin/install.sh                  run every step, confirming each one
+#   bin/install.sh --yes            run every step without asking
+#   bin/install.sh --no-cleanup     every step except the last one (cleanup)
+#   bin/install.sh --program mouse  pick the program configuration
+#   bin/install.sh --firefox        bundle the firefox browser
+#   bin/install.sh --help           show this help
 #
-# Every step can be cancelled with 'n' and the script keeps going.
+# Every step can be cancelled with 'n' and the script keeps going. The package
+# list lives next to this script, in ../packages-install.txt, and the edition
+# this run installed is recorded in ../.rstl-edition. bin/update.sh re-runs this
+# installer to bring an existing installation up to date.
 
 set -u
 
-ASSUME_YES=0
-[ "${1:-}" = "--yes" ] || [ "${1:-}" = "-y" ] && ASSUME_YES=1
-if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
-  sed -n '2,7p' "$0"
-  exit 0
-fi
-
-# Program configuration (selected at build time by mkfrugal-rstl.sh).
+# Program configuration. The ISO build picks it through the environment
+# (mkfrugal-rstl.sh --program), a person installing it with --program:
 #   vim   = nvim editor + superfile (spf) file manager
 #   mouse = micro editor (settings vendored in ./micro) + rovr file manager
-# RSTL_FIREFOX=1 bundles the firefox browser on top of either configuration.
+# RSTL_FIREFOX=1 / --firefox bundles the firefox browser on top of either.
 RSTL_PROGRAM="${RSTL_PROGRAM:-vim}"
 RSTL_FIREFOX="${RSTL_FIREFOX:-0}"
-case "$RSTL_PROGRAM" in vim|mouse) ;; *) RSTL_PROGRAM="vim" ;; esac
+
+ASSUME_YES=0
+SKIP_CLEANUP=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --yes|-y)         ASSUME_YES=1; shift ;;
+    --no-cleanup)     SKIP_CLEANUP=1; shift ;;
+    --program)        [ "$#" -ge 2 ] || { echo "--program needs a value" >&2; exit 2; }
+                      RSTL_PROGRAM="$2"; shift 2 ;;
+    --program=*)      RSTL_PROGRAM="${1#*=}"; shift ;;
+    --firefox)        RSTL_FIREFOX=1; shift ;;
+    --no-firefox)     RSTL_FIREFOX=0; shift ;;
+    --help|-h)        sed -n '2,15p' "$0"; exit 0 ;;
+    *)                echo "unknown option: $1 (try --help)" >&2; exit 2 ;;
+  esac
+done
+case "$RSTL_PROGRAM" in
+  vim|mouse) ;;
+  *) echo "unknown program: $RSTL_PROGRAM (vim, mouse)" >&2; exit 2 ;;
+esac
+case "$RSTL_FIREFOX" in
+  0|1) ;;
+  *) echo "RSTL_FIREFOX must be 0 or 1, got: $RSTL_FIREFOX" >&2; exit 2 ;;
+esac
+
+# Which flavor this installer is, and which package list it reads. Both are
+# recorded in the edition indicator, so bin/update.sh can re-apply exactly this
+# flavor later.
+EDITION="install"
+EDITION_PROGRAM="$RSTL_PROGRAM"
+PKG_LIST="packages-install.txt"
+# the step that strips build artifacts; skipped with --no-cleanup
+CLEANUP_STEP="step_9"
 
 # ---------------------------------------------------------------------------
 # Colors / styling
@@ -48,7 +80,10 @@ BOX_W=$(( COLS > 74 ? 74 : COLS ))
 # ---------------------------------------------------------------------------
 # Locations
 # ---------------------------------------------------------------------------
-SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
+# The scripts live in bin/ and the package lists sit next to that, in the
+# repository root, so REPO_DIR is the checkout this script was started from.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DOTFILES_DIR="${HOME}/.config/rstl.sway"
 
 # ---------------------------------------------------------------------------
@@ -59,8 +94,8 @@ trap 'rm -rf "$GCDIR"' EXIT
 ASCII_FILE="$GCDIR/ascii"
 
 # ASCII art (sourced from nvim/init.lua's dashboard header)
-if [ -f "$SOURCE_DIR/nvim/init.lua" ]; then
-  sed -n "/local header_ascii = {/,/^      }$/p" "$SOURCE_DIR/nvim/init.lua" \
+if [ -f "$REPO_DIR/nvim/init.lua" ]; then
+  sed -n "/local header_ascii = {/,/^      }$/p" "$REPO_DIR/nvim/init.lua" \
     | sed -E "/local header_ascii = \{/d; /^ *}$/d; s/^ *'(.*)',?$/\1/" \
     > "$ASCII_FILE"
 fi
@@ -160,6 +195,111 @@ add_rstl_repo() {
   ok "rstl-repo added and synced"
 }
 
+# ---------------------------------------------------------------------------
+# Package list (../packages-install.txt)
+# ---------------------------------------------------------------------------
+# The list is data, not code, so it lives in a plain text file next to the
+# repository root: reviewing a package change is a one-file diff, and
+# bin/update.sh reads the same file. Sections:
+#   #@core             one atomic transaction (a name that does not resolve is
+#                      reported and left out, never voids the transaction)
+#   #@optional         one package at a time (rstl-repo extras)
+#   #@program:<name>   the RSTL_PROGRAM / --program configuration
+#   #@firefox          RSTL_FIREFOX=1 / --firefox
+list_core() {
+  awk '
+    /^#@/ { sect = substr($0, 3); next }
+    /^#/  { next }
+    NF == 0 { next }
+    sect == "core" { print }
+  ' "$REPO_DIR/$PKG_LIST"
+}
+
+# Everything that is installed one package at a time: the optional tier plus
+# the program and firefox sections. A name that does not resolve here skips
+# only itself.
+# NOTE: the parentheses are required. In awk, concatenation binds looser than
+# ==, so "sect == \"program:\" program" parses as "(sect == \"program:\") program"
+# and would match every section instead of just the program one.
+list_each() {
+  awk -v program="$RSTL_PROGRAM" -v firefox="$RSTL_FIREFOX" '
+    /^#@/ { sect = substr($0, 3); next }
+    /^#/  { next }
+    NF == 0 { next }
+    sect == "optional"                  { print }
+    sect == ("program:" program)        { print }
+    sect == "firefox" && firefox == "1" { print }
+  ' "$REPO_DIR/$PKG_LIST"
+}
+
+# ---------------------------------------------------------------------------
+# Copying the repository into ~/.config/rstl.sway
+# ---------------------------------------------------------------------------
+# Two rules, and they are the reason this is not just `cp -a`:
+#
+#   1. .git is never copied. A checkout's history belongs to the machine that
+#      made it: bin/update.sh installs from a fresh `git clone --depth 1`, and
+#      copying its .git over a real checkout would replace the user's history
+#      (and, with */.git, their submodule registrations) with a shallow copy of
+#      someone else's. Submodule .git markers are skipped for the same reason.
+#      The ISO/rootfs builds already purge .git the same way, see copy_repo in
+#      mkfrugal-rstl.sh.
+#
+#   2. The paths the installers own are purged BEFORE the copy, so the result is
+#      exactly the repository instead of the repository plus whatever an earlier
+#      version left behind. That matters most for sway/config.d (the user's
+#      settings: a file deleted from the repository must not keep applying) and
+#      for sway/config plus the edition files, which the base installer patches
+#      in place - without the purge, going back to the full edition would leave
+#      the "# [base] " comments behind forever.
+#
+# Only the paths below are purged. Everything else in the dotfiles directory is
+# left alone, so anything you drop in there survives an install.
+copy_dotfiles() {
+    dest="$DOTFILES_DIR"
+    mkdir -p "$dest"
+    for owned in sway/config sway/config.d bin \
+                 packages-install.txt packages-install-min.txt packages-install-base.txt \
+                 .rstl-edition; do
+        [ -e "$dest/$owned" ] || continue
+        # say it out loud: anything of yours in these paths is replaced by the
+        # repository's version, on purpose
+        echo "purging $dest/$owned (replaced by the repository copy)"
+        rm -rf "${dest:?}/$owned"
+    done
+    # tar rather than cp: it is always present, it is what the ISO build uses,
+    # and it can leave .git behind with a pattern.
+    tar -C "$REPO_DIR" --exclude=./.git --exclude='*/.git' -cf - . \
+        | tar -C "$dest" -xf - || {
+        echo "copying the dotfiles from $REPO_DIR failed" >&2
+        return 1
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Edition indicator (~/.config/rstl.sway/.rstl-edition)
+# ---------------------------------------------------------------------------
+# Which flavor installed this dotfiles directory, with which program, so
+# bin/update.sh knows what to re-apply. Rewritten from scratch on every run
+# (never merged with whatever was there) and git-ignored: it describes the
+# machine, not the repository.
+write_edition() {
+  target="$DOTFILES_DIR/.rstl-edition"
+  if ! {
+    printf '# written by bin/install.sh, read by bin/update.sh - do not edit\n'
+    printf 'edition=%s\n'   "$EDITION"
+    printf 'program=%s\n'   "$EDITION_PROGRAM"
+    printf 'firefox=%s\n'   "$RSTL_FIREFOX"
+    printf 'dotfiles=%s\n'  "$DOTFILES_DIR"
+    printf 'packages=%s\n'  "$PKG_LIST"
+    printf 'installed=%s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z' 2>/dev/null)"
+  } > "$target" 2>/dev/null; then
+    warn "could not write the edition indicator ${target}"
+    return 1
+  fi
+  ok "edition recorded in ${target} (${EDITION}, program ${EDITION_PROGRAM})"
+}
+
 # combined step header + confirmation prompt
 ask_step() {
   idx="$1" label="$2" question="$3"
@@ -210,20 +350,31 @@ step_0() {
 # ---------------------------------------------------------------------------
 step_1() {
   info "initializing config submodules"
-  # Only the submodules needed on the installed desktop are checked out here;
-  # rstl-inst and rstl-pick are build/ISO artifacts and are left uninitialized.
-  git submodule update --init nvim ranger rstlpk
+  # The nvim config is a submodule. An installed system has no .git at all (the
+  # ISO strips it to stay small) and already carries the files, so only a
+  # checkout is updated. rstl-inst/rstl-pick are build artifacts and are left
+  # alone.
+  if [ -d "$REPO_DIR/.git" ] || [ -f "$REPO_DIR/.git" ]; then
+    git -C "$REPO_DIR" submodule update --init --depth 1 nvim ||
+        warn "submodule update failed"
+  else
+    info "no git checkout, skipping the submodule update"
+  fi
   ok "config submodules updated"
   info "copying dotfiles to ${DOTFILES_DIR}"
-  mkdir -p "${DOTFILES_DIR}"
-  if [ "$SOURCE_DIR" = "$DOTFILES_DIR" ]; then
+  if [ "$REPO_DIR" = "$DOTFILES_DIR" ]; then
     ok "dotfiles are already at ${DOTFILES_DIR}"
-    return 0
+  else
+    copy_dotfiles || return 1
+    ok "copied dotfiles from ${REPO_DIR}"
   fi
-  cp -a "$SOURCE_DIR"/. "$DOTFILES_DIR"/
-  ok "copied dotfiles from ${SOURCE_DIR}"
-  chmod +x "$DOTFILES_DIR"/scripts/*.sh 2>/dev/null || true
+  mkdir -p "${DOTFILES_DIR}"
+  chmod +x "$DOTFILES_DIR"/scripts/*.sh "$DOTFILES_DIR"/bin/*.sh 2>/dev/null || true
   ok "scripts are executable"
+
+  # record which flavor (and program) owns this dotfiles dir; bin/update.sh
+  # reads it back to know what to re-apply
+  write_edition
 
   # first-login hook: greetd/tuigreet starts sway through rstl-first-login,
   # so install it system-wide (one-shot setup + session launch, see script).
@@ -237,6 +388,13 @@ step_1() {
 EOF
     run_sudo chmod 644 /etc/profile.d/rstl-first-login.sh
     ok "installed rstl-first-login + profile.d hook"
+  fi
+
+  # the `rstl` wrapper: run any script in bin/ by name (rstl install.sh --yes,
+  # rstl update.sh). Installed system-wide so it works from any directory.
+  if [ -f "$DOTFILES_DIR/bin/rstl" ]; then
+    run_sudo install -Dm755 "$DOTFILES_DIR/bin/rstl" /usr/local/bin/rstl
+    ok "installed the rstl wrapper (/usr/local/bin/rstl)"
   fi
 }
 
@@ -254,108 +412,21 @@ step_2() {
   # add custom repo first
   add_rstl_repo
 
-  { cat > "$GCDIR/packages" <<'PKGS'
-sway
-swaybg
-rofi
-mako
-swaylock
-swayidle
-grim
-slurp
-wl-clipboard
-playerctl
-brightnessctl
-acpi
-networkmanager
-bluez
-bluez-utils
-pipewire
-wireplumber
-pipewire-pulse
-pipewire-alsa
-alsa-utils
-libnotify
-sound-theme-freedesktop
-greetd
-greetd-tuigreet
-foot
-zsh-syntax-highlighting
-zsh
-zsh-autosuggestions
-zsh-completions
-bat
-eza
-zoxide
-jq
-fastfetch
-neovim
-git
-curl
-wget
-unzip
-ripgrep
-noto-fonts-emoji
-xorg-xwayland
-xdg-utils
-xdg-desktop-portal-wlr
-cronie
-flac
-mpg123
-opus
-libvorbis
-speex
-speexdsp
-sbc
-dav1d
-libvpx
-openh264
-mesa
-vulkan-icd-loader
-PKGS
-  } > /dev/null
-
-  # rstl-repo / extra packages; installed one at a time so a missing or
-  # renamed package skips only itself instead of aborting the whole install
-  { cat > "$GCDIR/packages-extra" <<'PKGS'
-ttf-jetbrains-mono-nerd-min
-rstlpk
-dssd
-xdg-desktop-portal-termfilechooser
-yambar
-latuicon
-clipse
-wiremix
-eva
-awww
-rstl-pick
-fzf-tab
-zsh-auto-notify
-PKGS
-  } > /dev/null
-
-  # program-configuration packages, fed into the same per-package loop below:
-  # vim = superfile (binary spf); mouse = micro (settings vendored in ./micro)
-  # + rovr-bin (rstl-repo)
-  case "$RSTL_PROGRAM" in
-    mouse)
-      { cat > "$GCDIR/packages-program" <<'PKGS'
-micro
-rovr-bin
-PKGS
-      } > /dev/null
-      ;;
-    *)
-      { cat > "$GCDIR/packages-program" <<'PKGS'
-superfile
-PKGS
-      } > /dev/null
-      ;;
-  esac
-  if [ "$RSTL_FIREFOX" = "1" ]; then
-    printf '%s\n' 'firefox' >> "$GCDIR/packages-program"
+  # the package list is data: ../packages-install.txt, next to the repository
+  # root. #@core goes in one atomic transaction, everything else one package at
+  # a time. See list_core()/list_each() for the section format.
+  if [ ! -f "$REPO_DIR/$PKG_LIST" ]; then
+    fail "package list ${REPO_DIR}/${PKG_LIST} is missing"
+    return 1
   fi
-  cat "$GCDIR/packages-program" >> "$GCDIR/packages-extra"
+  list_core > "$GCDIR/packages"
+  list_each > "$GCDIR/packages-extra"
+  printf "  ${C_DIM}%s: %s core, %s per-package (program: %s)%s\n" \
+    "$PKG_LIST" \
+    "$(wc -l < "$GCDIR/packages" | tr -d ' ')" \
+    "$(wc -l < "$GCDIR/packages-extra" | tr -d ' ')" \
+    "$RSTL_PROGRAM" \
+    "$C_RESET"
 
   # pacman resolves every target BEFORE installing anything, so one package that
   # does not exist under that exact name aborts the whole transaction and you
@@ -717,11 +788,12 @@ EOF
 packages.txt
 README.md
 MANUAL_INSTALL.md
-install.sh
-install-min.sh
 .git
 .gitmodules
 EOF
+  # deliberately NOT removed: bin/ (bin/update.sh re-runs this installer to
+  # update the machine), packages-install*.txt (the lists the installers read)
+  # and .rstl-edition (which flavor this machine runs).
 
   # python bytecache
   if find "$DOTFILES_DIR" -type d -name '__pycache__' -print -quit 2>/dev/null | grep -q .; then
@@ -753,6 +825,14 @@ fi
 banner_start
 
 while IFS='|' read -r idx label question func <&3; do
+  if [ "$func" = "$CLEANUP_STEP" ] && [ "$SKIP_CLEANUP" -eq 1 ]; then
+    # bin/update.sh re-runs the installer to refresh the dotfiles; the cleanup
+    # step is a build-time size optimization (orphan removal, cache purge) and
+    # must not run against a live desktop.
+    printf "  ${C_DIM}step %s (%s) skipped: --no-cleanup${C_RESET}\n" "$idx" "$label"
+    echo
+    continue
+  fi
   if ask_step "$idx" "$label" "$question"; then
     if ! "$func"; then
       warn "step $idx failed (exit $?) — continuing with the next step"
