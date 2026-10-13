@@ -75,7 +75,7 @@ sudo pacman -S --needed foot fish fastfetch bat eza zoxide jq
 
 no terminal file manager is installed; the file chooser portal uses the first
 of `superfile` (`spf`) / `rovr` / `lf` that it finds on your system. install
-and configure the one you like (e.g. `rovr-bin` from rstl.repo, or `lf`)
+and configure the one you like (e.g. `rovr` from rstl.repo, or `lf`)
 
 ### editor
 

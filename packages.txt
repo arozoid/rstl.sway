@@ -33,10 +33,10 @@ dav1d libvpx openh264
 
 # program configuration packages (added by the --program matche in mkfrugal):
 #   vim   = superfile (binary spf, Arch extra)
-#   mouse = micro (settings vendored in ./micro) + rovr-bin (rstl-repo)
+#   mouse = micro (settings vendored in ./micro) + rovr (rstl-repo)
 # firefox is a build-time option on top of either program configuration.
 superfile
-# micro rovr-bin
+# micro rovr
 
 # AUR/custom packages (installed via rstl.repo)
 ttf-jetbrains-mono-nerd-min

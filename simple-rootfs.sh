@@ -242,7 +242,6 @@ copy_repo() {
     # in bin/install*.sh). .rstl-edition is per-machine state, not dotfiles.
     tar --exclude='./build_work' \
         --exclude='./build_output' \
-        --exclude='./archiso' \
         --exclude='./rstl-inst/target' \
         --exclude='./rstl-pick/target' \
         --exclude='./.git' \

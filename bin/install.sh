@@ -195,6 +195,33 @@ add_rstl_repo() {
   ok "rstl-repo added and synced"
 }
 
+# enable the multilib repository, so 32 bit packages (lib32-*, and what
+# steam, wine or discord need) can be installed. A pacman.conf that
+# already has an active [multilib] is left alone. Otherwise the block is
+# appended: the mirrorlist when pacman-mirrorlist is installed, the
+# official geo mirror when it is not, because an [multilib] whose Include
+# file is missing has no mirror at all and every install from it fails
+# with a confusing "target not found".
+enable_multilib() {
+  conf="/etc/pacman.conf"
+
+  if grep -q '^\[multilib\]' "$conf" 2>/dev/null; then
+    ok "multilib already in ${conf}"
+    return 0
+  fi
+
+  if [ -f /etc/pacman.d/mirrorlist ]; then
+    mirror="Include = /etc/pacman.d/mirrorlist"
+  else
+    mirror='Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch'
+  fi
+
+  printf "  ${C_DIM}enabling multilib in ${conf}${C_RESET}\n"
+  printf '\n[multilib]\n%s\n' "$mirror" | run_sudo tee -a "$conf" >/dev/null
+  pac_retry -Sy --noconfirm
+  ok "multilib enabled and synced"
+}
+
 # ---------------------------------------------------------------------------
 # Package list (../packages-install.txt)
 # ---------------------------------------------------------------------------
@@ -411,6 +438,9 @@ step_2() {
 
   # add custom repo first
   add_rstl_repo
+
+  # 32 bit libraries, so lib32-* packages can be installed
+  enable_multilib
 
   # the package list is data: ../packages-install.txt, next to the repository
   # root. #@core goes in one atomic transaction, everything else one package at

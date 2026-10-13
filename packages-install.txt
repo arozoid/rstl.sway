@@ -87,7 +87,6 @@ wiremix
 eva
 awww
 rstl-pick
-fzf-tab
 zsh-auto-notify
 
 #@program:vim
@@ -95,7 +94,7 @@ superfile
 
 #@program:mouse
 micro
-rovr-bin
+rovr
 
 #@firefox
 firefox

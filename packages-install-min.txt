@@ -82,7 +82,7 @@ less
 superfile
 
 #@program:mouse
-rovr-bin
+rovr
 
 #@firefox
 firefox

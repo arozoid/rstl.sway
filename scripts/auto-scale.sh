@@ -274,11 +274,13 @@ dbus-update-activation-environment \
 
 
 # ============================================================
-# restart yambar
+# hand the bars back to the desktop manager, which re-reads the
+# config that was just rendered (a fresh supervisor replaces the
+# one that was running, so it must not inherit the old bar pids)
 # ============================================================
 
 if pgrep -x yambar >/dev/null 2>&1; then
-    killall -q yambar yambar-fullscreen.sh 2>/dev/null
+    killall -q yambar rstl_desktop.sh 2>/dev/null
     sleep 0.2
-    setsid "$DOTFILES_DIR/scripts/yambar-fullscreen.sh" >/dev/null 2>&1 &
+    setsid "$DOTFILES_DIR/scripts/rstl_desktop.sh" >/dev/null 2>&1 &
 fi

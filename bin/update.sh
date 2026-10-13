@@ -156,7 +156,7 @@ detect_edition() {
 }
 
 detect_program() {
-    if [ -e "${HOME}/.config/micro" ] || pkg_installed micro || pkg_installed rovr-bin; then
+    if [ -e "${HOME}/.config/micro" ] || pkg_installed micro || pkg_installed rovr-bin || pkg_installed rovr; then
         echo mouse
     else
         echo vim

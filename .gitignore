@@ -1,18 +1,3 @@
-# build-iso.sh artifacts
-build_work/
-build_output/
-
-# rstl-inst binary injected by build-iso.sh
-archiso/airootfs/usr/local/bin/rstl-inst
-
-# The build stage-copies the dotfiles repo into the airootfs; never track
-# those generated copies. Ignore everything staged under root/ except the
-# hand-written files we keep in the profile.
-archiso/airootfs/root/*
-!archiso/airootfs/root/.bash_profile
-!archiso/airootfs/root/.automated_script.sh
-!archiso/airootfs/root/customize_airootfs.sh
-
 # rstl-first-login ran marker
 .first-login-done
 

@@ -387,6 +387,25 @@ step_2() {
         pac_retry -Sy --noconfirm
     fi
 
+    # 32 bit libraries, so lib32-* packages can be installed. A pacman.conf
+    # that already has an active [multilib] is left alone. Otherwise the
+    # block is appended: the mirrorlist when pacman-mirrorlist is installed,
+    # the official geo mirror when it is not, because an [multilib] whose
+    # Include file is missing has no mirror at all and every install from it
+    # fails with a confusing "target not found".
+    if ! grep -q '^\[multilib\]' "$conf" 2>/dev/null; then
+        if [ -f /etc/pacman.d/mirrorlist ]; then
+            mirror="Include = /etc/pacman.d/mirrorlist"
+        else
+            mirror='Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch'
+        fi
+        printf '\n[multilib]\n%s\n' "$mirror" | run_sudo tee -a "$conf" >/dev/null
+        pac_retry -Sy --noconfirm
+        echo "multilib enabled in $conf"
+    else
+        echo "multilib already enabled in $conf"
+    fi
+
     # the package list is data: ../packages-install-min.txt, next to the repository root.
     # #@core goes in one atomic transaction, everything else one package at a
     # time. See list_core()/list_each() for the section format.

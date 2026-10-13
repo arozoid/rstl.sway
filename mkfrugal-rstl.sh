@@ -754,7 +754,6 @@ copy_repo() {
     # tar would otherwise stream INTO the staged tree while reading it.
     tar --exclude='./build_work' \
         --exclude='./build_output' \
-        --exclude='./archiso' \
         --exclude='./rstl-inst/target' \
         --exclude='./rstl-pick/target' \
         --exclude='./cache' \
@@ -1008,8 +1007,8 @@ if [ "$flavor" = "rstl-inst" ]; then
     fi
 
     # readable fallback that fires up the live sway desktop
-    if [ -x "$REPO/archiso/airootfs/usr/local/bin/rstl-live" ]; then
-        install -Dm755 "$REPO/archiso/airootfs/usr/local/bin/rstl-live" \
+    if [ -x "$REPO/scripts/rstl-live" ]; then
+        install -Dm755 "$REPO/scripts/rstl-live" \
             "$ROOTFS/usr/local/bin/rstl-live"
     fi
 
