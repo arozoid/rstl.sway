@@ -59,7 +59,7 @@ bar:
           map:
             conditions:
               id < 0:
-                - string: {text: "󰍛", foreground: ccccccff}
+                - string: {text: "", foreground: ccccccff}
                 - string: {text: " {cpu}%", foreground: ccccccff}
 
     - label:
@@ -94,20 +94,60 @@ bar:
         content:
           map:
             conditions:
-              capacity == 0:
-                - string: {text: "", foreground: ccccccff}
-              capacity < 11:
-                - string: {text: "    {capacity}%", foreground: ccccccff}
-              capacity < 31:
-                - string: {text: "    {capacity}%", foreground: ccccccff}
-              capacity < 61:
-                - string: {text: "    {capacity}%", foreground: ccccccff}
-              capacity < 81:
-                - string: {text: "    {capacity}%", foreground: ccccccff}
-              capacity >= 81:
-                - string: {text: "    {capacity}%", foreground: ccccccff}
-              default:
-                - string: {text: "    {capacity}%", foreground: ccccccff}
+              state == charging:
+                map:
+                  conditions:
+                    capacity == 0:
+                      - string: {text: "", foreground: ccccccff}
+                    capacity < 11:
+                      - string: {text: "    󱐋{capacity}%", foreground: ccccccff}
+                    capacity < 31:
+                      - string: {text: "    󱐋{capacity}%", foreground: ccccccff}
+                    capacity < 61:
+                      - string: {text: "    󱐋{capacity}%", foreground: ccccccff}
+                    capacity < 81:
+                      - string: {text: "    󱐋{capacity}%", foreground: ccccccff}
+                    capacity >= 81:
+                      - string: {text: "    󱐋{capacity}%", foreground: ccccccff}
+                    default:
+                      - string: {text: "    󱐋{capacity}%", foreground: ccccccff}
+
+              state == discharging:
+                map:
+                  conditions:
+                    capacity == 0:
+                      - string: {text: "", foreground: ccccccff}
+                    capacity < 11:
+                      - string: {text: "    {capacity}%", foreground: ccccccff}
+                    capacity < 31:
+                      - string: {text: "    {capacity}%", foreground: ccccccff}
+                    capacity < 61:
+                      - string: {text: "    {capacity}%", foreground: ccccccff}
+                    capacity < 81:
+                      - string: {text: "    {capacity}%", foreground: ccccccff}
+                    capacity >= 81:
+                      - string: {text: "    {capacity}%", foreground: ccccccff}
+                    default:
+                      - string: {text: "    {capacity}%", foreground: ccccccff}
+
+              state == "not charging":
+                map:
+                  conditions:
+                    capacity == 0:
+                      - string: {text: "", foreground: ccccccff}
+                    capacity < 11:
+                      - string: {text: "    {capacity}%", foreground: ccccccff}
+                    capacity < 31:
+                      - string: {text: "    {capacity}%", foreground: ccccccff}
+                    capacity < 61:
+                      - string: {text: "    {capacity}%", foreground: ccccccff}
+                    capacity < 81:
+                      - string: {text: "    {capacity}%", foreground: ccccccff}
+                    capacity >= 81:
+                      - string: {text: "    {capacity}%", foreground: ccccccff}
+                    default:
+                      - string: {text: "    {capacity}%", foreground: ccccccff}
+
 
     - label:
         content: {string: {text: " "}}
