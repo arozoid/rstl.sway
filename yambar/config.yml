@@ -20,20 +20,12 @@ bar:
         content:
           map:
             conditions:
-              percent < 15:
-                - string: {text: " {percent}%", foreground: ccccccff}
-              percent < 30:
-                - string: {text: " {percent}%", foreground: ccccccff}
-              percent < 45:
-                - string: {text: " {percent}%", foreground: ccccccff}
-              percent < 60:
-                - string: {text: " {percent}%", foreground: ccccccff}
-              percent < 75:
-                - string: {text: " {percent}%", foreground: ccccccff}
-              percent < 90:
-                - string: {text: " {percent}%", foreground: ccccccff}
-              default:
-                - string: {text: " {percent}%", foreground: ccccccff}
+              percent < 36:
+                - string: {text: "󰃞 {percent}%", foreground: ccccccff}
+              percent < 66:
+                - string: {text: "󰃟 {percent}%", foreground: ccccccff}
+              percent > 66:
+                - string: {text: "󰃠 {percent}%", foreground: ccccccff}
 
     - label:
         content: {string: {text: "   "}}
@@ -67,7 +59,7 @@ bar:
           map:
             conditions:
               id < 0:
-                - string: {text: "", font: "Font Awesome 6 Free:style=solid", foreground: ccccccff}
+                - string: {text: "", foreground: ccccccff}
                 - string: {text: " {cpu}%", foreground: ccccccff}
 
     - label:
@@ -76,7 +68,7 @@ bar:
     - mem:
         poll-interval: 2500
         content:
-          string: {text: " {percent_used}%", foreground: ccccccff}
+          string: {text: " {percent_used}%", foreground: ccccccff}
 
     - label:
         content: {string: {text: "   "}}
@@ -86,13 +78,15 @@ bar:
           map:
             conditions:
               sink_muted:
-                - string: {text: "", foreground: 666666ff}
+                - string: {text: "󰝟 {sink_percent}%", foreground: 666666ff}
               sink_percent >= 66:
-                - string: {text: " {sink_percent}%", foreground: ccccccff}
+                - string: {text: "󰕾 {sink_percent}%", foreground: ccccccff}
               sink_percent >= 33:
-                - string: {text: " {sink_percent}%", foreground: ccccccff}
+                - string: {text: "󰖀 {sink_percent}%", foreground: ccccccff}
+              sink_percent == 0:
+                - string: {text: "󰖁 {sink_percent}%", foreground: ccccccff}
               default:
-                - string: {text: " {sink_percent}%", foreground: ccccccff}
+                - string: {text: "󰕿 {sink_percent}%", foreground: ccccccff}
 
     - battery:
         name: BAT0
@@ -101,19 +95,19 @@ bar:
           map:
             conditions:
               capacity == 0:
-                - string: {text: "", foreground: ccccccff}
-              capacity < 10:
-                - string: {text: " {capacity}%", foreground: ccccccff}
-              capacity < 20:
-                - string: {text: " {capacity}%", foreground: ccccccff}
-              capacity < 40:
-                - string: {text: " {capacity}%", foreground: ccccccff}
-              capacity < 60:
-                - string: {text: " {capacity}%", foreground: ccccccff}
-              capacity < 80:
-                - string: {text: " {capacity}%", foreground: ccccccff}
+                - string: {text: "", foreground: ccccccff}
+              capacity < 11:
+                - string: {text: "    {capacity}%", foreground: ccccccff}
+              capacity < 31:
+                - string: {text: "    {capacity}%", foreground: ccccccff}
+              capacity < 61:
+                - string: {text: "    {capacity}%", foreground: ccccccff}
+              capacity < 81:
+                - string: {text: "    {capacity}%", foreground: ccccccff}
+              capacity >= 81:
+                - string: {text: "    {capacity}%", foreground: ccccccff}
               default:
-                - string: {text: " {capacity}%", foreground: ccccccff}
+                - string: {text: "    {capacity}%", foreground: ccccccff}
 
     - label:
         content: {string: {text: " "}}
