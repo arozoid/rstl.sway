@@ -159,7 +159,7 @@ pick() {
     count="$(printf '%s\n' "$menu" | wc -l | tr -d ' ')"
     LEAVE=0
 
-    header "pick a script"
+    header "dotfiles ops"
     index=0
     printf '%s\n' "$menu" | while IFS='|' read -r name desc; do
         index=$((index + 1))

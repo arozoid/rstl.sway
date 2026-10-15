@@ -117,7 +117,10 @@ bindsym $mod+Ctrl+Right workspace next
 bindsym $mod+s layout toggle split
 bindsym $mod+w layout tabbed
 bindsym $mod+e layout toggle split
-bindsym $mod+Shift+space floating toggle
+# moves focus between the tiled and floating layers, so you can hop from the
+# window you were tiling to a floating dialog without reaching for the mouse.
+# not a keymap variant: $mod+space already flips the focused window itself.
+bindsym $mod+Shift+space focus mode_toggle
 
 ### resize mode
 mode "resize" {
