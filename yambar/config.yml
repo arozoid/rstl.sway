@@ -59,7 +59,7 @@ bar:
           map:
             conditions:
               id < 0:
-                - string: {text: "", foreground: ccccccff}
+                - string: {text: "󰍛", foreground: ccccccff}
                 - string: {text: " {cpu}%", foreground: ccccccff}
 
     - label:
