@@ -85,12 +85,14 @@ bar:
                 - string: {text: "󰖀 {sink_percent}%", foreground: ccccccff}
               sink_percent == 0:
                 - string: {text: "󰖁 {sink_percent}%", foreground: ccccccff}
+              sink_percent > 0:
+                - string: {text: "󰕿 {sink_percent}%", foreground: ccccccff}
               default:
                 - string: {text: "󰕿 {sink_percent}%", foreground: ccccccff}
 
     - battery:
         name: BAT0
-        poll-interval: 250
+        poll-interval: 1000
         content:
           map:
             conditions:
