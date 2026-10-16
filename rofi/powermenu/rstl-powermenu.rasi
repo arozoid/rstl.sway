@@ -1,4 +1,4 @@
-/* rstl.sway power menu — wlogout-style 3x2 grid */
+/* rstl.sway power menu — rounded 3x2 grid */
 
 configuration {
     show-icons: true;
@@ -9,12 +9,12 @@ window {
     width: 540px;
 
     border: 1px;
-    border-color: #26382c;
-    border-radius: 0;
+    border-color: #303732;
+    border-radius: 16px;
 
-    background-color: rgba(10, 15, 12, 0.94);
+    background-color: rgba(23, 26, 24, 0.96);
 
-    padding: 8px;
+    padding: 12px;
 }
 
 mainbox {
@@ -34,6 +34,8 @@ listview {
 
     scrollbar: false;
     background-color: transparent;
+
+    border: 0px;
 }
 
 element {
@@ -43,21 +45,18 @@ element {
     spacing: 14px;
     padding: 20px 10px 16px;
 
-    border: 1px;
-    border-color: #26382c;
-    border-radius: 0;
+    border: 0px;
+    border-radius: 12px;
 
-    background-color: rgba(16, 24, 19, 0.85);
+    background-color: rgba(32, 37, 33, 0.85);
 }
 
 element normal.normal {
-    background-color: rgba(16, 24, 19, 0.85);
-    border-color: #26382c;
+    background-color: rgba(32, 37, 33, 0.85);
 }
 
 element selected.normal {
-    background-color: #1d3024;
-    border-color: #62856b;
+    background-color: #343d35;
 }
 
 element-icon {
@@ -72,10 +71,10 @@ element-icon {
 element-text {
     horizontal-align: 0.5;
 
-    text-color: #c8d5cb;
+    text-color: #c4ccc5;
     background-color: transparent;
 }
 
 element selected.normal element-text {
-    text-color: #e0ebe3;
+    text-color: #e0e6e0;
 }

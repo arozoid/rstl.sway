@@ -37,10 +37,10 @@ for_window [app_id="rstlpk"] floating enable, resize set width 650 px height 250
 for_window [app_id="calpopup"] floating enable
 for_window [app_id="calpopup"] resize set width 250 px height 250 px
 for_window [app_id="calpopup"] move position center
-for_window [app_id="calpopup"] border pixel 1
+for_window [app_id="calpopup"] border pixel 1 
 
 for_window [app_id="rstl-pick"] floating enable
-for_window [app_id="rstl-pick"] border pixel 1
+for_window [app_id="rstl-pick"] border pixel 0 
 for_window [app_id="rstl-pick"] move position center
 for_window [app_id="rstl-pick"] resize set width 750 px height 550 px
 

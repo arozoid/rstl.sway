@@ -9,7 +9,7 @@ bar:
 
   font: JetBrainsMono Nerd Font:pixelsize=23
   foreground: ddddddff
-  background: 111111ff
+  background: 000000ff
 
   left:
     - label:

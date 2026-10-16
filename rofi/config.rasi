@@ -8,20 +8,20 @@ configuration {
 
 * {
     background-color: transparent;
-    text-color: #d0ddd3;
+    text-color: #d0d5d1;
 
-    bg: #0b120d;
-    bg-alt: #142418;
-    bg-search: #1d3024;
-    bg-selected: #1d3024;
+    bg: #171a18;
+    bg-alt: #202521;
+    bg-search: #252b26;
+    bg-selected: #343d35;
 
-    border-dark: #294a31;
-    border: #35633f;
+    border-dark: #303732;
+    border: #414941;
 
-    accent: #76a882;
-    accent-bright: #9aff9a;
+    accent: #91a596;
+    accent-bright: #b5c9b6;
 
-    text-muted: #91a596;
+    text-muted: #939b95;
 }
 
 /* main window */
@@ -31,7 +31,7 @@ window {
 
     border: 1px;
     border-color: @border-dark;
-    border-radius: 0;
+    border-radius: 6px;
 
     background-color: @bg;
 
@@ -53,12 +53,10 @@ inputbar {
 
     background-color: @bg-search;
 
-    border: 1px;
-    border-color: @border;
+    border: 0px;
+    border-radius: 6px;
 
-    border-radius: 0;
-
-    padding: 8px 10px;
+    padding: 10px 12px;
 }
 
 prompt {
@@ -67,7 +65,7 @@ prompt {
 }
 
 entry {
-    text-color: #d0ddd3;
+    text-color: #d0d5d1;
     background-color: transparent;
 
     placeholder: "search...";
@@ -82,14 +80,12 @@ listview {
 
     scrollbar: false;
 
-    spacing: 2px;
+    spacing: 4px;
 
     background-color: @bg;
 
-    border: 1px;
-    border-color: @border-dark;
-
-    border-radius: 0;
+    border: 0px;
+    border-radius: 6px;
 
     padding: 0px;
 }
@@ -97,10 +93,11 @@ listview {
 /* rows */
 
 element {
-    padding: 7px 8px;
+    padding: 8px 10px;
     spacing: 10px;
 
-    border-radius: 0;
+    border: 0px;
+    border-radius: 6px;
 
     background-color: @bg;
     text-color: @text-muted;
@@ -124,10 +121,9 @@ element alternate.normal {
 
 element selected.normal {
     background-color: @bg-selected;
-    text-color: #e8f5ea;
+    text-color: #e0e6e0;
 
-    border: 1px;
-    border-color: @accent;
+    border: 0px;
 }
 
 /* urgent */
@@ -143,11 +139,10 @@ element alternate.urgent {
 }
 
 element selected.urgent {
-    background-color: @bg-selected;
-    text-color: #ffffff;
+    background-color: #414b42;
+    text-color: #e8eee8;
 
-    border: 1px;
-    border-color: @accent-bright;
+    border: 0px;
 }
 
 /* active */
@@ -164,10 +159,9 @@ element alternate.active {
 
 element selected.active {
     background-color: @bg-selected;
-    text-color: #e8f5ea;
+    text-color: #e0e6e0;
 
-    border: 1px;
-    border-color: @accent;
+    border: 0px;
 }
 
 /* icons */
@@ -188,6 +182,6 @@ element-text {
 /* selected text */
 
 element-text selected {
-    text-color: #e8f5ea;
+    text-color: #e0e6e0;
     background-color: transparent;
 }

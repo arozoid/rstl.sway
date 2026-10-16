@@ -1,29 +1,29 @@
-background-color=#1d3024F5
-text-color=#d0ddd3FF
+background-color=#242a26F5
+text-color=#d0d8d2FF
 
-border-color=#62856bFF
+border-color=#3b4b40FF
 border-size=1
-border-radius=0
+border-radius=12
 
 padding=8
 margin=6
 
 font=JetBrainsMono Nerd Font 10
 
-default-timeout=6000
+default-timeout=8000
 
 [urgency="low"]
-background-color=#1d3024F5
-text-color=#b8cbbdFF
-border-color=#4d7458FF
+background-color=#242a26F5
+text-color=#bfc9c2FF
+border-color=#3b4b40FF
 
 [urgency="normal"]
-background-color=#1f3c29F5
-text-color=#d4e6d7FF
-border-color=#628c68FF
+background-color=#29332cF5
+text-color=#d4e0d7FF
+border-color=#455b49FF
 
 [urgency="critical"]
-background-color=#214f2b
-border-color=#76d687
-text-color=#e8ffe9
+background-color=#303d32FF
+border-color=#56745bFF
+text-color=#e8f5ebFF
 default-timeout=0
