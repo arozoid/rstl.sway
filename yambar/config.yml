@@ -14,7 +14,7 @@ bar:
   left:
     - label:
         content: {string: {text: " "}}
-          
+
     - backlight:
         name: intel_backlight
         content:
