@@ -18,12 +18,11 @@
 #   < 25"  scale 1.75  yambar x1.5
 #   >=25"  scale 1.50  yambar x2.0
 #
-# within a band, the base scale assumes a 1440p (2k) panel. lower
-# resolution -> lower physical dpi, so output scale is corrected down,
-# but the yambar/cursor px follow the panel height: low-res panels get a
-# SMALLER bar so it does not dominate (1366x768), high-res panels get a
-# BIGGER bar so it stays visible (3200x...), keeping the same relative
-# footprint whatever the resolution.
+# Sizing philosophy: everything is expressed in PHYSICAL MILLIMETERS, then
+# converted to pixels per output as  px = mm * height / phys_h_mm.
+# The output `scale` is the band base only (no resolution multiplier),
+# so a higher-resolution panel of the same physical size gets more logical
+# pixels but the same real-world bar/cursor size.
 # ============================================================
 
 set -u
@@ -90,8 +89,6 @@ round() {
 REF_BAR_MM=$(calc           "$REF_BAR_PX * 2 * $REF_PHYS_H_MM / $REF_HEIGHT")    # 7.78
 REF_FONT_MM=$(calc          "$REF_FONT_PX * 2 * $REF_PHYS_H_MM / $REF_HEIGHT")   # 5.11
 REF_CURSOR_MM=$(calc        "$REF_CURSOR_PX * 2 * $REF_PHYS_H_MM / $REF_HEIGHT") # 4.44
-
-
 # ============================================================
 # outputs + physical sizes
 #   - name / mode WxH come from swaymsg (no wlr-randr needed)
@@ -191,30 +188,23 @@ while IFS="$(printf '\t')" read -r cur_out cur_width cur_height; do
         cur_cursor=$BAND_3_CURSOR
     fi
 
-    # ---- resolution / dpi correction ----
-    # base scale assumes a 1440p panel; lower res -> lower scale.
-    res_corr=$(calc "$cur_height / $REF_HEIGHT")
-    scale=$(calc "$base_scale * $res_corr")
+    # output scale is the band base only (no resolution multiplier)
+    scale=$base_scale
 
-    # ---- yambar / cursor RESOLUTION-tracking factor ----
-    # bar/font px follow the panel height so a 1366x768 display gets a
-    # smaller bar (it no longer dominates) and a >=2k display gets a
-    # bigger one (it stays visible). square root keeps the swing gentle
-    # (1366 ~= x0.97, 1080p ~= x0.87, 2k = x1.0, 4k ~= x1.22).
-    dpi_k=$(calc "sqrt($cur_height / $REF_HEIGHT)")
+    # physical mm targets for this band (band multiplier only)
+    bar_mm=$(calc "$REF_BAR_MM * $ybar_mult")
+    font_mm=$(calc "$REF_FONT_MM * $ybar_mult")
 
-    bar_mm=$(calc "$REF_BAR_MM * $ybar_mult * $dpi_k")
-    font_mm=$(calc "$REF_FONT_MM * $ybar_mult * $dpi_k")
-    # cursor tracks resolution at a gentler (cube-root) rate than the bar
-    cur_cur=$(round "$(calc "$cur_cursor * ($cur_height / $REF_HEIGHT) ^ (1/3)")")
+    # cursor tracks height linearly (gentler than bar, but predictable)
+    cur_cursor=$(round "$(calc "$cur_cursor * $cur_height / $REF_HEIGHT")")
 
-    # convert back to pixels for this panel: px = mm * height / (scale * phys_h)
+    # convert physical mm to pixels for this panel: px = mm * height / (scale * phys_h)
     cur_bar=$(round "$(calc "$bar_mm * $cur_height / ($scale * $cur_h)")")
     cur_fnt=$(round "$(calc "$font_mm * $cur_height / ($scale * $cur_h)")")
 
     [ "$cur_bar" -gt "$bar_height" ] && bar_height=$cur_bar
     [ "$cur_fnt" -gt "$bar_font" ]   && bar_font=$cur_fnt
-    [ "$cur_cur" -gt "$cursor_size" ] && cursor_size=$cur_cur
+    [ "$cur_cursor" -gt "$cursor_size" ] && cursor_size=$cur_cursor
 
     printf \
         'setting %s: band%d %.1f" -> scale %.2f, bar %dpx (%.1fmm), font %dpx, cursor %dpx\n' \
@@ -225,7 +215,7 @@ while IFS="$(printf '\t')" read -r cur_out cur_width cur_height; do
         "$cur_bar" \
         "$bar_mm" \
         "$cur_fnt" \
-        "$cur_cur"
+        "$cur_cursor"
 
     swaymsg output "$cur_out" scale "$scale"
 
@@ -243,8 +233,6 @@ fi
 [ "$bar_height" -gt 0 ] || bar_height=$(round "$(calc "$REF_BAR_PX * $max_height / $REF_HEIGHT")")
 [ "$bar_font" -gt 0 ]   || bar_font=$(round "$(calc "$REF_FONT_PX * $max_height / $REF_HEIGHT")")
 [ "$cursor_size" -gt 0 ] || cursor_size=$REF_CURSOR_PX
-
-
 # ============================================================
 # render yambar config
 # ============================================================
