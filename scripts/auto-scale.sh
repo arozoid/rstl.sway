@@ -14,7 +14,7 @@
 #   font 23px -> 5.11 mm
 #
 # display-size bands (by diagonal):
-#   < 17"  scale 2.00  yambar x1.0 (matches on-here mm)
+#   < 20"  scale 2.00  yambar x1.0 (matches on-here mm)
 #   < 25"  scale 1.75  yambar x1.5
 #   >=25"  scale 1.50  yambar x2.0
 #
@@ -56,7 +56,7 @@ REF_CURSOR_PX=25
 # ---------- size bands (by diagonal inches) ----------
 # each band: <diag|max> scale yambar_mult cursor_default
 # scale is the 2k baseline; yambar_mult scales the bar/font mm
-BAND_1_MAX=17
+BAND_1_MAX=20
 BAND_1_SCALE=2.0
 BAND_1_YBAR=1.0
 BAND_1_CURSOR=25
@@ -64,12 +64,12 @@ BAND_1_CURSOR=25
 BAND_2_MAX=25
 BAND_2_SCALE=1.75
 BAND_2_YBAR=1.5
-BAND_2_CURSOR=25
+BAND_2_CURSOR=38
 
 BAND_3_MAX=9999
 BAND_3_SCALE=1.5
 BAND_3_YBAR=2.0
-BAND_3_CURSOR=25
+BAND_3_CURSOR=50
 
 # ============================================================
 # helpers
