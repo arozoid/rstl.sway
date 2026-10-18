@@ -95,7 +95,7 @@ ASCII_FILE="$GCDIR/ascii"
 
 # ASCII art (sourced from nvim/init.lua's dashboard header)
 if [ -f "$REPO_DIR/nvim/init.lua" ]; then
-  sed -n "/local header_ascii = {/,/^      }$/p" "$REPO_DIR/nvim/init.lua" \
+  sed -n "/local header_ascii = {/,/^  }$/p" "$REPO_DIR/nvim/init.lua" \
     | sed -E "/local header_ascii = \{/d; /^ *}$/d; s/^ *'(.*)',?$/\1/" \
     > "$ASCII_FILE"
 fi
