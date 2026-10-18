@@ -498,6 +498,15 @@ step_4() {
 
     run_sudo chmod -R go+r /etc/greetd
     run_sudo sed -i 's/^auth.*pam_securetty.so/# &/' /etc/pam.d/greetd
+
+    # Ensure GNOME Keyring unlocks on login/session so secrets are available
+    # even when gnome-keyring (instead of dssd) is the secret service backend.
+    run_sudo sh -c 'grep -q "pam_gnome_keyring.so" /etc/pam.d/greetd || cat >> /etc/pam.d/greetd <<EOF
+
+# GNOME Keyring integration
+auth      optional  pam_gnome_keyring.so
+session   optional  pam_gnome_keyring.so auto_start
+EOF'
     run_sudo systemctl enable greetd.service
     run_sudo systemctl mask getty@tty1.service >/dev/null 2>&1 || true
     echo "greetd configured"
