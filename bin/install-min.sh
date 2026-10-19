@@ -280,6 +280,27 @@ install_or_fallback() {
     fi
 }
 
+# add rstl.repo to dnf (fedora/ endpoint)
+add_fedora_repo() {
+    conf="/etc/yum.repos.d/rstl.repo"
+    if ! grep -qF "[rstl-repo]" "$conf" 2>/dev/null; then
+        printf '[rstl-repo]\nbaseurl=https://arozoid.github.io/rstl.repo/fedora\nenabled=1\ngpgcheck=0\n' \
+            | run_sudo tee "$conf" >/dev/null
+        run_sudo dnf makecache --quiet 2>/dev/null || true
+    fi
+}
+
+# dnf variant of install_or_fallback
+install_or_fallback_dnf() {
+    pkg="$1"; fallback="$2"
+    if run_sudo dnf repoquery --queryformat "%{name}" 2>/dev/null | grep -qx "$pkg"; then
+        run_sudo dnf install --needed --noconfirm --allowerasing "$pkg"
+    else
+        echo "  ${pkg} not found in repos, using ${fallback}"
+        run_sudo dnf install --needed --noconfirm --allowerasing "$fallback"
+    fi
+}
+
 # install the package list $1 in ONE transaction, minus the names the repos do
 # not have. pacman resolves every target before installing anything, so a single
 # unresolvable name (Arch ships the fd binary as fd-find, CachyOS as fd) aborts
@@ -375,40 +396,46 @@ EOF
 
 step_2() {
     header "install packages"
-    command -v pacman >/dev/null 2>&1 || {
-        echo "pacman not found, skipping (requires Arch Linux)"
-        return 1
-    }
 
-    conf="/etc/pacman.conf"
-    if ! grep -qF "[rstl-repo]" "$conf" 2>/dev/null; then
-        printf '\n[rstl-repo]\nSigLevel = Optional TrustAll\nServer = https://arozoid.github.io/rstl.repo\n' \
-            | run_sudo tee -a "$conf" >/dev/null
-        pac_retry -Sy --noconfirm
-    fi
-
-    # 32 bit libraries, so lib32-* packages can be installed. A pacman.conf
-    # that already has an active [multilib] is left alone. Otherwise the
-    # block is appended: the mirrorlist when pacman-mirrorlist is installed,
-    # the official geo mirror when it is not, because an [multilib] whose
-    # Include file is missing has no mirror at all and every install from it
-    # fails with a confusing "target not found".
-    if ! grep -q '^\[multilib\]' "$conf" 2>/dev/null; then
-        if [ -f /etc/pacman.d/mirrorlist ]; then
-            mirror="Include = /etc/pacman.d/mirrorlist"
-        else
-            mirror='Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch'
+    # detect package manager: dnf (Fedora) takes precedence if both exist
+    if command -v dnf >/dev/null 2>&1; then
+        add_fedora_repo
+        PKG_MGR=dnf
+    elif command -v pacman >/dev/null 2>&1; then
+        conf="/etc/pacman.conf"
+        if ! grep -qF "[rstl-repo]" "$conf" 2>/dev/null; then
+            printf '\n[rstl-repo]\nSigLevel = Optional TrustAll\nServer = https://arozoid.github.io/rstl.repo/arch/\n' \
+                | run_sudo tee -a "$conf" >/dev/null
+            pac_retry -Sy --noconfirm
         fi
-        printf '\n[multilib]\n%s\n' "$mirror" | run_sudo tee -a "$conf" >/dev/null
-        pac_retry -Sy --noconfirm
-        echo "multilib enabled in $conf"
+
+        # 32 bit libraries, so lib32-* packages can be installed. A pacman.conf
+        # that already has an active [multilib] is left alone. Otherwise the
+        # block is appended: the mirrorlist when pacman-mirrorlist is installed,
+        # the official geo mirror when it is not, because an [multilib] whose
+        # Include file is missing has no mirror at all and every install from it
+        # fails with a confusing "target not found".
+        if ! grep -q '^\[multilib\]' "$conf" 2>/dev/null; then
+            if [ -f /etc/pacman.d/mirrorlist ]; then
+                mirror="Include = /etc/pacman.d/mirrorlist"
+            else
+                mirror='Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch'
+            fi
+            printf '\n[multilib]\n%s\n' "$mirror" | run_sudo tee -a "$conf" >/dev/null
+            pac_retry -Sy --noconfirm
+            echo "multilib enabled in $conf"
+        else
+            echo "multilib already enabled in $conf"
+        fi
+        PKG_MGR=pacman
     else
-        echo "multilib already enabled in $conf"
+        echo "neither pacman nor dnf found, skipping package installation" >&2
+        return 1
     fi
 
-    # the package list is data: ../packages-install-min.txt, next to the repository root.
-    # #@core goes in one atomic transaction, everything else one package at a
-    # time. See list_core()/list_each() for the section format.
+    # the package list is data: ../packages-install-min.txt, next to the
+    # repository root. #@core goes in one atomic transaction, everything else
+    # one package at a time. See list_core()/list_each() for the section format.
     if [ ! -f "$REPO_DIR/$PKG_LIST" ]; then
         echo "package list $REPO_DIR/$PKG_LIST is missing" >&2
         return 1
@@ -421,25 +448,71 @@ step_2() {
         "$(wc -l < "$GCDIR/packages-extra" | tr -d ' ')" \
         "$RSTL_PROGRAM"
 
-    pac_install_filtered "$(cat "$GCDIR/packages")" \
-        "sway greetd greetd-tuigreet foot mako rofi"
+    if [ "$PKG_MGR" = "dnf" ]; then
+        # dnf resolves every target before installing anything, so filter the
+        # list against the repos first.
+        repo_pkgs="$(mktemp)"
+        run_sudo dnf repoquery --queryformat "%{name}" > "$repo_pkgs" 2>/dev/null || : > "$repo_pkgs"
+        wanted=""
+        missing=""
+        for pkg in $(cat "$GCDIR/packages"); do
+            if grep -qxF "$pkg" "$repo_pkgs"; then
+                wanted="$wanted $pkg"
+            else
+                missing="$missing $pkg"
+            fi
+        done
+        rm -f "$repo_pkgs"
+        wanted="${wanted# }"
+        missing="${missing# }"
 
-    # the program file manager (vim = superfile, mouse = rovr) and firefox:
-    # installed one at a time so a missing package skips instead of aborting
-    for pm in $(cat "$GCDIR/packages-extra"); do
-        if run_sudo pacman -Ssq "^${pm}$" 2>/dev/null | grep -qx "$pm"; then
-            pac_retry -S --needed --noconfirm "$pm"
-        else
-            printf "  %s not found in repos, skipping\n" "$pm"
+        for pkg in sway greetd greetd-tuigreet foot mako rofi; do
+            case " $missing " in
+                *" $pkg "*)
+                    echo "  required package '$pkg' is in no enabled repo (stale sync db? try: sudo dnf makecache)" >&2
+                    exit 1
+                    ;;
+            esac
+        done
+
+        if [ -n "$missing" ]; then
+            echo "  not in any enabled repo, skipped:$missing" >&2
         fi
-    done
 
-    # note: latuicon (icon picker) is intentionally omitted from this
-    # minimal variant; it is only installed by the full installer.
+        [ -n "$wanted" ] || return 0
+        echo "  installing: $wanted"
+        run_sudo dnf install --needed --noconfirm --allowerasing $wanted
 
-    # cursor package with optional fallback (kept separate so a missing AUR
-    # package cannot fail the whole install)
-    install_or_fallback notwaita-cursors-grey adwaita-cursors
+        for pm in $(cat "$GCDIR/packages-extra"); do
+            if run_sudo dnf repoquery --queryformat "%{name}" 2>/dev/null | grep -qx "$pm"; then
+                run_sudo dnf install --needed --noconfirm --allowerasing "$pm"
+            else
+                printf "  %s not found in repos, skipping\n" "$pm"
+            fi
+        done
+
+        install_or_fallback_dnf notwaita-cursors-grey adwaita-cursors
+    else
+        pac_install_filtered "$(cat "$GCDIR/packages")" \
+            "sway greetd greetd-tuigreet foot mako rofi"
+
+        # the program file manager (vim = superfile, mouse = rovr) and firefox:
+        # installed one at a time so a missing package skips instead of aborting
+        for pm in $(cat "$GCDIR/packages-extra"); do
+            if run_sudo pacman -Ssq "^${pm}$" 2>/dev/null | grep -qx "$pm"; then
+                pac_retry -S --needed --noconfirm "$pm"
+            else
+                printf "  %s not found in repos, skipping\n" "$pm"
+            fi
+        done
+
+        # note: latuicon (icon picker) is intentionally omitted from this
+        # minimal variant; it is only installed by the full installer.
+
+        # cursor package with optional fallback (kept separate so a missing AUR
+        # package cannot fail the whole install)
+        install_or_fallback notwaita-cursors-grey adwaita-cursors
+    fi
 
     echo "packages installed"
 }

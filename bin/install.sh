@@ -177,22 +177,50 @@ install_or_fallback() {
   fi
 }
 
-# add rstl-repo to pacman.conf
+install_or_fallback_dnf() {
+  pkg="$1"; fallback="$2"
+  if run_sudo dnf repoquery --queryformat "%{name}" 2>/dev/null | grep -qx "$pkg"; then
+    run_sudo dnf install --needed --noconfirm --allowerasing "$pkg"
+  else
+    printf "  ${C_DIM}%s not found, using %s${C_RESET}\n" "$pkg" "$fallback"
+    run_sudo dnf install --needed --noconfirm --allowerasing "$fallback"
+  fi
+}
+
+# add rstl-repo to pacman.conf (arch/ endpoint)
 add_rstl_repo() {
   conf="/etc/pacman.conf"
   repo_line="[rstl-repo]"
   sig_line="SigLevel = Optional TrustAll"
-  server_line="Server = https://arozoid.github.io/rstl.repo"
+  server_line="Server = https://arozoid.github.io/rstl.repo/arch/"
 
   if grep -qF "$repo_line" "$conf" 2>/dev/null; then
     ok "rstl-repo already in ${conf}"
     return 0
   fi
 
-  printf "  ${C_DIM}adding rstl-repo to ${conf}${C_RESET}\n"
+  printf "  ${C_DIM}adding rstl-repo (arch) to ${conf}${C_RESET}\n"
   printf '\n%s\n%s\n%s\n' "$repo_line" "$sig_line" "$server_line" | run_sudo tee -a "$conf" >/dev/null
   pac_retry -Sy --noconfirm
   ok "rstl-repo added and synced"
+}
+
+# add rstl.repo to dnf (fedora/ endpoint)
+add_fedora_repo() {
+  conf="/etc/yum.repos.d/rstl.repo"
+  repo_line="[rstl-repo]"
+  server_line="baseurl=https://arozoid.github.io/rstl.repo/fedora"
+
+  if grep -qF "$repo_line" "$conf" 2>/dev/null; then
+    ok "rstl-repo already in ${conf}"
+    return 0
+  fi
+
+  printf "  ${C_DIM}adding rstl-repo (fedora) to ${conf}${C_RESET}\n"
+  printf '%s\n%s\nenabled=1\ngpgcheck=0\n' "$repo_line" "$server_line" \
+    | run_sudo tee "$conf" >/dev/null
+  run_sudo dnf makecache --quiet 2>/dev/null || true
+  ok "rstl-repo (fedora) added and cached"
 }
 
 # enable the multilib repository, so 32 bit packages (lib32-*, and what
@@ -431,16 +459,18 @@ EOF
 step_2() {
   info "installing required packages"
 
-  if [ ! -x /usr/bin/pacman ]; then
-    warn "pacman not found — skipping (this script targets Arch Linux)."
+  # detect package manager: dnf (Fedora) takes precedence if both exist
+  if command -v dnf >/dev/null 2>&1; then
+    PKG_MGR=dnf
+    add_fedora_repo
+  elif command -v pacman >/dev/null 2>&1; then
+    PKG_MGR=pacman
+    add_rstl_repo
+    enable_multilib
+  else
+    warn "neither pacman nor dnf found — skipping package installation"
     return 1
   fi
-
-  # add custom repo first
-  add_rstl_repo
-
-  # 32 bit libraries, so lib32-* packages can be installed
-  enable_multilib
 
   # the package list is data: ../packages-install.txt, next to the repository
   # root. #@core goes in one atomic transaction, everything else one package at
@@ -458,68 +488,121 @@ step_2() {
     "$RSTL_PROGRAM" \
     "$C_RESET"
 
-  # pacman resolves every target BEFORE installing anything, so one package that
-  # does not exist under that exact name aborts the whole transaction and you
-  # silently end up with none of them (this shipped an ISO without nvim, eza or
-  # zsh-autosuggestions because Arch calls it fd-find and CachyOS calls it fd).
-  # Filter the list against the repos first: install everything that resolves in
-  # a single transaction, and report the names that do not. Distro-renamed
-  # packages are added separately via install_or_fallback below.
-  repo_pkgs="$(mktemp)"
-  run_sudo pacman -Ssq > "$repo_pkgs" 2>/dev/null || : > "$repo_pkgs"
-  wanted=""
-  missing=""
-  for pkg in $(cat "$GCDIR/packages"); do
-    if grep -qxF "$pkg" "$repo_pkgs"; then
-      wanted="$wanted $pkg"
-    else
-      missing="$missing $pkg"
+  if [ "$PKG_MGR" = "dnf" ]; then
+    # dnf resolves every target before installing anything, so filter the list
+    # against the repos first: install everything that resolves in a single
+    # transaction, and report the names that do not.
+    repo_pkgs="$(mktemp)"
+    run_sudo dnf repoquery --queryformat "%{name}" > "$repo_pkgs" 2>/dev/null || : > "$repo_pkgs"
+    wanted=""
+    missing=""
+    for pkg in $(cat "$GCDIR/packages"); do
+      if grep -qxF "$pkg" "$repo_pkgs"; then
+        wanted="$wanted $pkg"
+      else
+        missing="$missing $pkg"
+      fi
+    done
+    rm -f "$repo_pkgs"
+    wanted="${wanted# }"
+    missing="${missing# }"
+
+    # a session without these cannot boot into the desktop at all: refuse to
+    # continue instead of shipping a broken image.
+    for pkg in sway greetd greetd-tuigreet foot mako rofi; do
+      case " $missing " in
+        *" $pkg "*)
+          fail "required package '$pkg' is in no enabled repo (stale sync db? try: sudo dnf makecache)"
+          exit 1
+          ;;
+      esac
+    done
+
+    if [ -n "$missing" ]; then
+      warn "not in any enabled repo, skipped:$missing"
     fi
-  done
-  rm -f "$repo_pkgs"
-  wanted="${wanted# }"     # drop the leading space; keeps the lists symmetric
-  missing="${missing# }"   # drop the leading space so membership tests are exact
 
-  # a session without these cannot boot into the desktop at all: refuse to
-  # continue (and let the rootfs/ISO build fail) instead of shipping a broken
-  # image. A stale sync db can cause this too - the message says so.
-  for pkg in sway greetd greetd-tuigreet foot mako rofi; do
-    case " $missing " in
-      *" $pkg "*)
-        fail "required package '$pkg' is in no enabled repo (stale sync db? try: sudo pacman -Sy)"
-        exit 1
-        ;;
-    esac
-  done
-
-  if [ -n "$missing" ]; then
-    warn "not in any enabled repo, skipped:$missing"
-  fi
-
-  if [ -n "$wanted" ]; then
-    printf "  ${C_DIM}installing: %s${C_RESET}\n" "$wanted"
-    pac_retry -S --needed --noconfirm $wanted
-  fi
-
-  while IFS= read -r pkg; do
-    [ -n "$pkg" ] || continue
-    if run_sudo pacman -Ssq "^${pkg}$" 2>/dev/null | grep -qx "$pkg"; then
-      pac_retry -S --needed --noconfirm "$pkg"
-    else
-      printf "  ${C_DIM}extra package %s not found in any repo, skipping${C_RESET}\n" "$pkg"
+    if [ -n "$wanted" ]; then
+      printf "  ${C_DIM}installing: %s${C_RESET}\n" "$wanted"
+      run_sudo dnf install --needed --noconfirm --allowerasing $wanted
     fi
-  done < "$GCDIR/packages-extra"
 
-  # theme/cursor packages with official-repo fallbacks (kept separate so a
-  # missing AUR package cannot fail the whole install). The base icon theme
-  # is hicolor; papirus-dark supplies the themed set; adwaita-icon-theme
-  # arrives with firefox when the browser bundle is enabled.
-  pac_retry -S --needed --noconfirm hicolor-icon-theme
-  install_or_fallback notwaita-cursors-grey adwaita-cursors
-  install_or_fallback papirus-icon-theme-dark-only adwaita-icon-theme
-  # fd: Arch ships the binary as package fd-find, CachyOS as fd (both provide
-  # /usr/bin/fd). Kept out of the bulk list above for exactly that reason.
-  install_or_fallback fd-find fd
+    while IFS= read -r pkg; do
+      [ -n "$pkg" ] || continue
+      if run_sudo dnf repoquery --queryformat "%{name}" 2>/dev/null | grep -qx "$pkg"; then
+        run_sudo dnf install --needed --noconfirm --allowerasing "$pkg"
+      else
+        printf "  ${C_DIM}extra package %s not found in any repo, skipping${C_RESET}\n" "$pkg"
+      fi
+    done < "$GCDIR/packages-extra"
+
+    # theme/cursor packages with official-repo fallbacks
+    run_sudo dnf install --needed --noconfirm --allowerasing hicolor-icon-theme 2>/dev/null || true
+    install_or_fallback_dnf notwaita-cursors-grey adwaita-cursors
+    install_or_fallback_dnf papirus-icon-theme-dark-only adwaita-icon-theme
+    # fd: Fedora ships the binary as fd-find
+    install_or_fallback_dnf fd-find fd
+
+  else
+    # pacman path (Arch / CachyOS)
+    # pacman resolves every target BEFORE installing anything, so one package that
+    # does not exist under that exact name aborts the whole transaction.
+    repo_pkgs="$(mktemp)"
+    run_sudo pacman -Ssq > "$repo_pkgs" 2>/dev/null || : > "$repo_pkgs"
+    wanted=""
+    missing=""
+    for pkg in $(cat "$GCDIR/packages"); do
+      if grep -qxF "$pkg" "$repo_pkgs"; then
+        wanted="$wanted $pkg"
+      else
+        missing="$missing $pkg"
+      fi
+    done
+    rm -f "$repo_pkgs"
+    wanted="${wanted# }"     # drop the leading space; keeps the lists symmetric
+    missing="${missing# }"   # drop the leading space so membership tests are exact
+
+    # a session without these cannot boot into the desktop at all: refuse to
+    # continue (and let the rootfs/ISO build fail) instead of shipping a broken
+    # image. A stale sync db can cause this too - the message says so.
+    for pkg in sway greetd greetd-tuigreet foot mako rofi; do
+      case " $missing " in
+        *" $pkg "*)
+          fail "required package '$pkg' is in no enabled repo (stale sync db? try: sudo pacman -Sy)"
+          exit 1
+          ;;
+      esac
+    done
+
+    if [ -n "$missing" ]; then
+      warn "not in any enabled repo, skipped:$missing"
+    fi
+
+    if [ -n "$wanted" ]; then
+      printf "  ${C_DIM}installing: %s${C_RESET}\n" "$wanted"
+      pac_retry -S --needed --noconfirm $wanted
+    fi
+
+    while IFS= read -r pkg; do
+      [ -n "$pkg" ] || continue
+      if run_sudo pacman -Ssq "^${pkg}$" 2>/dev/null | grep -qx "$pkg"; then
+        pac_retry -S --needed --noconfirm "$pkg"
+      else
+        printf "  ${C_DIM}extra package %s not found in any repo, skipping${C_RESET}\n" "$pkg"
+      fi
+    done < "$GCDIR/packages-extra"
+
+    # theme/cursor packages with official-repo fallbacks (kept separate so a
+    # missing AUR package cannot fail the whole install). The base icon theme
+    # is hicolor; papirus-dark supplies the themed set; adwaita-icon-theme
+    # arrives with firefox when the browser bundle is enabled.
+    pac_retry -S --needed --noconfirm hicolor-icon-theme
+    install_or_fallback notwaita-cursors-grey adwaita-cursors
+    install_or_fallback papirus-icon-theme-dark-only adwaita-icon-theme
+    # fd: Arch ships the binary as package fd-find, CachyOS as fd (both provide
+    # /usr/bin/fd). Kept out of the bulk list above for exactly that reason.
+    install_or_fallback fd-find fd
+  fi
 
   ok "packages installed"
 }
