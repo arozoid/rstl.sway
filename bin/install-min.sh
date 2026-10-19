@@ -301,6 +301,45 @@ install_or_fallback_dnf() {
     fi
 }
 
+# Arch package name -> Void package name (only where the names differ)
+xbps_map_pkg() {
+    case "$1" in
+        networkmanager)    echo NetworkManager ;;
+        bluez-utils)       echo bluez ;;
+        pipewire-pulse)    echo pipewire ;;
+        pipewire-alsa)     echo alsa-pipewire ;;
+        greetd-tuigreet)   echo tuigreet ;;
+        xorg-xwayland)     echo xorg-server-xwayland ;;
+        vulkan-icd-loader) echo vulkan-loader ;;
+        *)                 echo "$1" ;;
+    esac
+}
+
+# add rstl.repo to xbps (void/ endpoint)
+add_void_repo() {
+    conf="/etc/xbps.d/0-rstl.conf"
+    repo_line="repository=https://arozoid.github.io/rstl.repo/void"
+    if [ -f "$conf" ] && grep -qxF "$repo_line" "$conf"; then
+        printf 'y\n' | run_sudo xbps-install -S -y >/dev/null 2>&1 || true
+        return 0
+    fi
+    run_sudo mkdir -p /etc/xbps.d
+    printf '%s\n' "$repo_line" | run_sudo tee "$conf" >/dev/null
+    # the first sync imports the repository signing key; xbps asks on stdin
+    printf 'y\n' | run_sudo xbps-install -S -y >/dev/null 2>&1 || true
+}
+
+# xbps variant of install_or_fallback
+install_or_fallback_xbps() {
+    pkg="$1"; fallback="$2"
+    if run_sudo xbps-query -R -p pkgver "$pkg" >/dev/null 2>&1; then
+        run_sudo xbps-install -y "$pkg"
+    else
+        echo "  ${pkg} not found in repos, using ${fallback}"
+        run_sudo xbps-install -y "$fallback"
+    fi
+}
+
 # install the package list $1 in ONE transaction, minus the names the repos do
 # not have. pacman resolves every target before installing anything, so a single
 # unresolvable name (Arch ships the fd binary as fd-find, CachyOS as fd) aborts
@@ -397,8 +436,12 @@ EOF
 step_2() {
     header "install packages"
 
-    # detect package manager: dnf (Fedora) takes precedence if both exist
-    if command -v dnf >/dev/null 2>&1; then
+    # detect package manager: xbps (Void) and dnf (Fedora) take precedence over
+    # pacman if more than one happens to exist
+    if command -v xbps-install >/dev/null 2>&1; then
+        add_void_repo
+        PKG_MGR=xbps
+    elif command -v dnf >/dev/null 2>&1; then
         add_fedora_repo
         PKG_MGR=dnf
     elif command -v pacman >/dev/null 2>&1; then
@@ -429,7 +472,7 @@ step_2() {
         fi
         PKG_MGR=pacman
     else
-        echo "neither pacman nor dnf found, skipping package installation" >&2
+        echo "neither xbps, pacman nor dnf found, skipping package installation" >&2
         return 1
     fi
 
@@ -492,6 +535,53 @@ step_2() {
         done
 
         install_or_fallback_dnf notwaita-cursors-grey adwaita-cursors
+    elif [ "$PKG_MGR" = "xbps" ]; then
+        # void path: xbps has no cheap "list every repo package" query, so test
+        # each name individually. Arch names are mapped to Void names first and
+        # deduplicated (pipewire + pipewire-pulse, bluez + bluez-utils).
+        while IFS= read -r pkg; do
+            [ -n "$pkg" ] || continue
+            xbps_map_pkg "$pkg"
+        done < "$GCDIR/packages" | sort -u > "$GCDIR/packages-xbps"
+
+        wanted=""
+        missing=""
+        while IFS= read -r name; do
+            [ -n "$name" ] || continue
+            if run_sudo xbps-query -R -p pkgver "$name" >/dev/null 2>&1; then
+                wanted="$wanted $name"
+            else
+                missing="$missing $name"
+            fi
+        done < "$GCDIR/packages-xbps"
+
+        for pkg in sway greetd tuigreet foot mako rofi; do
+            case " $missing " in
+                *" $pkg "*)
+                    echo "  required package '$pkg' is in no enabled repo (stale sync db? try: sudo xbps-install -S)" >&2
+                    exit 1
+                    ;;
+            esac
+        done
+
+        if [ -n "$missing" ]; then
+            echo "  not in any enabled repo, skipped:$missing" >&2
+        fi
+
+        [ -n "$wanted" ] || return 0
+        echo "  installing: $wanted"
+        run_sudo xbps-install -y $wanted
+
+        for pm in $(cat "$GCDIR/packages-extra"); do
+            name=$(xbps_map_pkg "$pm")
+            if run_sudo xbps-query -R -p pkgver "$name" >/dev/null 2>&1; then
+                run_sudo xbps-install -y "$name"
+            else
+                printf "  %s not found in repos, skipping\n" "$pm"
+            fi
+        done
+
+        install_or_fallback_xbps notwaita-cursors-grey xcursor-themes
     else
         pac_install_filtered "$(cat "$GCDIR/packages")" \
             "sway greetd greetd-tuigreet foot mako rofi"
@@ -650,9 +740,14 @@ step_8() {
 
     find "$DOTFILES_DIR" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
 
-    run_sudo pacman -Rns --noconfirm $(pacman -Qdtq 2>/dev/null) >/dev/null 2>&1 || true
-    run_sudo pacman -Scc --noconfirm >/dev/null 2>&1 || true
-    run_sudo rm -rf /var/cache/pacman/pkg/* 2>/dev/null || true
+    if command -v pacman >/dev/null 2>&1; then
+        run_sudo pacman -Rns --noconfirm $(pacman -Qdtq 2>/dev/null) >/dev/null 2>&1 || true
+        run_sudo pacman -Scc --noconfirm >/dev/null 2>&1 || true
+        run_sudo rm -rf /var/cache/pacman/pkg/* 2>/dev/null || true
+    elif command -v xbps-remove >/dev/null 2>&1; then
+        run_sudo xbps-remove -oy >/dev/null 2>&1 || true
+        run_sudo xbps-remove -OO >/dev/null 2>&1 || true
+    fi
 
     # ---- optional size purge (drops dev/tooling; keeps a working desktop) ----
     # Safe because it runs after every package is installed and nothing is

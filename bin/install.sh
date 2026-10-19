@@ -187,6 +187,49 @@ install_or_fallback_dnf() {
   fi
 }
 
+# Arch package name -> Void package name (only where the names differ)
+xbps_map_pkg() {
+  case "$1" in
+    networkmanager)    echo NetworkManager ;;
+    bluez-utils)       echo bluez ;;
+    pipewire-pulse)    echo pipewire ;;
+    pipewire-alsa)     echo alsa-pipewire ;;
+    greetd-tuigreet)   echo tuigreet ;;
+    xorg-xwayland)     echo xorg-server-xwayland ;;
+    vulkan-icd-loader) echo vulkan-loader ;;
+    *)                 echo "$1" ;;
+  esac
+}
+
+install_or_fallback_xbps() {
+  pkg="$1"; fallback="$2"
+  if run_sudo xbps-query -R -p pkgver "$pkg" >/dev/null 2>&1; then
+    run_sudo xbps-install -y "$pkg"
+  else
+    printf "  ${C_DIM}%s not found, using %s${C_RESET}\n" "$pkg" "$fallback"
+    run_sudo xbps-install -y "$fallback"
+  fi
+}
+
+# add rstl.repo to xbps (void/ endpoint)
+add_void_repo() {
+  conf="/etc/xbps.d/0-rstl.conf"
+  repo_line="repository=https://arozoid.github.io/rstl.repo/void"
+
+  if [ -f "$conf" ] && grep -qxF "$repo_line" "$conf"; then
+    ok "rstl-repo already in ${conf}"
+    printf 'y\n' | run_sudo xbps-install -S -y >/dev/null 2>&1 || true
+    return 0
+  fi
+
+  printf "  ${C_DIM}adding rstl-repo (void) to ${conf}${C_RESET}\n"
+  run_sudo mkdir -p /etc/xbps.d
+  printf '%s\n' "$repo_line" | run_sudo tee "$conf" >/dev/null
+  # the first sync imports the repository signing key; xbps asks on stdin
+  printf 'y\n' | run_sudo xbps-install -S -y >/dev/null 2>&1 || true
+  ok "rstl-repo (void) added and synced"
+}
+
 # add rstl-repo to pacman.conf (arch/ endpoint)
 add_rstl_repo() {
   conf="/etc/pacman.conf"
@@ -459,8 +502,12 @@ EOF
 step_2() {
   info "installing required packages"
 
-  # detect package manager: dnf (Fedora) takes precedence if both exist
-  if command -v dnf >/dev/null 2>&1; then
+  # detect package manager: xbps (Void) and dnf (Fedora) take precedence over
+  # pacman if more than one happens to exist
+  if command -v xbps-install >/dev/null 2>&1; then
+    PKG_MGR=xbps
+    add_void_repo
+  elif command -v dnf >/dev/null 2>&1; then
     PKG_MGR=dnf
     add_fedora_repo
   elif command -v pacman >/dev/null 2>&1; then
@@ -468,7 +515,7 @@ step_2() {
     add_rstl_repo
     enable_multilib
   else
-    warn "neither pacman nor dnf found — skipping package installation"
+    warn "neither xbps, pacman nor dnf found — skipping package installation"
     return 1
   fi
 
@@ -542,6 +589,62 @@ step_2() {
     install_or_fallback_dnf papirus-icon-theme-dark-only adwaita-icon-theme
     # fd: Fedora ships the binary as fd-find
     install_or_fallback_dnf fd-find fd
+
+  elif [ "$PKG_MGR" = "xbps" ]; then
+    # void path: xbps has no "list every repo package" query that is cheap, so
+    # test each name individually with the package expression query. Arch names
+    # are mapped to Void names first and deduplicated (pipewire and
+    # pipewire-pulse both map to pipewire, bluez and bluez-utils to bluez).
+    while IFS= read -r pkg; do
+      [ -n "$pkg" ] || continue
+      xbps_map_pkg "$pkg"
+    done < "$GCDIR/packages" | sort -u > "$GCDIR/packages-xbps"
+
+    wanted=""
+    missing=""
+    while IFS= read -r name; do
+      [ -n "$name" ] || continue
+      if run_sudo xbps-query -R -p pkgver "$name" >/dev/null 2>&1; then
+        wanted="$wanted $name"
+      else
+        missing="$missing $name"
+      fi
+    done < "$GCDIR/packages-xbps"
+
+    # required packages must resolve or the image cannot boot into the desktop
+    for pkg in sway greetd tuigreet foot mako rofi; do
+      case " $missing " in
+        *" $pkg "*)
+          fail "required package '$pkg' is in no enabled repo (stale sync db? try: sudo xbps-install -S)"
+          exit 1
+          ;;
+      esac
+    done
+
+    if [ -n "$missing" ]; then
+      warn "not in any enabled repo, skipped:$missing"
+    fi
+
+    if [ -n "$wanted" ]; then
+      printf "  ${C_DIM}installing: %s${C_RESET}\n" "$wanted"
+      run_sudo xbps-install -y $wanted
+    fi
+
+    while IFS= read -r pkg; do
+      [ -n "$pkg" ] || continue
+      name=$(xbps_map_pkg "$pkg")
+      if run_sudo xbps-query -R -p pkgver "$name" >/dev/null 2>&1; then
+        run_sudo xbps-install -y "$name"
+      else
+        printf "  ${C_DIM}extra package %s not found in any repo, skipping${C_RESET}\n" "$pkg"
+      fi
+    done < "$GCDIR/packages-extra"
+
+    # theme/cursor packages with official-repo fallbacks
+    run_sudo xbps-install -y hicolor-icon-theme
+    install_or_fallback_xbps notwaita-cursors-grey xcursor-themes
+    install_or_fallback_xbps papirus-icon-theme-dark-only papirus-icon-theme
+    install_or_fallback_xbps fd fd
 
   else
     # pacman path (Arch / CachyOS)
@@ -924,13 +1027,22 @@ EOF
   fi
 
   # remove orphaned make dependencies
-  printf "  ${C_DIM}removing orphaned packages...${C_RESET}\n"
-  run_sudo pacman -Rns --noconfirm $(pacman -Qdtq 2>/dev/null) 2>/dev/null || true
+  if command -v pacman >/dev/null 2>&1; then
+    printf "  ${C_DIM}removing orphaned packages...${C_RESET}\n"
+    run_sudo pacman -Rns --noconfirm $(pacman -Qdtq 2>/dev/null) 2>/dev/null || true
 
-  # clear pacman cache
-  printf "  ${C_DIM}clearing pacman cache...${C_RESET}\n"
-  run_sudo pacman -Scc --noconfirm 2>/dev/null || true
-  run_sudo rm -rf /var/cache/pacman/pkg/* 2>/dev/null || true
+    # clear pacman cache
+    printf "  ${C_DIM}clearing pacman cache...${C_RESET}\n"
+    run_sudo pacman -Scc --noconfirm 2>/dev/null || true
+    run_sudo rm -rf /var/cache/pacman/pkg/* 2>/dev/null || true
+  elif command -v xbps-remove >/dev/null 2>&1; then
+    printf "  ${C_DIM}removing orphaned packages...${C_RESET}\n"
+    run_sudo xbps-remove -oy >/dev/null 2>&1 || true
+
+    # clear the xbps cache (twice = also drop packages that are not installed)
+    printf "  ${C_DIM}clearing xbps cache...${C_RESET}\n"
+    run_sudo xbps-remove -OO >/dev/null 2>&1 || true
+  fi
 
   if [ "$removed" -eq 1 ]; then ok "cleaned up"; else ok "nothing to clean"; fi
 }

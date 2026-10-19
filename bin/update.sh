@@ -12,7 +12,7 @@
 #                     update this edition instead of the detected one
 #   --program <vim|mouse>                 program configuration to keep
 #   --firefox / --no-firefox              keep or drop the firefox bundle
-#   --no-upgrade                          skip the `pacman -Syu` system upgrade
+#   --no-upgrade                          skip the system upgrade (pacman -Syu / dnf upgrade / xbps-install -Syu)
 #   --yes, -y                             do not ask for confirmation
 #   --dir PATH                            dotfiles directory (default ~/.config/rstl.sway)
 #   --repo URL                            repository to fetch (default github.com/arozoid/rstl.sway)
@@ -27,11 +27,11 @@
 #      checkout, otherwise a fresh shallow clone - an ISO-installed system has no
 #      .git (the build strips it and the installers never copy one in), so
 #      there is nothing to pull from
-#   3. upgrades the system: sudo pacman -Syu
+#   3. upgrades the system: pacman -Syu, dnf upgrade or xbps-install -Syu
 #   4. re-runs bin/install-<edition>.sh --yes --no-cleanup with the program
 #      configuration and browser bundle this machine had, which re-applies the
 #      dotfiles and makes sure every package in packages-<edition>.txt is
-#      installed and current (pacman --needed after the -Syu upgrade)
+#      installed and current (the installer skips already-current packages)
 #
 # The cleanup step of the installer is skipped on purpose: it is a build-time
 # size optimization (orphan removal, cache purge, dev headers) and must not run
@@ -133,8 +133,16 @@ INDICATOR="${DOTFILES_DIR}/.rstl-edition"
 # what is installed?
 # ---------------------------------------------------------------------------
 pkg_installed() {
-    command -v pacman >/dev/null 2>&1 || return 1
-    pacman -Q "$1" >/dev/null 2>&1
+    if command -v xbps-query >/dev/null 2>&1; then
+        xbps-query -p pkgver "$1" >/dev/null 2>&1 && return 0
+    fi
+    if command -v pacman >/dev/null 2>&1; then
+        pacman -Q "$1" >/dev/null 2>&1 && return 0
+    fi
+    if command -v rpm >/dev/null 2>&1; then
+        rpm -q "$1" >/dev/null 2>&1 && return 0
+    fi
+    return 1
 }
 
 # value of one key in the edition indicator (empty when absent)
@@ -275,7 +283,22 @@ core_list() {
 CORE_COUNT="$(core_list | wc -l | tr -d ' ')"
 
 # what is missing right now, before anything is changed
-if command -v pacman >/dev/null 2>&1; then
+if command -v xbps-query >/dev/null 2>&1; then
+    MISSING=""
+    for pkg in $(core_list); do
+        case "$pkg" in
+            networkmanager)    pkg=NetworkManager ;;
+            bluez-utils)       pkg=bluez ;;
+            pipewire-pulse)    pkg=pipewire ;;
+            pipewire-alsa)     pkg=alsa-pipewire ;;
+            greetd-tuigreet)   pkg=tuigreet ;;
+            xorg-xwayland)     pkg=xorg-server-xwayland ;;
+            vulkan-icd-loader) pkg=vulkan-loader ;;
+        esac
+        pkg_installed "$pkg" || MISSING="$MISSING $pkg"
+    done
+    [ -n "$MISSING" ] && warn "not installed, the installer will add them:$MISSING"
+elif command -v pacman >/dev/null 2>&1; then
     HAVE="$(mktemp)"
     pacman -Qq 2>/dev/null | sort -u > "$HAVE"
     MISSING=""
@@ -286,6 +309,16 @@ if command -v pacman >/dev/null 2>&1; then
     [ -n "$MISSING" ] && warn "not installed, the installer will add them:$MISSING"
 fi
 
+# the system upgrade for this machine's package manager
+UPGRADE_CMD=""
+if command -v xbps-install >/dev/null 2>&1; then
+    UPGRADE_CMD="xbps-install -Syu"
+elif command -v dnf >/dev/null 2>&1; then
+    UPGRADE_CMD="dnf -y upgrade"
+elif command -v pacman >/dev/null 2>&1; then
+    UPGRADE_CMD="pacman -Syu --noconfirm"
+fi
+
 # ---------------------------------------------------------------------------
 # go
 # ---------------------------------------------------------------------------
@@ -294,21 +327,25 @@ printf "  edition   %s\n" "$EDITION"
 printf "  program   %s\n" "$PROGRAM"
 printf "  firefox   %s\n" "$FIREFOX"
 printf "  packages  %s core packages from %s\n" "$CORE_COUNT" "$(basename "$LIST")"
-printf "  system    %s\n" "$([ "$DO_UPGRADE" -eq 1 ] && echo 'pacman -Syu' || echo 'no -Syu (--no-upgrade)')"
+printf "  system    %s\n" "$([ "$DO_UPGRADE" -eq 1 ] && echo "${UPGRADE_CMD:-no package manager found}" || echo 'no system upgrade (--no-upgrade)')"
 echo
 confirm "update this machine now?"
 
 if [ "$DO_UPGRADE" -eq 1 ]; then
-    header "upgrading the system"
-    sudo -v
-    attempt=0
-    until sudo pacman -Syu --noconfirm; do
-        attempt=$((attempt + 1))
-        [ "$attempt" -ge 3 ] && die "pacman -Syu failed after ${attempt} attempts"
-        warn "pacman -Syu failed, retrying (${attempt}/3)"
-        sleep 2
-    done
-    ok "system upgraded"
+    if [ -z "$UPGRADE_CMD" ]; then
+        warn "no supported package manager found, skipping the system upgrade"
+    else
+        header "upgrading the system"
+        sudo -v
+        attempt=0
+        until sudo $UPGRADE_CMD; do
+            attempt=$((attempt + 1))
+            [ "$attempt" -ge 3 ] && die "$UPGRADE_CMD failed after ${attempt} attempts"
+            warn "$UPGRADE_CMD failed, retrying (${attempt}/3)"
+            sleep 2
+        done
+        ok "system upgraded"
+    fi
 fi
 
 header "re-applying the dotfiles (${INSTALLER})"
