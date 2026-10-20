@@ -162,6 +162,253 @@ alias obi='obsidian-cli'
 # calculator
 alias calc='~/.config/rstl.sway/scripts/calawk.sh'
 
+## ddusb
+# dependencies: dd, lsblk, sgdisk, mkfs.ext4, partprobe, udevadm
+
+# usage:
+#   ddusb image.iso
+#   ddusb image.iso /dev/sdX
+#   ddusb image.iso /dev/sdX --writable 2G
+#   ddusb --help
+ddusb() {
+    emulate -L zsh
+
+    local image=""
+    local device=""
+    local writable=""
+    local label="WRITABLE"
+    local assume_yes=0
+    local arg
+
+    local -a deps=(dd lsblk sgdisk mkfs.ext4 partprobe udevadm)
+
+    # help
+    if [[ "$1" == "--help" || "$1" == "-h" || -z "$1" ]]; then
+        cat <<'EOF'
+ddusb — flash an image to a usb drive
+
+usage:
+  ddusb <image> [device] [options]
+
+arguments:
+  image                 image file to flash
+  device                target disk, e.g. /dev/sdb
+
+options:
+  --writable SIZE       create an ext4 writable partition at the end
+                        of the drive, e.g. 2G, 512M
+  --label NAME          filesystem label (default: WRITABLE)
+  -y, --yes             skip confirmation prompts
+  -h, --help            show this help
+
+examples:
+  ddusb archlinux.iso
+  ddusb archlinux.iso /dev/sdb
+  ddusb archlinux.iso /dev/sdb --writable 2G
+  ddusb live.iso /dev/sda --writable 4G --label PERSIST
+
+notes:
+  - the entire target disk is overwritten.
+  - the optional writable partition requires a compatible GPT image.
+  - the writable partition is formatted as ext4; persistence must be
+    supported and configured by the live operating system separately.
+  - back up important data before flashing.
+EOF
+        return 0
+    fi
+
+    image="$1"
+    shift
+
+    # parse arguments
+    while (( $# )); do
+        case "$1" in
+            --writable)
+                if (( $# < 2 )); then
+                    print -u2 "error: --writable requires a size, e.g. 2G"
+                    return 2
+                fi
+                writable="$2"
+                shift 2
+                ;;
+            --label)
+                if (( $# < 2 )); then
+                    print -u2 "error: --label requires a name"
+                    return 2
+                fi
+                label="$2"
+                shift 2
+                ;;
+            -y|--yes)
+                assume_yes=1
+                shift
+                ;;
+            -h|--help)
+                ddusb --help
+                return
+                ;;
+            /dev/*)
+                if [[ -n "$device" ]]; then
+                    print -u2 "error: multiple target devices supplied"
+                    return 2
+                fi
+                device="$1"
+                shift
+                ;;
+            *)
+                print -u2 "error: unknown argument: $1"
+                print -u2 "run 'ddusb --help' for usage"
+                return 2
+                ;;
+        esac
+    done
+
+    # validate image
+    if [[ ! -f "$image" || ! -r "$image" ]]; then
+        print -u2 "error: image not found or unreadable: $image"
+        return 1
+    fi
+
+    image="${image:A}"
+
+    # validate writable size
+    if [[ -n "$writable" ]]; then
+        if [[ ! "$writable" =~ '^[1-9][0-9]*([MG])$' ]]; then
+            print -u2 "error: size must be a positive integer followed by M or G"
+            print -u2 "example: --writable 512M"
+            return 2
+        fi
+
+        if [[ ! "$label" =~ '^[a-zA-Z0-9_-]{1,16}$' ]]; then
+            print -u2 "error: label must be 1–16 letters, numbers, _ or -"
+            return 2
+        fi
+    fi
+
+    # check dependencies
+    for arg in "${deps[@]}"; do
+        if ! command -v "$arg" >/dev/null 2>&1; then
+            print -u2 "error: missing dependency: $arg"
+            return 1
+        fi
+    done
+
+    # discover a target if none was provided
+    if [[ -z "$device" ]]; then
+        print "available disks:"
+        lsblk -dpno NAME,SIZE,MODEL,TRAN,TYPE | awk '$5 == "disk"'
+        print
+        read "device?target disk (e.g. /dev/sdb): "
+    fi
+
+    # validate target
+    if [[ ! -b "$device" ]]; then
+        print -u2 "error: not a block device: $device"
+        return 1
+    fi
+
+    device="$(readlink -f "$device")"
+
+    if [[ "$(lsblk -dnro TYPE "$device")" != "disk" ]]; then
+        print -u2 "error: target must be a whole disk, not a partition"
+        return 1
+    fi
+
+    # refuse mounted target partitions
+    if lsblk -nrpo MOUNTPOINT "$device" | grep -q '[^[:space:]]'; then
+        print -u2 "error: the target disk has mounted filesystems"
+        print -u2 "unmount its partitions before flashing"
+        return 1
+    fi
+
+    # writable partitions require GPT support in the flashed image
+    if [[ -n "$writable" ]]; then
+        print "checking image partition table..."
+
+        if ! sudo sgdisk -p "$device" >/dev/null 2>&1; then
+            print -u2 "error: unable to read a GPT partition table on the target"
+            print -u2 "flash without --writable, or use a compatible GPT image"
+            return 1
+        fi
+    fi
+
+    # confirm destructive operation
+    print
+    print "image:  $image"
+    print "target: $device ($(lsblk -dnro SIZE "$device"))"
+    print "model:  $(lsblk -dnro MODEL "$device" | sed 's/^[[:space:]]*//')"
+
+    if [[ -n "$writable" ]]; then
+        print "extra:  ${writable} ext4 partition labeled $label"
+    fi
+
+    print
+    print "WARNING: all existing data on $device will be destroyed."
+
+    if (( ! assume_yes )); then
+        read "reply?type YES to continue: "
+        [[ "$reply" == "YES" ]] || {
+            print "cancelled."
+            return 1
+        }
+    fi
+
+    # flash the image
+    print
+    print "flashing image..."
+
+    if ! sudo dd if="$image" of="$device" bs=4M status=progress conv=fsync; then
+        print -u2 "error: flashing failed"
+        return 1
+    fi
+
+    print
+    print "image written successfully."
+
+    # optionally create a writable ext4 partition
+    if [[ -n "$writable" ]]; then
+        print "relocating backup GPT and creating writable partition..."
+
+        if ! sudo sgdisk -e "$device"; then
+            print -u2 "error: unable to relocate backup GPT"
+            return 1
+        fi
+
+        if ! sudo sgdisk \
+            -n "0:0:+${writable}" \
+            -t "0:8300" \
+            -c "0:${label}" \
+            "$device"; then
+            print -u2 "error: failed to create writable partition"
+            return 1
+        fi
+
+        sudo partprobe "$device" || true
+        sudo udevadm settle
+
+        # identify the newly created final partition
+        local partition
+        partition="$(lsblk -lnpo NAME,TYPE "$device" |
+            awk '$2 == "part" { p = $1 } END { print p }')"
+
+        if [[ -z "$partition" ]]; then
+            print -u2 "error: could not identify the new partition"
+            return 1
+        fi
+
+        print "formatting $partition as ext4..."
+
+        if ! sudo mkfs.ext4 -F -L "$label" "$partition"; then
+            print -u2 "error: failed to format writable partition"
+            return 1
+        fi
+
+        print "writable partition created: $partition"
+    fi
+
+    print
+    print "done! safely eject the usb before removing it."
+}
 
 ## less
 
@@ -264,3 +511,5 @@ if [ "$UID" -eq 0 ]; then
 else
     USER_CHAR="$"
 fi
+
+
