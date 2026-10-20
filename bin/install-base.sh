@@ -11,6 +11,7 @@
 #   bin/install-base.sh --yes            run every step without asking
 #   bin/install-base.sh --no-cleanup     every step except the last one (cleanup)
 #   bin/install-base.sh --firefox        bundle the firefox browser
+#   bin/install-base.sh --root           root install (installs into /root)
 #   bin/install-base.sh --help           show this help
 #
 # The base variant carries no program configuration: the vim/mouse editions are
@@ -34,6 +35,7 @@ RSTL_FIREFOX="${RSTL_FIREFOX:-0}"
 # kept only so the build can pass it to every flavor; the base desktop has no
 # program configuration and never reads it
 RSTL_PROGRAM="${RSTL_PROGRAM:-none}"
+RSTL_ROOT="${RSTL_ROOT:-0}"
 
 ASSUME_YES=0
 SKIP_CLEANUP=0
@@ -46,7 +48,8 @@ while [ "$#" -gt 0 ]; do
         --program=*)  shift ;;
         --firefox)    RSTL_FIREFOX=1; shift ;;
         --no-firefox) RSTL_FIREFOX=0; shift ;;
-        --help|-h)    sed -n '2,25p' "$0"; exit 0 ;;
+        --root)       RSTL_ROOT=1; shift ;;
+        --help|-h)    sed -n '2,$ { /^#/!q; s/^#[[:space:]]\{0,1\}//p; }' "$0"; exit 0 ;;
         *)            echo "unknown option: $1 (try --help)" >&2; exit 2 ;;
     esac
 done
@@ -54,6 +57,14 @@ case "$RSTL_FIREFOX" in
     0|1) ;;
     *) echo "RSTL_FIREFOX must be 0 or 1, got: $RSTL_FIREFOX" >&2; exit 2 ;;
 esac
+case "$RSTL_ROOT" in
+    0|1) ;;
+    *) echo "RSTL_ROOT must be 0 or 1, got: $RSTL_ROOT" >&2; exit 2 ;;
+esac
+if [ "$RSTL_ROOT" -eq 1 ] && [ "$(id -u)" -ne 0 ]; then
+    echo "--root requires running as root (use bin/install-base-root.sh)" >&2
+    exit 1
+fi
 
 # Which flavor this installer is, and which package list it reads. Both are
 # recorded in the edition indicator, so bin/update.sh can re-apply exactly this
@@ -96,10 +107,10 @@ link_file() {
     fi
     if [ -e "$dest" ] || [ -L "$dest" ]; then
         bak="${dest}.bak.$(date +%s)"
-        if [ "$use_sudo" = "yes" ]; then sudo mv "$dest" "$bak"; else mv "$dest" "$bak"; fi
+        if [ "$use_sudo" = "yes" ]; then run_sudo mv "$dest" "$bak"; else mv "$dest" "$bak"; fi
         echo "moved existing $dest to $bak"
     fi
-    if [ "$use_sudo" = "yes" ]; then sudo ln -s "$src" "$dest"; else ln -s "$src" "$dest"; fi
+    if [ "$use_sudo" = "yes" ]; then run_sudo ln -s "$src" "$dest"; else ln -s "$src" "$dest"; fi
     echo "linked $dest -> $src"
 }
 
@@ -131,7 +142,8 @@ remove_path() {
 }
 
 run_sudo() {
-    if [ "$(id -u)" -eq 0 ]; then
+    # root installs (--root / rootfs builds) run directly; normal installs use sudo.
+    if [ "$(id -u)" -eq 0 ] || [ "$RSTL_ROOT" -eq 1 ]; then
         "$@"
     else
         sudo -v
@@ -427,6 +439,10 @@ write_edition() {
 # ===========================================================================
 step_0() {
     header "sudo privileges"
+    if [ "$(id -u)" -eq 0 ] || [ "$RSTL_ROOT" -eq 1 ]; then
+        echo "running as root; sudo not needed"
+        return 0
+    fi
     sudo -n true 2>/dev/null || sudo -v
 }
 
@@ -519,6 +535,18 @@ step_2() {
     fi
     list_core > "$GCDIR/packages"
     list_each > "$GCDIR/packages-extra"
+
+    # dssd is one provider of org.freedesktop.secrets. If another one is already
+    # installed or running, installing dssd would make two providers fight over
+    # the same D-Bus name (and usually the same service file), so leave it out.
+    if [ -f "$REPO_DIR/scripts/secret-service-present.sh" ] &&
+       sh "$REPO_DIR/scripts/secret-service-present.sh" >/dev/null 2>&1; then
+        for list in "$GCDIR/packages" "$GCDIR/packages-extra"; do
+            awk '$0 != "dssd"' "$list" > "$list.tmp" && mv "$list.tmp" "$list"
+        done
+        printf "  %s\n" "freedesktop secret service already present; skipping dssd"
+    fi
+
     printf "  %s: %s core, %s per-package\n" \
         "$PKG_LIST" \
         "$(wc -l < "$GCDIR/packages" | tr -d ' ')" \
@@ -736,9 +764,13 @@ DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${uid}/bus
 
 step_7() {
     header "final preferences"
-    user="${USER:-root}"
-    run_sudo loginctl enable-linger "$user"
-    sudo -u "$user" systemctl --user enable pipewire.socket pipewire-pulse.socket wireplumber.service >/dev/null 2>&1 || true
+    user="$(id -un)"
+    if [ "$(id -u)" -ne 0 ]; then
+        run_sudo loginctl enable-linger "$user"
+        sudo -u "$user" systemctl --user enable pipewire.socket pipewire-pulse.socket wireplumber.service >/dev/null 2>&1 || true
+    else
+        echo "running as root; skipping user linger and pipewire services"
+    fi
     # base uses wpa_supplicant/wpa_cli instead of NetworkManager; no bluetooth
     run_sudo systemctl enable wpa_supplicant.service >/dev/null 2>&1 || true
     echo "services enabled"
@@ -789,7 +821,7 @@ step_8() {
         rm -f /usr/lib/libasan.so* /usr/lib/libtsan.so* 2>/dev/null || true
         rm -rf /usr/lib/gprofng* 2>/dev/null || true
         rm -rf /usr/share/gir-1.0 /usr/share/gtk-doc /usr/share/vala /usr/share/licenses 2>/dev/null || true
-        if command -v strip >/dev/null 2>&1 && [ ! -e /etc/.rstl-sway-rootfs ]; then
+        if command -v strip >/dev/null 2>&1 && [ ! -e /etc/.rstl-sway-rootfs ] && [ "$RSTL_ROOT" -ne 1 ]; then
             # Rootfs builds defer the ELF strip to mkfrugal-rstl.sh (host-side,
             # after the chroot teardown): stripping the chroot's *live*
             # interpreter/libraries in-place has been observed to segfault the
@@ -805,8 +837,9 @@ step_8() {
 }
 
 # ===========================================================================
-if [ "$(id -u)" -eq 0 ] && [ ! -e /etc/.rstl-sway-rootfs ]; then
+if [ "$(id -u)" -eq 0 ] && [ "$RSTL_ROOT" -ne 1 ] && [ ! -e /etc/.rstl-sway-rootfs ]; then
     echo "Error: do not run as root. Run as your normal user (sudo is used when needed)." >&2
+    echo "For an intentional root install use bin/install-base-root.sh or --root." >&2
     exit 1
 fi
 

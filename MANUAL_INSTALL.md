@@ -61,6 +61,11 @@ sudo pacman -S --needed pipewire wireplumber pipewire-pulse pipewire-alsa alsa-u
 sudo pacman -S --needed libnotify dssd sound-theme-freedesktop
 ```
 
+`dssd` is a freedesktop secret service. Skip it if GNOME Keyring, KWallet,
+KeePassXC or another provider already provides `org.freedesktop.secrets`; two
+providers conflict over the same D-Bus name (and usually the same service
+file). The installers detect this and leave `dssd` out automatically.
+
 ### login manager
 
 ```bash
@@ -122,6 +127,10 @@ sudo pacman -Sy --needed \
   yambar xdg-desktop-portal-termfilechooser ttf-jetbrains-mono-nerd-min \
   papirus-icon-theme-dark-only notwaita-cursors-grey adwaita-cursors dssd
 ```
+
+`dssd` is only listed to satisfy `org.freedesktop.secrets`; remove it from the
+command if another secret service (GNOME Keyring, KWallet, KeePassXC, ...) is
+already installed. The installers do this check automatically.
 
 `notwaita-cursors-grey` is the default cursor package; `adwaita-cursors` is
 installed as a fallback if notwaita isn't available. `hicolor-icon-theme` (the

@@ -82,9 +82,10 @@
 #
 # Flavors:
 #   install        full install.sh desktop; greetd/tuigreet login as user 'rustle'
-#                  (install.sh refuses to run as root, so it runs via su - rustle
-#                  with a temporary NOPASSWD wheel sudo, exactly like the
-#                  install_dotfiles() step in rstl-install.sh), root keeps config too
+#                  (it runs via su - rustle with a temporary NOPASSWD wheel sudo,
+#                  exactly like the install_dotfiles() step in rstl-install.sh,
+#                  so the desktop config lands in rustle's home; root keeps a
+#                  copy too)
 #   rstl-inst      same desktop, but boots straight into the rstl-inst TUI on tty1
 #                  (install to disk / try-live sway / network / shell)
 #   install-min    minimal desktop, install-min.sh runs as root
@@ -954,8 +955,9 @@ case "$flavor" in
         ;;
 
     install)
-        # bin/install.sh refuses to run as root -> run it as rustle, exactly like
-        # rstl-install.sh's install_dotfiles() (NOPASSWD wheel, then restore)
+        # run install.sh as rustle so the desktop config lands in rustle's home,
+        # exactly like rstl-install.sh's install_dotfiles() (NOPASSWD wheel, then
+        # restore); root keeps a copy of the same config
         install_as_rustle bin/install.sh
         set_passwords
         # root's config stays the skel copy (single repo): re-point the link in

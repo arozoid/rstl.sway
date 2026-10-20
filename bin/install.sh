@@ -7,6 +7,7 @@
 #   bin/install.sh --no-cleanup     every step except the last one (cleanup)
 #   bin/install.sh --program mouse  pick the program configuration
 #   bin/install.sh --firefox        bundle the firefox browser
+#   bin/install.sh --root           root install (installs into /root)
 #   bin/install.sh --help           show this help
 #
 # Every step can be cancelled with 'n' and the script keeps going. The package
@@ -23,6 +24,7 @@ set -u
 # RSTL_FIREFOX=1 / --firefox bundles the firefox browser on top of either.
 RSTL_PROGRAM="${RSTL_PROGRAM:-vim}"
 RSTL_FIREFOX="${RSTL_FIREFOX:-0}"
+RSTL_ROOT="${RSTL_ROOT:-0}"
 
 ASSUME_YES=0
 SKIP_CLEANUP=0
@@ -35,7 +37,8 @@ while [ "$#" -gt 0 ]; do
     --program=*)      RSTL_PROGRAM="${1#*=}"; shift ;;
     --firefox)        RSTL_FIREFOX=1; shift ;;
     --no-firefox)     RSTL_FIREFOX=0; shift ;;
-    --help|-h)        sed -n '2,15p' "$0"; exit 0 ;;
+    --root)           RSTL_ROOT=1; shift ;;
+    --help|-h)        sed -n '2,$ { /^#/!q; s/^#[[:space:]]\{0,1\}//p; }' "$0"; exit 0 ;;
     *)                echo "unknown option: $1 (try --help)" >&2; exit 2 ;;
   esac
 done
@@ -47,6 +50,14 @@ case "$RSTL_FIREFOX" in
   0|1) ;;
   *) echo "RSTL_FIREFOX must be 0 or 1, got: $RSTL_FIREFOX" >&2; exit 2 ;;
 esac
+case "$RSTL_ROOT" in
+  0|1) ;;
+  *) echo "RSTL_ROOT must be 0 or 1, got: $RSTL_ROOT" >&2; exit 2 ;;
+esac
+if [ "$RSTL_ROOT" -eq 1 ] && [ "$(id -u)" -ne 0 ]; then
+  echo "--root requires running as root (use bin/install-root.sh)" >&2
+  exit 1
+fi
 
 # Which flavor this installer is, and which package list it reads. Both are
 # recorded in the edition indicator, so bin/update.sh can re-apply exactly this
@@ -146,9 +157,14 @@ warn()  { printf "  ${C_YELLOW}! %s${C_RESET}\n" "$*" >&2; }
 fail()  { printf "  ${C_RED}✗ %s${C_RESET}\n" "$*" >&2; }
 
 run_sudo() {
-  # keeps the cached sudo timestamp fresh and runs "$@"
-  sudo -v
-  sudo "$@"
+  # root installs (--root / rootfs builds) run directly; normal installs keep
+  # the cached sudo timestamp fresh.
+  if [ "$(id -u)" -eq 0 ] || [ "$RSTL_ROOT" -eq 1 ]; then
+    "$@"
+  else
+    sudo -v
+    sudo "$@"
+  fi
 }
 
 # retry a pacman transaction a few times against transient download failures
@@ -453,6 +469,10 @@ ask_step() {
 # ---------------------------------------------------------------------------
 step_0() {
   info "ensuring sudo privileges"
+  if [ "$(id -u)" -eq 0 ] || [ "$RSTL_ROOT" -eq 1 ]; then
+    ok "running as root; sudo not needed"
+    return 0
+  fi
   if sudo -n true 2>/dev/null; then
     ok "sudo already available"
     return 0
@@ -550,6 +570,18 @@ step_2() {
   fi
   list_core > "$GCDIR/packages"
   list_each > "$GCDIR/packages-extra"
+
+  # dssd is one provider of org.freedesktop.secrets. If another one is already
+  # installed or running, installing dssd would make two providers fight over
+  # the same D-Bus name (and usually the same service file), so leave it out.
+  if [ -f "$REPO_DIR/scripts/secret-service-present.sh" ] &&
+     sh "$REPO_DIR/scripts/secret-service-present.sh" >/dev/null 2>&1; then
+    for list in "$GCDIR/packages" "$GCDIR/packages-extra"; do
+      awk '$0 != "dssd"' "$list" > "$list.tmp" && mv "$list.tmp" "$list"
+    done
+    printf "  ${C_DIM}freedesktop secret service already present; skipping dssd${C_RESET}\n"
+  fi
+
   printf "  ${C_DIM}%s: %s core, %s per-package (program: %s)%s\n" \
     "$PKG_LIST" \
     "$(wc -l < "$GCDIR/packages" | tr -d ' ')" \
@@ -923,12 +955,17 @@ install_cron_entry() {
 step_6() {
   info "battery alerts setup (40% / 80%)"
 
-  # remove the old systemd timer config, if any
-  if systemctl --user is-enabled batt.timer >/dev/null 2>&1; then
-    systemctl --user disable --now batt.timer >/dev/null 2>&1 || true
+  # remove the old systemd timer config, if any. A root shell has no user
+  # manager to talk to, so only touch the per-user units when not root.
+  if [ "$(id -u)" -ne 0 ]; then
+    if systemctl --user is-enabled batt.timer >/dev/null 2>&1; then
+      systemctl --user disable --now batt.timer >/dev/null 2>&1 || true
+    fi
   fi
   rm -f "$HOME/.config/systemd/user/batt.service" "$HOME/.config/systemd/user/batt.timer"
-  systemctl --user daemon-reload >/dev/null 2>&1 || true
+  if [ "$(id -u)" -ne 0 ]; then
+    systemctl --user daemon-reload >/dev/null 2>&1 || true
+  fi
 
   if ! command -v crontab >/dev/null 2>&1; then
     warn "crontab not found — install cronie (step 2) and re-run this step."
@@ -960,9 +997,10 @@ DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${uid}/bus
 step_7() {
   info "zsh default shell"
 
+  install_user="$(id -un)"
   if command -v zsh >/dev/null 2>&1; then
-    printf "  ${C_DIM}setting zsh as the default shell for ${USER}${C_RESET}\n"
-    run_sudo chsh -s "$(command -v zsh)" "$USER"
+    printf "  ${C_DIM}setting zsh as the default shell for ${install_user}${C_RESET}\n"
+    run_sudo chsh -s "$(command -v zsh)" "$install_user"
     ok "default shell is now zsh"
   else
     warn "zsh not installed — skipping shell change"
@@ -982,10 +1020,15 @@ step_7() {
 step_8() {
   info "final preferences"
 
+  install_user="$(id -un)"
   printf "  ${C_DIM}enabling lingering + pipewire user services${C_RESET}\n"
-  run_sudo loginctl enable-linger "$USER"
-  sudo -u "$USER" systemctl --user enable pipewire.socket pipewire-pulse.socket wireplumber.service >/dev/null 2>&1 || \
-    warn "could not enable pipewire user services (enable them after login if needed)"
+  if [ "$(id -u)" -ne 0 ]; then
+    run_sudo loginctl enable-linger "$install_user"
+    sudo -u "$install_user" systemctl --user enable pipewire.socket pipewire-pulse.socket wireplumber.service >/dev/null 2>&1 || \
+      warn "could not enable pipewire user services (enable them after login if needed)"
+  else
+    info "running as root; skipping user linger and pipewire services"
+  fi
 
   printf "  ${C_DIM}enabling system services (network, bluetooth)${C_RESET}\n"
   run_sudo systemctl enable NetworkManager.service >/dev/null 2>&1
@@ -1075,9 +1118,10 @@ EOF
 # ---------------------------------------------------------------------------
 # Run
 # ---------------------------------------------------------------------------
-if [ "${EUID:-}" -eq 0 ]; then
+if [ "$(id -u)" -eq 0 ] && [ "$RSTL_ROOT" -ne 1 ] && [ ! -e /etc/.rstl-sway-rootfs ]; then
   printf "${C_RED}${C_BOLD}Error:${C_RESET} ${C_BOLD}do not run as root.${C_RESET}\n" >&2
   printf "${C_DIM}Run as your normal user (sudo is used when needed).${C_RESET}\n" >&2
+  printf "${C_DIM}For an intentional root install use bin/install-root.sh or --root.${C_RESET}\n" >&2
   exit 1
 fi
 

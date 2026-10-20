@@ -78,6 +78,8 @@ vulkan-icd-loader
 #@optional
 ttf-jetbrains-mono-nerd-min
 rstlpk
+# dssd: skipped at install time when GNOME Keyring/KWallet/KeePassXC already
+# provides org.freedesktop.secrets.
 dssd
 xdg-desktop-portal-termfilechooser
 yambar

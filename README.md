@@ -61,9 +61,22 @@ the lists are plain text, one package per line, and you are free to edit them. t
 | `--program vim` / `--program mouse` | which program the edition is for (recorded) |
 | `--firefox` / `--no-firefox` | include or skip the browser (recorded) |
 | `--no-cleanup` | skip the size cleanup (orphan removal, pacman cache purge) - this is what `rstl update` uses, since cleanup is an image-build optimization and not something to run on a live desktop |
+| `--root` | root install: install into `/root` and skip sudo (must be root; the root wrappers below do this for you) |
 | `--help`, `-h` | the list, on your terminal |
 
 `install-base.sh` has no program, so it accepts `--program` and records `program=none`.
+
+### root / container installs
+
+the normal installers refuse to run as root: they use `sudo` and install into the invoking user's home. on a root-only system — a container, a VPS, a root shell, or a rootfs build — use the root-friendly wrappers, which install into `/root` and skip `sudo`:
+
+```bash
+bin/install-root.sh --yes
+bin/install-min-root.sh --yes
+bin/install-base-root.sh --yes
+```
+
+each wrapper runs the matching installer with `--root`; the installers also accept `--root` directly when you are already root. `bin/update-root.sh` is the same for updates. the root variants appear in the `rstl` picker alongside the normal scripts.
 
 ### updating
 
@@ -81,6 +94,7 @@ rstl update.sh
 | `--program vim\|mouse` | re-apply with another program |
 | `--firefox` / `--no-firefox` | re-apply with or without the browser |
 | `--no-upgrade` | skip `pacman -Syu` (dotfiles only) |
+| `--root` | update a root installation (`/root`, no sudo) |
 | `--yes`, `-y` | no questions |
 | `--dir PATH` | act on another dotfiles directory |
 | `--repo URL` | fetch from another repository |
@@ -118,7 +132,7 @@ rstl
   number [1-4]
 ```
 
-then it prints that script's `--help`, asks for the arguments (`--program "vim mouse"` is one argument, not two), runs it, and comes back to the menu. an empty line leaves, as does `q`. without a terminal it just prints the list and exits 2, so a script asking "what can I run here?" gets an answer.
+then it prints that script's `--help`, asks for the arguments (`--program "vim mouse"` is one argument, not two), runs it, and comes back to the menu. an empty line leaves, as does `q`. without a terminal it just prints the list and exits 2, so a script asking "what can I run here?" gets an answer. the root variants (`install-root.sh`, `install-min-root.sh`, `install-base-root.sh`, `update-root.sh`) appear in the same list.
 
 ### configuring sway
 
@@ -127,7 +141,7 @@ then it prints that script's `--help`, asks for the arguments (`--program "vim m
 | file | what is in it |
 | --- | --- |
 | `10-appearance.conf` | borders, gaps, client colors |
-| `20-cursor.conf` | cursor theme (the only place it is written down: `scripts/auto-scale.sh` reads it from here to re-apply the theme with a size computed from the panel's physical size) |
+| `20-cursor.conf` | cursor theme (the only place it is written down: `scripts/auto-scale.sh` reads it from here to re-apply the theme with a size computed from the panel's pixel density and physical size) |
 | `25-displays.conf` | where per-output settings go, and why the scale is not hardcoded here |
 | `30-input.conf` | mouse and focus behavior |
 | `40-autostart.conf` | what runs at login and on every reload |
@@ -155,7 +169,7 @@ add a file of your own (`50-mine.conf`) or edit one of these, and commit it: the
 - bluez/networkmanager: set up for minimal arch install
 - flac/mpg123/opus/vorbis/dav1d/libvpx/openh264: audio & video codecs
 - pipewire/*: audio stack
-- dssd ([rstl.repo](https://github.com/arozoid/rstl.repo)): dead simple freedesktop secret service
+- dssd ([rstl.repo](https://github.com/arozoid/rstl.repo)): dead simple freedesktop secret service. The installers skip it when GNOME Keyring, KWallet, KeePassXC or another provider already provides `org.freedesktop.secrets`, because two providers conflict over the same D-Bus name.
 - rstlpk ([rstl.repo](https://github.com/arozoid/rstl.repo)): my minimal polkit auth agent (no gtk; prompt in foot)
 - xdg-desktop-portal-termfilechooser ([rstl.repo](https://github.com/arozoid/rstl.repo)): file pickers open in the first of superfile / rovr / lf that is installed
 

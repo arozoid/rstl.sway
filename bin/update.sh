@@ -5,6 +5,7 @@
 #   bin/update.sh                          update this machine
 #   bin/update.sh --yes                    do not ask for confirmation
 #   bin/update.sh --edition install-min    update a specific edition
+#   bin/update.sh --root                   update a root installation
 #   bin/update.sh --help                   show this help
 #
 # Options:
@@ -14,6 +15,7 @@
 #   --firefox / --no-firefox              keep or drop the firefox bundle
 #   --no-upgrade                          skip the system upgrade (pacman -Syu / dnf upgrade / xbps-install -Syu)
 #   --yes, -y                             do not ask for confirmation
+#   --root                                root installation (installs into /root, no sudo)
 #   --dir PATH                            dotfiles directory (default ~/.config/rstl.sway)
 #   --repo URL                            repository to fetch (default github.com/arozoid/rstl.sway)
 #   --help, -h                            show this help
@@ -41,6 +43,7 @@ set -u
 
 REPO_URL="${RSTL_REPO_URL:-https://github.com/arozoid/rstl.sway}"
 DOTFILES_DIR="${RSTL_SWAY_DIR:-${HOME}/.config/rstl.sway}"
+RSTL_ROOT="${RSTL_ROOT:-0}"
 ASSUME_YES=0
 DO_UPGRADE=1
 EDITION=""
@@ -67,6 +70,22 @@ warn()   { printf "  ${C_YELLOW}warning${C_RESET}  %s\n" "$*" >&2; }
 fail()   { printf "  ${C_RED}error${C_RESET}  %s\n" "$*" >&2; }
 die()    { fail "$*"; exit 1; }
 
+ensure_sudo() {
+    if [ "$(id -u)" -eq 0 ] || [ "$RSTL_ROOT" -eq 1 ]; then
+        return 0
+    fi
+    sudo -v
+}
+
+run_sudo() {
+    if [ "$(id -u)" -eq 0 ] || [ "$RSTL_ROOT" -eq 1 ]; then
+        "$@"
+    else
+        sudo -v
+        sudo "$@"
+    fi
+}
+
 confirm() {
     if [ "$ASSUME_YES" -eq 1 ]; then
         printf "  [auto-yes] %s\n" "$1"
@@ -83,7 +102,7 @@ confirm() {
 cleanup() { [ -n "$CLONE_DIR" ] && [ -d "$CLONE_DIR" ] && rm -rf "$CLONE_DIR"; }
 trap cleanup EXIT
 
-usage() { sed -n '2,37p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,$ { /^#/!q; s/^#[[:space:]]\{0,1\}//p; }' "$0"; }
 
 # ---------------------------------------------------------------------------
 # arguments
@@ -105,6 +124,7 @@ while [ "$#" -gt 0 ]; do
                             REPO_URL="$2"; shift 2 ;;
         --repo=*)            REPO_URL="${1#*=}"; shift ;;
         --no-upgrade)        DO_UPGRADE=0; shift ;;
+        --root)              RSTL_ROOT=1; shift ;;
         --yes|-y)            ASSUME_YES=1; shift ;;
         --help|-h)           usage; exit 0 ;;
         *)                   usage >&2; die "unknown option: $1" ;;
@@ -123,8 +143,16 @@ case "$FIREFOX" in
     ""|0|1) ;;
     *) die "--firefox/--no-firefox take no value, got: $FIREFOX" ;;
 esac
-
-[ "$(id -u)" -eq 0 ] && die "do not run as root. Run as your normal user (sudo is used when needed)."
+case "$RSTL_ROOT" in
+    0|1) ;;
+    *) die "RSTL_ROOT must be 0 or 1, got: $RSTL_ROOT" ;;
+esac
+if [ "$RSTL_ROOT" -eq 1 ] && [ "$(id -u)" -ne 0 ]; then
+    die "--root requires running as root (use bin/update-root.sh)"
+fi
+if [ "$(id -u)" -eq 0 ] && [ "$RSTL_ROOT" -ne 1 ] && [ ! -e /etc/.rstl-sway-rootfs ]; then
+    die "do not run as root. Run as your normal user (sudo is used when needed). For an intentional root update use bin/update-root.sh or --root."
+fi
 [ -d "$DOTFILES_DIR" ] || die "${DOTFILES_DIR} does not exist - nothing to update. Run an installer first (see MANUAL_INSTALL.md)."
 
 INDICATOR="${DOTFILES_DIR}/.rstl-edition"
@@ -273,11 +301,22 @@ fetch_dotfiles || die "could not fetch the dotfiles (see above)"
 LIST="${SOURCE_DIR}/packages-${EDITION}.txt"
 [ -f "$LIST" ] || die "package list ${LIST} is missing"
 
+# If GNOME Keyring/KWallet/KeePassXC/... already provides
+# org.freedesktop.secrets, the installer leaves dssd out. Do the same here, so
+# the "missing packages" warning does not promise an install that will not
+# happen.
+SKIP_DSSD=0
+if [ -f "${SOURCE_DIR}/scripts/secret-service-present.sh" ] &&
+   sh "${SOURCE_DIR}/scripts/secret-service-present.sh" >/dev/null 2>&1; then
+    SKIP_DSSD=1
+fi
+
 core_list() {
-    awk '/^#@/ { sect = substr($0, 3); next }
+    awk -v skip_dssd="$SKIP_DSSD" '
+         /^#@/ { sect = substr($0, 3); next }
          /^#/  { next }
          NF == 0 { next }
-         sect == "core" { print }' "$LIST"
+         sect == "core" && !(skip_dssd == "1" && $0 == "dssd") { print }' "$LIST"
 }
 
 CORE_COUNT="$(core_list | wc -l | tr -d ' ')"
@@ -336,9 +375,9 @@ if [ "$DO_UPGRADE" -eq 1 ]; then
         warn "no supported package manager found, skipping the system upgrade"
     else
         header "upgrading the system"
-        sudo -v
+        ensure_sudo
         attempt=0
-        until sudo $UPGRADE_CMD; do
+        until run_sudo $UPGRADE_CMD; do
             attempt=$((attempt + 1))
             [ "$attempt" -ge 3 ] && die "$UPGRADE_CMD failed after ${attempt} attempts"
             warn "$UPGRADE_CMD failed, retrying (${attempt}/3)"
@@ -349,9 +388,13 @@ if [ "$DO_UPGRADE" -eq 1 ]; then
 fi
 
 header "re-applying the dotfiles (${INSTALLER})"
-sudo -v
+ensure_sudo
+ROOT_ARG=""
+if [ "$(id -u)" -eq 0 ]; then
+    ROOT_ARG="--root"
+fi
 if RSTL_PROGRAM="$PROGRAM" RSTL_FIREFOX="$FIREFOX" \
-   sh "${SOURCE_DIR}/${INSTALLER}" --yes --no-cleanup; then
+   sh "${SOURCE_DIR}/${INSTALLER}" --yes --no-cleanup $ROOT_ARG; then
     ok "dotfiles updated"
 else
     die "the installer failed - see the output above"

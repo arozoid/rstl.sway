@@ -3,26 +3,28 @@
 # ============================================================
 # rstl.sway auto scaling
 #
-# Configurable, size-band based scaling for sway output scale,
-# the yambar bar/font, and the cursor. Everything is expressed in
-# PHYSICAL MILLIMETERS so the bar/cursor are the same real size
-# regardless of resolution or display size, then scaled back into
-# pixels per output.
+# Configurable, density-based scaling for sway output scale, the yambar
+# bar/font, and the cursor. Sizes are expressed in PHYSICAL MILLIMETERS so
+# the bar/font keep the same real size regardless of resolution or display
+# size, then scaled back into pixels per output.
 #
 # reference ("on here"): 12.5" 2560x1440 @ scale 2.0, 280x160 mm
 #   bar 35px  -> 7.78 mm    bar_px * scale * phys_h_mm / height
 #   font 23px -> 5.11 mm
 #
-# display-size bands (by diagonal):
-#   < 20"  scale 2.00  yambar x1.0 (matches on-here mm)
-#   < 25"  scale 1.75  yambar x1.5
-#   >=25"  scale 1.50  yambar x2.0
+# scaling rule: pick the output scale from PIXEL DENSITY (PPI), not the
+# diagonal. Diagonal alone cannot tell a 34" 2560x1080 ultrawide (~81 PPI,
+# needs 1.0x) from a 12.5" 2560x1440 laptop (~235 PPI, needs 2.0x). We aim
+# for the reference panel's effective density (~117 PPI):
+#   scale = round(PPI / target_PPI / 0.25) * 0.25, clamped to 1.0..2.0
+# so a large low-density panel stays at 1.0x instead of getting a huge UI.
 #
-# Sizing philosophy: everything is expressed in PHYSICAL MILLIMETERS, then
-# converted to pixels per output as  px = mm * height / phys_h_mm.
-# The output `scale` is the band base only (no resolution multiplier),
-# so a higher-resolution panel of the same physical size gets more logical
-# pixels but the same real-world bar/cursor size.
+# Sizing philosophy: the bar/font are expressed in PHYSICAL MILLIMETERS,
+# then converted to pixels per output as  px = mm * height / (scale * phys_h_mm).
+# They keep the same real-world size on every panel; the cursor uses a fixed
+# logical size that stays comfortable at both 1x and 2x. For a TV viewed from
+# across the room, raise REF_BAR_PX / REF_FONT_PX instead of reintroducing
+# diagonal bands.
 # ============================================================
 
 set -u
@@ -43,7 +45,9 @@ CURSOR_THEME="$(sed -nE 's/^[^#]*xcursor_theme[[:space:]]+([^[:space:]]+).*/\1/p
 [ -n "$CURSOR_THEME" ] || CURSOR_THEME="Notwaita-Gray"
 
 # ---------- reference ("on here") ----------
+REF_WIDTH=2560
 REF_HEIGHT=1440
+REF_DIAG=12.5
 # mm of the reference panel's physical height
 REF_PHYS_H_MM=160
 
@@ -52,23 +56,17 @@ REF_BAR_PX=35
 REF_FONT_PX=23
 REF_CURSOR_PX=25
 
-# ---------- size bands (by diagonal inches) ----------
-# each band: <diag|max> scale yambar_mult cursor_default
-# scale is the 2k baseline; yambar_mult scales the bar/font mm
-BAND_1_MAX=20
-BAND_1_SCALE=2.0
-BAND_1_YBAR=1.0
-BAND_1_CURSOR=25
-
-BAND_2_MAX=25
-BAND_2_SCALE=1.75
-BAND_2_YBAR=1.5
-BAND_2_CURSOR=38
-
-BAND_3_MAX=9999
-BAND_3_SCALE=1.5
-BAND_3_YBAR=2.0
-BAND_3_CURSOR=50
+# ---------- scale rule (by pixel density) ----------
+# The reference panel is ~235 PPI at scale 2.0, so aim for ~117 effective
+# PPI. Scale to the nearest 0.25 and clamp to 1.0..2.0: this keeps a 34"
+# 2560x1080 ultrawide (~81 PPI) at 1.0x, gives a 27" 4K (~163 PPI) 1.5x,
+# and a 12.5" 2560x1440 laptop (~235 PPI) 2.0x. Diagonal alone is not enough:
+# large low-density panels and smaller high-density panels can share a
+# diagonal but need very different scales.
+REF_SCALE=2.0
+MIN_SCALE=1.0
+MAX_SCALE=2.0
+SCALE_STEP=0.25
 
 # ============================================================
 # helpers
@@ -85,10 +83,13 @@ round() {
     '
 }
 
-# derived physical mm of the reference UI (later multiplied by band yambar)
-REF_BAR_MM=$(calc           "$REF_BAR_PX * 2 * $REF_PHYS_H_MM / $REF_HEIGHT")    # 7.78
-REF_FONT_MM=$(calc          "$REF_FONT_PX * 2 * $REF_PHYS_H_MM / $REF_HEIGHT")   # 5.11
-REF_CURSOR_MM=$(calc        "$REF_CURSOR_PX * 2 * $REF_PHYS_H_MM / $REF_HEIGHT") # 4.44
+# derived physical mm of the reference UI (constant across panels)
+REF_BAR_MM=$(calc "$REF_BAR_PX * $REF_SCALE * $REF_PHYS_H_MM / $REF_HEIGHT")    # 7.78
+REF_FONT_MM=$(calc "$REF_FONT_PX * $REF_SCALE * $REF_PHYS_H_MM / $REF_HEIGHT")  # 5.11
+
+# reference pixel density and the effective density we scale towards
+REF_PPI=$(calc "sqrt($REF_WIDTH*$REF_WIDTH + $REF_HEIGHT*$REF_HEIGHT) / $REF_DIAG")  # ~235
+TARGET_PPI=$(calc "$REF_PPI / $REF_SCALE")                                           # ~117
 # ============================================================
 # outputs + physical sizes
 #   - name / mode WxH come from swaymsg (no wlr-randr needed)
@@ -163,10 +164,8 @@ while IFS="$(printf '\t')" read -r cur_out cur_width cur_height; do
 
     # physical dims unknown -> default sane 2k values
     if [ "$cur_w" -eq 0 ] || [ "$cur_h" -eq 0 ] || [ "$(calc "$cur_diag < 1")" -eq 1 ]; then
-        base_scale=1.0
-        ybar_mult=1.0
         cur_cursor=$REF_CURSOR_PX
-        scale=$base_scale
+        scale=1.0
         cur_bar=$(round "$(calc "$REF_BAR_PX * $cur_height / $REF_HEIGHT")")
         cur_fnt=$(round "$(calc "$REF_FONT_PX * $cur_height / $REF_HEIGHT")")
         printf 'setting %s: unknown size -> scale %.2f, bar %dpx, font %dpx, cursor %dpx\n' \
@@ -176,27 +175,23 @@ while IFS="$(printf '\t')" read -r cur_out cur_width cur_height; do
         continue
     fi
 
-    # ---- pick band by diagonal ----
-    if [ "$(calc "$cur_diag < $BAND_1_MAX")" -eq 1 ]; then
-        band=1; base_scale=$BAND_1_SCALE; ybar_mult=$BAND_1_YBAR
-        cur_cursor=$BAND_1_CURSOR
-    elif [ "$(calc "$cur_diag < $BAND_2_MAX")" -eq 1 ]; then
-        band=2; base_scale=$BAND_2_SCALE; ybar_mult=$BAND_2_YBAR
-        cur_cursor=$BAND_2_CURSOR
-    else
-        band=3; base_scale=$BAND_3_SCALE; ybar_mult=$BAND_3_YBAR
-        cur_cursor=$BAND_3_CURSOR
+    cur_ppi=$(calc "sqrt($cur_width*$cur_width+$cur_height*$cur_height)/$cur_diag")
+
+    # ---- pick scale by pixel density ----
+    scale_steps=$(round "$(calc "$cur_ppi / $TARGET_PPI / $SCALE_STEP")")
+    scale=$(calc "$scale_steps * $SCALE_STEP")
+    if [ "$(calc "$scale < $MIN_SCALE")" -eq 1 ]; then
+        scale=$MIN_SCALE
+    fi
+    if [ "$(calc "$scale > $MAX_SCALE")" -eq 1 ]; then
+        scale=$MAX_SCALE
     fi
 
-    # output scale is the band base only (no resolution multiplier)
-    scale=$base_scale
-
-    # physical mm targets for this band (band multiplier only)
-    bar_mm=$(calc "$REF_BAR_MM * $ybar_mult")
-    font_mm=$(calc "$REF_FONT_MM * $ybar_mult")
-
-    # cursor tracks height linearly (gentler than bar, but predictable)
-    cur_cursor=$(round "$(calc "$cur_cursor * $cur_height / $REF_HEIGHT")")
+    # bar/font keep their reference physical size on every panel; the cursor
+    # uses a fixed logical size instead of growing with the diagonal.
+    bar_mm=$REF_BAR_MM
+    font_mm=$REF_FONT_MM
+    cur_cursor=$REF_CURSOR_PX
 
     # convert physical mm to pixels for this panel: px = mm * height / (scale * phys_h)
     cur_bar=$(round "$(calc "$bar_mm * $cur_height / ($scale * $cur_h)")")
@@ -207,9 +202,9 @@ while IFS="$(printf '\t')" read -r cur_out cur_width cur_height; do
     [ "$cur_cursor" -gt "$cursor_size" ] && cursor_size=$cur_cursor
 
     printf \
-        'setting %s: band%d %.1f" -> scale %.2f, bar %dpx (%.1fmm), font %dpx, cursor %dpx\n' \
+        'setting %s: %.0fppi %.1f" -> scale %.2f, bar %dpx (%.1fmm), font %dpx, cursor %dpx\n' \
         "$cur_out" \
-        "$band" \
+        "$cur_ppi" \
         "$cur_diag" \
         "$scale" \
         "$cur_bar" \
