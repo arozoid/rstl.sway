@@ -556,6 +556,10 @@ step_2() {
     PKG_MGR=pacman
     add_rstl_repo
     enable_multilib
+    if [ -f "$REPO_DIR/scripts/pacman-cachyos.sh" ]; then
+      sh "$REPO_DIR/scripts/pacman-cachyos.sh" ||
+        warn "could not apply the CachyOS pacman output options"
+    fi
   else
     warn "neither xbps, pacman nor dnf found — skipping package installation"
     return 1
@@ -821,6 +825,9 @@ step_3() {
   link_dir "$DOTFILES_DIR/lf"        "$HOME/.config/lf"
   link_dir "$DOTFILES_DIR/chawan"    "$HOME/.config/chawan"
   link_dir "$DOTFILES_DIR/fastfetch" "$HOME/.config/fastfetch"
+  if [ "${PKG_MGR:-}" = "pacman" ]; then
+    link_dir "$DOTFILES_DIR/yay"     "$HOME/.config/yay"
+  fi
   link_dir "$DOTFILES_DIR/.zshrc"    "$HOME/.zshrc"
   link_dir "$DOTFILES_DIR/greetd"    "/etc/greetd" yes
 

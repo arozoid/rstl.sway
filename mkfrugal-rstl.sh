@@ -833,7 +833,7 @@ replicate_symlinks() { # $1 = home dir whose $1/.config/rstl.sway is the source
     home="$1"
     cfg="$home/.config/rstl.sway"
     DEST="$home/.config"
-    linklist="sway swaylock swayidle yambar rofi fish foot mako lf chawan fastfetch"
+    linklist="sway swaylock swayidle yambar rofi fish foot mako lf chawan fastfetch yay"
     case "$program" in
         mouse) linklist="$linklist rovr" ;;
         *)     linklist="$linklist nvim" ;;

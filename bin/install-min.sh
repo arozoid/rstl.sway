@@ -513,6 +513,10 @@ step_2() {
             echo "multilib already enabled in $conf"
         fi
         PKG_MGR=pacman
+        if [ -f "$REPO_DIR/scripts/pacman-cachyos.sh" ]; then
+            sh "$REPO_DIR/scripts/pacman-cachyos.sh" ||
+                echo "could not apply the CachyOS pacman output options" >&2
+        fi
     else
         echo "neither xbps, pacman nor dnf found, skipping package installation" >&2
         return 1
@@ -675,6 +679,9 @@ step_3() {
     link_file "$DOTFILES_DIR/mako"     "$HOME/.config/mako"
     if [ "$RSTL_PROGRAM" = "mouse" ]; then
         link_file "$DOTFILES_DIR/rovr" "$HOME/.config/rovr"
+    fi
+    if [ "${PKG_MGR:-}" = "pacman" ]; then
+        link_file "$DOTFILES_DIR/yay"  "$HOME/.config/yay"
     fi
     link_file "$DOTFILES_DIR/.zshrc"   "$HOME/.zshrc"
     link_file "$DOTFILES_DIR/greetd"   "/etc/greetd" yes

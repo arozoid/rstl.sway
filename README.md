@@ -66,6 +66,16 @@ the lists are plain text, one package per line, and you are free to edit them. t
 
 `install-base.sh` has no program, so it accepts `--program` and records `program=none`.
 
+### pacman / yay
+
+on Arch, the installers apply CachyOS's pacman output settings to `/etc/pacman.conf`: `Color`, `ILoveCandy`, `VerbosePkgLists`, `DisableDownloadTimeout` and `ParallelDownloads = 10`. only those option lines are touched; repositories, mirrors and everything else stay as they are. you can also run it on its own:
+
+```bash
+sudo scripts/pacman-cachyos.sh
+```
+
+on Arch, the installers also link `yay/config.json` to `~/.config/yay`, giving yay the same colored pacman output plus bottom-up combined upgrades, batch installs, a sudo loop, `removemake` and `cleanAfter`. yay itself is not installed by the lists; the config is ready when you install it.
+
 ### root / container installs
 
 the normal installers refuse to run as root: they use `sudo` and install into the invoking user's home. on a root-only system — a container, a VPS, a root shell, or a rootfs build — use the root-friendly wrappers, which install into `/root` and skip `sudo`:

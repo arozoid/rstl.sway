@@ -1,0 +1,11 @@
+{
+	"answerclean": "None",
+	"answerdiff": "None",
+	"answeredit": "None",
+	"batchinstall": true,
+	"bottomup": true,
+	"cleanAfter": true,
+	"combinedupgrade": true,
+	"removemake": "yes",
+	"sudoloop": true
+}

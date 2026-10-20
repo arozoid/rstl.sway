@@ -49,7 +49,7 @@ if [ ! -f "$MARKER" ]; then
     # -----------------------------------------------------------------------
     # 2. symlink the config directories to their expected paths
     # -----------------------------------------------------------------------
-    for d in sway swaylock swayidle yambar rofi fish foot nvim mako lf rovr fastfetch; do
+    for d in sway swaylock swayidle yambar rofi fish foot nvim mako lf rovr fastfetch yay; do
         [ -e "$CFG/$d" ] || continue
         [ -e "$HOME/.config/$d" ] && continue
         ln -s "$CFG/$d" "$HOME/.config/$d"

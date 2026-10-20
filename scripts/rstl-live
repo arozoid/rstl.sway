@@ -8,7 +8,7 @@ CFG="$HOME/.config/rstl.sway"
 DEST="$HOME/.config"
 
 # optional dotfile dirs to symlink into ~/.config
-for d in sway swaylock swayidle yambar rofi foot nvim mako lf; do
+for d in sway swaylock swayidle yambar rofi foot nvim mako lf yay; do
     if [ -e "$CFG/$d" ] && [ ! -e "$DEST/$d" ]; then
         ln -s "$CFG/$d" "$DEST/$d"
     fi

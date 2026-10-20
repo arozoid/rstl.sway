@@ -17,6 +17,19 @@ upgrade your system:
 sudo pacman -Syu
 ```
 
+apply the CachyOS pacman output settings (colors, `ILoveCandy`, verbose package tables, 10 parallel downloads):
+
+```bash
+sudo scripts/pacman-cachyos.sh
+```
+
+and link the yay config, if you use yay:
+
+```bash
+mkdir -p ~/.config
+ln -sfn ~/.config/rstl.sway/yay ~/.config/yay
+```
+
 then install each package group below, skipping whatever you don't need:
 
 ### window manager / bar / launcher / notifications / lock screen
