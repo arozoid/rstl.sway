@@ -283,21 +283,47 @@ install_or_fallback() {
 # add rstl.repo to dnf (fedora/ endpoint)
 add_fedora_repo() {
     conf="/etc/yum.repos.d/rstl.repo"
-    if ! grep -qF "[rstl-repo]" "$conf" 2>/dev/null; then
-        printf '[rstl-repo]\nbaseurl=https://arozoid.github.io/rstl.repo/fedora\nenabled=1\ngpgcheck=0\n' \
-            | run_sudo tee "$conf" >/dev/null
-        run_sudo dnf makecache --quiet 2>/dev/null || true
+    repo_line="baseurl=https://arozoid.github.io/rstl.repo/fedora/"
+    expected="$(printf '[rstl-repo]\n%s\nenabled=1\ngpgcheck=0\n' "$repo_line")"
+
+    # Rewrite the whole file when it differs, so an old [rstl] section, a
+    # missing trailing slash or a stale x86_64/ URL is repaired too.
+    if [ -f "$conf" ] && [ "$(cat "$conf")" = "$expected" ]; then
+        return 0
     fi
+
+    printf '%s\n' "$expected" | run_sudo tee "$conf" >/dev/null
+    run_sudo dnf makecache --quiet 2>/dev/null || true
+}
+
+# Arch package name -> Fedora package name (only where the names differ).
+# dnf has no --needed option and its repoquery reports names, not provides,
+# so these renames have to be explicit.
+dnf_map_pkg() {
+    case "$1" in
+        networkmanager)    echo NetworkManager ;;
+        bluez-utils)       echo bluez ;;
+        pipewire-pulse)    echo pipewire-pulseaudio ;;
+        greetd-tuigreet)   echo tuigreet ;;
+        xorg-xwayland)     echo xorg-x11-server-Xwayland ;;
+        vulkan-icd-loader) echo vulkan-loader ;;
+        noto-fonts-emoji)  echo google-noto-color-emoji-fonts ;;
+        adwaita-cursors)   echo adwaita-cursor-theme ;;
+        mesa)              echo mesa-dri-drivers ;;
+        openh264)          echo noopenh264 ;;
+        wget)              echo wget2-wget ;;
+        *)                 echo "$1" ;;
+    esac
 }
 
 # dnf variant of install_or_fallback
 install_or_fallback_dnf() {
-    pkg="$1"; fallback="$2"
+    pkg=$(dnf_map_pkg "$1"); fallback=$(dnf_map_pkg "$2")
     if run_sudo dnf repoquery --queryformat "%{name}" 2>/dev/null | grep -qx "$pkg"; then
-        run_sudo dnf install --needed --noconfirm --allowerasing "$pkg"
+        run_sudo dnf install --noconfirm --allowerasing "$pkg"
     else
-        echo "  ${pkg} not found in repos, using ${fallback}"
-        run_sudo dnf install --needed --noconfirm --allowerasing "$fallback"
+        echo "  $1 not found in repos, using $2"
+        run_sudo dnf install --noconfirm --allowerasing "$fallback"
     fi
 }
 
@@ -499,17 +525,18 @@ step_2() {
         wanted=""
         missing=""
         for pkg in $(cat "$GCDIR/packages"); do
-            if grep -qxF "$pkg" "$repo_pkgs"; then
-                wanted="$wanted $pkg"
+            name=$(dnf_map_pkg "$pkg")
+            if grep -qxF "$name" "$repo_pkgs"; then
+                wanted="$wanted $name"
             else
-                missing="$missing $pkg"
+                missing="$missing $name"
             fi
         done
         rm -f "$repo_pkgs"
         wanted="${wanted# }"
         missing="${missing# }"
 
-        for pkg in sway greetd greetd-tuigreet foot mako rofi; do
+        for pkg in sway greetd tuigreet foot mako rofi; do
             case " $missing " in
                 *" $pkg "*)
                     echo "  required package '$pkg' is in no enabled repo (stale sync db? try: sudo dnf makecache)" >&2
@@ -524,11 +551,12 @@ step_2() {
 
         [ -n "$wanted" ] || return 0
         echo "  installing: $wanted"
-        run_sudo dnf install --needed --noconfirm --allowerasing $wanted
+        run_sudo dnf install --noconfirm --allowerasing $wanted
 
         for pm in $(cat "$GCDIR/packages-extra"); do
-            if run_sudo dnf repoquery --queryformat "%{name}" 2>/dev/null | grep -qx "$pm"; then
-                run_sudo dnf install --needed --noconfirm --allowerasing "$pm"
+            name=$(dnf_map_pkg "$pm")
+            if run_sudo dnf repoquery --queryformat "%{name}" 2>/dev/null | grep -qx "$name"; then
+                run_sudo dnf install --noconfirm --allowerasing "$name"
             else
                 printf "  %s not found in repos, skipping\n" "$pm"
             fi

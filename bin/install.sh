@@ -177,13 +177,33 @@ install_or_fallback() {
   fi
 }
 
+# Arch package name -> Fedora package name (only where the names differ).
+# dnf has no --needed option and its repoquery reports names, not provides,
+# so these renames have to be explicit.
+dnf_map_pkg() {
+  case "$1" in
+    networkmanager)    echo NetworkManager ;;
+    bluez-utils)       echo bluez ;;
+    pipewire-pulse)    echo pipewire-pulseaudio ;;
+    greetd-tuigreet)   echo tuigreet ;;
+    xorg-xwayland)     echo xorg-x11-server-Xwayland ;;
+    vulkan-icd-loader) echo vulkan-loader ;;
+    noto-fonts-emoji)  echo google-noto-color-emoji-fonts ;;
+    adwaita-cursors)   echo adwaita-cursor-theme ;;
+    mesa)              echo mesa-dri-drivers ;;
+    openh264)          echo noopenh264 ;;
+    wget)              echo wget2-wget ;;
+    *)                 echo "$1" ;;
+  esac
+}
+
 install_or_fallback_dnf() {
-  pkg="$1"; fallback="$2"
+  pkg=$(dnf_map_pkg "$1"); fallback=$(dnf_map_pkg "$2")
   if run_sudo dnf repoquery --queryformat "%{name}" 2>/dev/null | grep -qx "$pkg"; then
-    run_sudo dnf install --needed --noconfirm --allowerasing "$pkg"
+    run_sudo dnf install --noconfirm --allowerasing "$pkg"
   else
-    printf "  ${C_DIM}%s not found, using %s${C_RESET}\n" "$pkg" "$fallback"
-    run_sudo dnf install --needed --noconfirm --allowerasing "$fallback"
+    printf "  ${C_DIM}%s not found, using %s${C_RESET}\n" "$1" "$2"
+    run_sudo dnf install --noconfirm --allowerasing "$fallback"
   fi
 }
 
@@ -252,16 +272,18 @@ add_rstl_repo() {
 add_fedora_repo() {
   conf="/etc/yum.repos.d/rstl.repo"
   repo_line="[rstl-repo]"
-  server_line="baseurl=https://arozoid.github.io/rstl.repo/fedora"
+  server_line="baseurl=https://arozoid.github.io/rstl.repo/fedora/"
+  expected="$(printf '%s\n%s\nenabled=1\ngpgcheck=0\n' "$repo_line" "$server_line")"
 
-  if grep -qF "$repo_line" "$conf" 2>/dev/null; then
+  # Rewrite the whole file when it differs, so an old [rstl] section, a
+  # missing trailing slash or a stale x86_64/ URL is repaired too.
+  if [ -f "$conf" ] && [ "$(cat "$conf")" = "$expected" ]; then
     ok "rstl-repo already in ${conf}"
     return 0
   fi
 
   printf "  ${C_DIM}adding rstl-repo (fedora) to ${conf}${C_RESET}\n"
-  printf '%s\n%s\nenabled=1\ngpgcheck=0\n' "$repo_line" "$server_line" \
-    | run_sudo tee "$conf" >/dev/null
+  printf '%s\n' "$expected" | run_sudo tee "$conf" >/dev/null
   run_sudo dnf makecache --quiet 2>/dev/null || true
   ok "rstl-repo (fedora) added and cached"
 }
@@ -544,10 +566,11 @@ step_2() {
     wanted=""
     missing=""
     for pkg in $(cat "$GCDIR/packages"); do
-      if grep -qxF "$pkg" "$repo_pkgs"; then
-        wanted="$wanted $pkg"
+      name=$(dnf_map_pkg "$pkg")
+      if grep -qxF "$name" "$repo_pkgs"; then
+        wanted="$wanted $name"
       else
-        missing="$missing $pkg"
+        missing="$missing $name"
       fi
     done
     rm -f "$repo_pkgs"
@@ -555,8 +578,9 @@ step_2() {
     missing="${missing# }"
 
     # a session without these cannot boot into the desktop at all: refuse to
-    # continue instead of shipping a broken image.
-    for pkg in sway greetd greetd-tuigreet foot mako rofi; do
+    # continue instead of shipping a broken image. greetd-tuigreet is tuigreet
+    # on Fedora, and the loops above already hold the mapped names.
+    for pkg in sway greetd tuigreet foot mako rofi; do
       case " $missing " in
         *" $pkg "*)
           fail "required package '$pkg' is in no enabled repo (stale sync db? try: sudo dnf makecache)"
@@ -571,20 +595,21 @@ step_2() {
 
     if [ -n "$wanted" ]; then
       printf "  ${C_DIM}installing: %s${C_RESET}\n" "$wanted"
-      run_sudo dnf install --needed --noconfirm --allowerasing $wanted
+      run_sudo dnf install --noconfirm --allowerasing $wanted
     fi
 
     while IFS= read -r pkg; do
       [ -n "$pkg" ] || continue
-      if run_sudo dnf repoquery --queryformat "%{name}" 2>/dev/null | grep -qx "$pkg"; then
-        run_sudo dnf install --needed --noconfirm --allowerasing "$pkg"
+      name=$(dnf_map_pkg "$pkg")
+      if run_sudo dnf repoquery --queryformat "%{name}" 2>/dev/null | grep -qx "$name"; then
+        run_sudo dnf install --noconfirm --allowerasing "$name"
       else
         printf "  ${C_DIM}extra package %s not found in any repo, skipping${C_RESET}\n" "$pkg"
       fi
     done < "$GCDIR/packages-extra"
 
     # theme/cursor packages with official-repo fallbacks
-    run_sudo dnf install --needed --noconfirm --allowerasing hicolor-icon-theme 2>/dev/null || true
+    run_sudo dnf install --noconfirm --allowerasing hicolor-icon-theme 2>/dev/null || true
     install_or_fallback_dnf notwaita-cursors-grey adwaita-cursors
     install_or_fallback_dnf papirus-icon-theme-dark-only adwaita-icon-theme
     # fd: Fedora ships the binary as fd-find
