@@ -163,7 +163,7 @@ alias obi='obsidian-cli'
 alias calc='~/.config/rstl.sway/scripts/calawk.sh'
 
 ## ddusb
-# dependencies: dd, lsblk, sgdisk, mkfs.ext4, partprobe, udevadm
+# dependencies: dd, lsblk (always); sgdisk, partprobe, udevadm, mkfs.ext4 (--writable)
 
 # usage:
 #   ddusb image.iso
@@ -179,8 +179,6 @@ ddusb() {
     local label="WRITABLE"
     local assume_yes=0
     local arg
-
-    local -a deps=(dd lsblk sgdisk mkfs.ext4 partprobe udevadm)
 
     # help
     if [[ "$1" == "--help" || "$1" == "-h" || -z "$1" ]]; then
@@ -198,7 +196,7 @@ options:
   --writable SIZE       create an ext4 writable partition at the end
                         of the drive, e.g. 2G, 512M
   --label NAME          filesystem label (default: WRITABLE)
-  -y, --yes             skip confirmation prompts
+  -y, --yes             skip the flash confirmation
   -h, --help            show this help
 
 examples:
@@ -212,6 +210,8 @@ notes:
   - the optional writable partition requires a compatible GPT image.
   - the writable partition is formatted as ext4; persistence must be
     supported and configured by the live operating system separately.
+  - missing dependencies are offered for installation via pacman,
+    xbps-install or dnf before flashing begins.
   - back up important data before flashing.
 EOF
         return 0
@@ -285,13 +285,95 @@ EOF
         fi
     fi
 
-    # check dependencies
-    for arg in "${deps[@]}"; do
-        if ! command -v "$arg" >/dev/null 2>&1; then
-            print -u2 "error: missing dependency: $arg"
+    # check only the dependencies this operation needs
+    local -a required=(dd lsblk)
+    if [[ -n "$writable" ]]; then
+        required+=(sgdisk partprobe udevadm mkfs.ext4)
+    fi
+
+    local -a missing=()
+    for arg in "${required[@]}"; do
+        command -v "$arg" >/dev/null 2>&1 || missing+=("$arg")
+    done
+
+    if (( ${#missing[@]} )); then
+        # pick the package manager for this distribution
+        local pm=""
+        if (( $+commands[pacman] )); then
+            pm=pacman
+        elif (( $+commands[xbps-install] )); then
+            pm=xbps-install
+        elif (( $+commands[dnf] )); then
+            pm=dnf
+        fi
+
+        # command -> package name, per distribution
+        local -A pkgmap
+        case "$pm" in
+            pacman)
+                pkgmap=(dd coreutils lsblk util-linux sgdisk gptfdisk partprobe parted udevadm systemd mkfs.ext4 e2fsprogs)
+                ;;
+            xbps-install)
+                pkgmap=(dd coreutils lsblk util-linux sgdisk gptfdisk partprobe parted udevadm eudev mkfs.ext4 e2fsprogs)
+                ;;
+            dnf)
+                pkgmap=(dd coreutils lsblk util-linux sgdisk gdisk partprobe parted udevadm systemd-udev mkfs.ext4 e2fsprogs)
+                ;;
+        esac
+
+        local -a pkgs=()
+        local -A seen
+        seen=()
+        local dep p
+        for dep in "${missing[@]}"; do
+            p="${pkgmap[$dep]:-$dep}"
+            if [[ -z "${seen[$p]:-}" ]]; then
+                seen[$p]=1
+                pkgs+=("$p")
+            fi
+        done
+
+        print -u2 "missing dependencies for this operation: ${missing[*]}"
+
+        if [[ -z "$pm" ]]; then
+            print -u2 "error: could not detect a supported package manager (pacman, xbps-install or dnf)"
+            print -u2 "install the missing commands above with your package manager"
             return 1
         fi
-    done
+
+        print -u2 "packages needed: ${pkgs[*]}"
+
+        local -a install_cmd
+        case "$pm" in
+            pacman) install_cmd=(sudo pacman -S --needed --noconfirm "${pkgs[@]}") ;;
+            xbps-install) install_cmd=(sudo xbps-install -S -y "${pkgs[@]}") ;;
+            dnf) install_cmd=(sudo dnf install -y "${pkgs[@]}") ;;
+        esac
+
+        print -u2 "install with: ${install_cmd[*]}"
+
+        local reply
+        read "reply?install them now? [Y/n] "
+        if [[ "$reply" == "n" || "$reply" == "N" ]]; then
+            print -u2 "aborted: install the missing dependencies and try again"
+            return 1
+        fi
+
+        if ! "${install_cmd[@]}"; then
+            print -u2 "error: failed to install dependencies"
+            return 1
+        fi
+
+        # make sure everything is available now
+        missing=()
+        for dep in "${required[@]}"; do
+            command -v "$dep" >/dev/null 2>&1 || missing+=("$dep")
+        done
+        if (( ${#missing[@]} )); then
+            print -u2 "error: still missing after install: ${missing[*]}"
+            return 1
+        fi
+    fi
 
     # discover a target if none was provided
     if [[ -z "$device" ]]; then
