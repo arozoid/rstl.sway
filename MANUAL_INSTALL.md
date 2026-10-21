@@ -137,7 +137,7 @@ sudo pacman -S --needed dav1d libvpx openh264 mesa vulkan-icd-loader
 printf '\n[rstl-repo]\nSigLevel = Optional TrustAll\nServer = https://arozoid.github.io/rstl.repo\n' \
 | sudo tee -a /etc/pacman.conf >/dev/null
 sudo pacman -Sy --needed \
-  yambar sov xdg-desktop-portal-termfilechooser ttf-jetbrains-mono-nerd-min \
+  yambar xdg-desktop-portal-termfilechooser ttf-jetbrains-mono-nerd-min \
   papirus-icon-theme-dark-only notwaita-cursors-grey adwaita-cursors dssd
 ```
 

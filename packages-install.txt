@@ -83,7 +83,6 @@ rstlpk
 dssd
 xdg-desktop-portal-termfilechooser
 yambar
-sov
 latuicon
 clipse
 wiremix

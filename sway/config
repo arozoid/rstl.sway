@@ -88,31 +88,15 @@ set $ws7 "7"
 set $ws8 "8"
 set $ws9 "9"
 
-# hold a workspace key to preview every workspace with sov; releasing it hides
-# the overview again. sov itself is a single daemon reading from a FIFO, so the
-# keybinding only writes one byte instead of starting a process.
-bindsym --no-repeat $mod+1 workspace $ws1; exec ~/.config/rstl.sway/scripts/sov.sh show
-bindsym --no-repeat $mod+2 workspace $ws2; exec ~/.config/rstl.sway/scripts/sov.sh show
-bindsym --no-repeat $mod+3 workspace $ws3; exec ~/.config/rstl.sway/scripts/sov.sh show
-bindsym --no-repeat $mod+4 workspace $ws4; exec ~/.config/rstl.sway/scripts/sov.sh show
-bindsym --no-repeat $mod+5 workspace $ws5; exec ~/.config/rstl.sway/scripts/sov.sh show
-bindsym --no-repeat $mod+6 workspace $ws6; exec ~/.config/rstl.sway/scripts/sov.sh show
-bindsym --no-repeat $mod+7 workspace $ws7; exec ~/.config/rstl.sway/scripts/sov.sh show
-bindsym --no-repeat $mod+8 workspace $ws8; exec ~/.config/rstl.sway/scripts/sov.sh show
-bindsym --no-repeat $mod+9 workspace $ws9; exec ~/.config/rstl.sway/scripts/sov.sh show
-
-bindsym --release $mod+1 exec ~/.config/rstl.sway/scripts/sov.sh hide
-bindsym --release $mod+2 exec ~/.config/rstl.sway/scripts/sov.sh hide
-bindsym --release $mod+3 exec ~/.config/rstl.sway/scripts/sov.sh hide
-bindsym --release $mod+4 exec ~/.config/rstl.sway/scripts/sov.sh hide
-bindsym --release $mod+5 exec ~/.config/rstl.sway/scripts/sov.sh hide
-bindsym --release $mod+6 exec ~/.config/rstl.sway/scripts/sov.sh hide
-bindsym --release $mod+7 exec ~/.config/rstl.sway/scripts/sov.sh hide
-bindsym --release $mod+8 exec ~/.config/rstl.sway/scripts/sov.sh hide
-bindsym --release $mod+9 exec ~/.config/rstl.sway/scripts/sov.sh hide
-
-# dedicated overview toggle for when you do not want to change workspace
-bindsym $mod+Shift+Tab exec ~/.config/rstl.sway/scripts/sov.sh toggle
+bindsym $mod+1 workspace $ws1
+bindsym $mod+2 workspace $ws2
+bindsym $mod+3 workspace $ws3
+bindsym $mod+4 workspace $ws4
+bindsym $mod+5 workspace $ws5
+bindsym $mod+6 workspace $ws6
+bindsym $mod+7 workspace $ws7
+bindsym $mod+8 workspace $ws8
+bindsym $mod+9 workspace $ws9
 
 ### move windows to workspaces
 bindsym $mod+Shift+1 move container to workspace $ws1; workspace $ws1

@@ -50,7 +50,6 @@ dssd
 
 xdg-desktop-portal-termfilechooser
 yambar
-sov
 bluetui
 latuicon
 clipse
