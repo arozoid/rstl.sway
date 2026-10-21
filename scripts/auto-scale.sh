@@ -32,10 +32,12 @@
 #
 # Sizing philosophy: the bar/font are expressed in PHYSICAL MILLIMETERS,
 # then converted to pixels per output as  px = mm * height / (scale * phys_h_mm).
-# They keep the same real-world size on every panel; the cursor uses a fixed
-# logical size that stays comfortable at both 1x and 2x. For a TV viewed from
-# across the room, raise REF_BAR_PX / REF_FONT_PX instead of reintroducing
-# diagonal bands.
+# They keep the same real-world size on normal panels; the cursor uses a fixed
+# logical size that stays comfortable at both 1x and 2x. Large standard-aspect
+# panels get one extra yambar multiplier: keeping the reference's 7.8mm bar on
+# a 32" desktop makes it look tiny at 1.5x, so those panels use 1.5x larger bar
+# and font. For a TV viewed from across the room, raise REF_BAR_PX /
+# REF_FONT_PX instead of reintroducing diagonal bands.
 # ============================================================
 
 set -u
@@ -87,6 +89,7 @@ LARGE_PANEL_MIN_DIAG=30
 LARGE_PANEL_MIN_HEIGHT=1440
 LARGE_PANEL_MAX_ASPECT=1.9
 LARGE_PANEL_MIN_SCALE=1.5
+LARGE_PANEL_YAMBAR_MULT=1.5
 
 # ============================================================
 # helpers
@@ -212,6 +215,16 @@ while IFS="$(printf '\t')" read -r cur_out cur_width cur_height; do
     cur_ppi=$(calc "sqrt($cur_width*$cur_width+$cur_height*$cur_height)/$cur_diag")
     cur_aspect=$(calc "$cur_width / $cur_height")
 
+    # Large standard-aspect panels also get a larger yambar. The physical-mm
+    # reference alone leaves a 32" 1440p bar at 19px logical / ~8mm tall, which
+    # reads as tiny next to 1.5x desktop UI.
+    ybar_mult=1.0
+    if [ "$(calc "$cur_diag >= $LARGE_PANEL_MIN_DIAG")" -eq 1 ] &&
+       [ "$cur_height" -ge "$LARGE_PANEL_MIN_HEIGHT" ] &&
+       [ "$(calc "$cur_aspect <= $LARGE_PANEL_MAX_ASPECT")" -eq 1 ]; then
+        ybar_mult=$LARGE_PANEL_YAMBAR_MULT
+    fi
+
     # ---- explicit per-output override wins ----
     if [ -z "$scale" ]; then
         # ---- otherwise pick scale by pixel density ----
@@ -235,10 +248,11 @@ while IFS="$(printf '\t')" read -r cur_out cur_width cur_height; do
         fi
     fi
 
-    # bar/font keep their reference physical size on every panel; the cursor
-    # uses a fixed logical size instead of growing with the diagonal.
-    bar_mm=$REF_BAR_MM
-    font_mm=$REF_FONT_MM
+    # bar/font keep their reference physical size on small panels; large
+    # standard-aspect panels get ybar_mult to stay readable at desk distance.
+    # The cursor uses a fixed logical size instead.
+    bar_mm=$(calc "$REF_BAR_MM * $ybar_mult")
+    font_mm=$(calc "$REF_FONT_MM * $ybar_mult")
     cur_cursor=$REF_CURSOR_PX
 
     # convert physical mm to pixels for this panel: px = mm * height / (scale * phys_h)
