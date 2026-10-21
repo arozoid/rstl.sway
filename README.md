@@ -162,6 +162,7 @@ add a file of your own (`50-mine.conf`) or edit one of these, and commit it: the
 
 - awww: lightweight wallpaper daemon
 - yambar ([rstl.repo](https://github.com/arozoid/rstl.repo)): modular status bar for wayland
+- sov ([rstl.repo](https://github.com/arozoid/rstl.repo)): workspace overview overlay for sway
 - sway: tiling window manager
 - mako: lightweight notification daemon
 - rofi: minimal and customizable launcher (used for app picker and power menu)
@@ -219,7 +220,8 @@ add a file of your own (`50-mine.conf`) or edit one of these, and commit it: the
 - win+shift+q: kill window
 - win+hjkl/arrow keys: move between windows
 - win+shift+hjkl/arrow keys: move focused window
-- win+1-9: move to workspace 1-9
+- win+1-9: switch to workspace 1-9; hold the workspace key to preview with sov
+- win+shift+tab: toggle the sov workspace overview
 - win+shift+1-9: move focused window to workspace 1-9
 
 ---
