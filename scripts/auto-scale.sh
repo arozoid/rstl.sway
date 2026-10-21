@@ -35,8 +35,8 @@
 # They keep the same real-world size on normal panels; the cursor uses a fixed
 # logical size that stays comfortable at both 1x and 2x. Large standard-aspect
 # panels get one extra yambar multiplier: keeping the reference's 7.8mm bar on
-# a 32" desktop makes it look tiny at 1.5x, so those panels use 1.5x larger bar
-# and font. For a TV viewed from across the room, raise REF_BAR_PX /
+# a 32" desktop makes it look tiny at 1.5x, so those panels use a 1.75x larger
+# bar and font. For a TV viewed from across the room, raise REF_BAR_PX /
 # REF_FONT_PX instead of reintroducing diagonal bands.
 # ============================================================
 
@@ -89,7 +89,7 @@ LARGE_PANEL_MIN_DIAG=30
 LARGE_PANEL_MIN_HEIGHT=1440
 LARGE_PANEL_MAX_ASPECT=1.9
 LARGE_PANEL_MIN_SCALE=1.5
-LARGE_PANEL_YAMBAR_MULT=1.5
+LARGE_PANEL_YAMBAR_MULT=1.75
 
 # ============================================================
 # helpers
