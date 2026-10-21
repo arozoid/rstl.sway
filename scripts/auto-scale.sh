@@ -19,6 +19,17 @@
 #   scale = round(PPI / target_PPI / 0.25) * 0.25, clamped to 1.0..2.0
 # so a large low-density panel stays at 1.0x instead of getting a huge UI.
 #
+# Density alone under-scales a big standard-aspect 1440p panel: a 32"
+# 2560x1440 is only ~92 PPI and would land at 1.0x, which is too much
+# desktop for that viewing distance. Large 16:9/16:10 panels (>=30",
+# >=1440 vertical lines) therefore get a 1.5x floor. The aspect-ratio
+# check is deliberate: a 34" 2560x1080 ultrawide has a 1080-line height
+# and a wide 21:9 frame, so it stays on the density ladder at 1.0x.
+#
+# An explicit `output <name> scale <n>` line in 25-displays.conf wins
+# over both rules, for panels whose EDID is wrong or whose user simply
+# wants a different scale.
+#
 # Sizing philosophy: the bar/font are expressed in PHYSICAL MILLIMETERS,
 # then converted to pixels per output as  px = mm * height / (scale * phys_h_mm).
 # They keep the same real-world size on every panel; the cursor uses a fixed
@@ -44,6 +55,9 @@ CURSOR_THEME="$(sed -nE 's/^[^#]*xcursor_theme[[:space:]]+([^[:space:]]+).*/\1/p
     "$CURSOR_CONF" 2>/dev/null | head -n 1)"
 [ -n "$CURSOR_THEME" ] || CURSOR_THEME="Notwaita-Gray"
 
+# per-output scale overrides (an `output <name> scale <n>` line here wins)
+DISPLAYS_CONF="$DOTFILES_DIR/sway/config.d/25-displays.conf"
+
 # ---------- reference ("on here") ----------
 REF_WIDTH=2560
 REF_HEIGHT=1440
@@ -67,6 +81,12 @@ REF_SCALE=2.0
 MIN_SCALE=1.0
 MAX_SCALE=2.0
 SCALE_STEP=0.25
+
+# large standard-aspect monitor floor (see the rule above)
+LARGE_PANEL_MIN_DIAG=30
+LARGE_PANEL_MIN_HEIGHT=1440
+LARGE_PANEL_MAX_ASPECT=1.9
+LARGE_PANEL_MIN_SCALE=1.5
 
 # ============================================================
 # helpers
@@ -97,6 +117,19 @@ TARGET_PPI=$(calc "$REF_PPI / $REF_SCALE")                                      
 #     (bytes 0x15-0x16 carry the max image size in cm); that is
 #     exactly what wlr-randr used to report as "Physical size".
 # ============================================================
+
+# $1 = sway output name ("eDP-1"); echoes the explicit scale or nothing
+scale_override() {
+    name="$1"
+    [ -f "$DISPLAYS_CONF" ] || return 1
+    value=$(sed -nE \
+        "s/^[[:space:]]*output[[:space:]]+${name}[[:space:]]+scale[[:space:]]+([0-9]+([.][0-9]+)?).*/\\1/p" \
+        "$DISPLAYS_CONF" 2>/dev/null | head -n 1)
+    [ -n "$value" ] || return 1
+    # keep the override inside the same supported range as the auto rule
+    [ "$(calc "$value >= $MIN_SCALE && $value <= $MAX_SCALE")" -eq 1 ] || return 1
+    printf '%s\n' "$value"
+}
 
 # $1 = sway output name ("eDP-1"); echoes "W H" (mm) or nothing
 phys_mm() {
@@ -161,11 +194,12 @@ while IFS="$(printf '\t')" read -r cur_out cur_width cur_height; do
     cur_w=${1:-0}
     cur_h=${2:-0}
     cur_diag=$(calc "sqrt($cur_w*$cur_w+$cur_h*$cur_h)/25.4")
+    scale="$(scale_override "$cur_out")" || scale=""
 
     # physical dims unknown -> default sane 2k values
     if [ "$cur_w" -eq 0 ] || [ "$cur_h" -eq 0 ] || [ "$(calc "$cur_diag < 1")" -eq 1 ]; then
         cur_cursor=$REF_CURSOR_PX
-        scale=1.0
+        [ -n "$scale" ] || scale=1.0
         cur_bar=$(round "$(calc "$REF_BAR_PX * $cur_height / $REF_HEIGHT")")
         cur_fnt=$(round "$(calc "$REF_FONT_PX * $cur_height / $REF_HEIGHT")")
         printf 'setting %s: unknown size -> scale %.2f, bar %dpx, font %dpx, cursor %dpx\n' \
@@ -176,15 +210,29 @@ while IFS="$(printf '\t')" read -r cur_out cur_width cur_height; do
     fi
 
     cur_ppi=$(calc "sqrt($cur_width*$cur_width+$cur_height*$cur_height)/$cur_diag")
+    cur_aspect=$(calc "$cur_width / $cur_height")
 
-    # ---- pick scale by pixel density ----
-    scale_steps=$(round "$(calc "$cur_ppi / $TARGET_PPI / $SCALE_STEP")")
-    scale=$(calc "$scale_steps * $SCALE_STEP")
-    if [ "$(calc "$scale < $MIN_SCALE")" -eq 1 ]; then
-        scale=$MIN_SCALE
-    fi
-    if [ "$(calc "$scale > $MAX_SCALE")" -eq 1 ]; then
-        scale=$MAX_SCALE
+    # ---- explicit per-output override wins ----
+    if [ -z "$scale" ]; then
+        # ---- otherwise pick scale by pixel density ----
+        scale_steps=$(round "$(calc "$cur_ppi / $TARGET_PPI / $SCALE_STEP")")
+        scale=$(calc "$scale_steps * $SCALE_STEP")
+        if [ "$(calc "$scale < $MIN_SCALE")" -eq 1 ]; then
+            scale=$MIN_SCALE
+        fi
+        if [ "$(calc "$scale > $MAX_SCALE")" -eq 1 ]; then
+            scale=$MAX_SCALE
+        fi
+
+        # Large standard-aspect 1440p+ panels need more than their low
+        # PPI suggests. Keep ultrawides out of this floor: their shorter
+        # vertical mode is the reason they stay at 1.0x.
+        if [ "$(calc "$cur_diag >= $LARGE_PANEL_MIN_DIAG")" -eq 1 ] &&
+           [ "$cur_height" -ge "$LARGE_PANEL_MIN_HEIGHT" ] &&
+           [ "$(calc "$cur_aspect <= $LARGE_PANEL_MAX_ASPECT")" -eq 1 ] &&
+           [ "$(calc "$scale < $LARGE_PANEL_MIN_SCALE")" -eq 1 ]; then
+            scale=$LARGE_PANEL_MIN_SCALE
+        fi
     fi
 
     # bar/font keep their reference physical size on every panel; the cursor

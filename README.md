@@ -152,7 +152,7 @@ then it prints that script's `--help`, asks for the arguments (`--program "vim m
 | --- | --- |
 | `10-appearance.conf` | borders, gaps, client colors |
 | `20-cursor.conf` | cursor theme (the only place it is written down: `scripts/auto-scale.sh` reads it from here to re-apply the theme with a size computed from the panel's pixel density and physical size) |
-| `25-displays.conf` | where per-output settings go, and why the scale is not hardcoded here |
+| `25-displays.conf` | per-output settings; auto-scale computes the scale, but an explicit `output <name> scale <n>` wins |
 | `30-input.conf` | mouse and focus behavior |
 | `40-autostart.conf` | what runs at login and on every reload |
 

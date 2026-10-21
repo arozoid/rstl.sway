@@ -189,7 +189,7 @@ sudo ln -s ~/.config/rstl.sway/greetd /etc/greetd
 | --- | --- |
 | `10-appearance.conf` | borders, gaps, client colors |
 | `20-cursor.conf` | cursor theme (the size is computed by `scripts/auto-scale.sh`) |
-| `25-displays.conf` | where per-output settings go, and why the scale is not hardcoded here |
+| `25-displays.conf` | per-output settings; an explicit `output <name> scale <n>` overrides the computed scale |
 | `30-input.conf` | mouse and focus behavior |
 | `40-autostart.conf` | what runs at login and on every reload |
 
