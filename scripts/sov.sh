@@ -8,16 +8,13 @@
 set -u
 
 pipe="${XDG_RUNTIME_DIR:-/tmp}/sovpipe"
-style="$HOME/.config/rstl.sway/sov"
 
 case "${1:-toggle}" in
   daemon)
     command -v sov >/dev/null 2>&1 || exit 0
     rm -f "$pipe"
     mkfifo "$pipe" || exit 1
-    set -- -t 250 -r 6
-    [ -d "$style/html" ] && set -- "$@" -s "$style"
-    tail -f "$pipe" | sov "$@"
+    tail -f "$pipe" | sov -t 500
     ;;
   show)
     [ -p "$pipe" ] && printf '1\n' > "$pipe"

@@ -224,8 +224,6 @@ add a file of your own (`50-mine.conf`) or edit one of these, and commit it: the
 - win+shift+tab: toggle the sov workspace overview
 - win+shift+1-9: move focused window to workspace 1-9
 
-The overview uses a larger five-column layout with a forest-green palette and JetBrains Mono labels; tweak `sov/html/main.css` to change it.
-
 ---
 
 - win+r: resize mode
