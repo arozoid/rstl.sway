@@ -34,6 +34,7 @@ case "${1:-}" in
         ;;
 esac
 
+settings_need_tty "$@"
 outputs=$(sway_outputs) || settings_die "swaymsg could not read the outputs"
 output_options=$(printf '%s' "$outputs" | jq '
     [ .[]

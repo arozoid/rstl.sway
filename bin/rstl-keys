@@ -36,6 +36,7 @@ case "${1:-}" in
         ;;
 esac
 
+settings_need_tty "$@"
 tab=$(printf '\t')
 bindings_tsv=$(mktemp) || settings_die "cannot create a temporary file"
 effective_tsv=$(mktemp) || settings_die "cannot create a temporary file"

@@ -39,6 +39,7 @@ case "${1:-}" in
         exit 0
         ;;
     display | wallpaper | input | keys | power)
+        settings_need_tty "$@"
         open_page "$1"
         exit $?
         ;;
@@ -51,6 +52,7 @@ case "${1:-}" in
         ;;
 esac
 
+settings_need_tty "$@"
 options=$(jq -n '[
     { label: "Display", value: "display" },
     { label: "Wallpaper", value: "wallpaper" },

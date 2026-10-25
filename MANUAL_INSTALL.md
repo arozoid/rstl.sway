@@ -206,6 +206,15 @@ includes after `sway/config.d/`. the installers leave `local/` alone, so those
 changes survive updates; delete a generated file to return to the repository
 default. the files are git-ignored except for `local/README.md`.
 
+the dialogs need an interactive terminal because ratl is a TUI. win+comma opens
+them in foot; if you start a settings command without a terminal, it reopens
+itself in foot when Wayland is available, and otherwise exits with a clear
+message. the tools prefer `~/.local/bin/ratl` when it exists, so a locally
+built ratl works even when foot's server has an older PATH. they need a ratl
+build that draws on `/dev/tty` while its JSON result is captured; the old
+0.1.0-1 package does not, so update ratl if the dialogs still report that they
+need a terminal.
+
 `rstl-wallpaper` previews images with ratl's true-colour image element (a ratl
 build with image support; older versions fall back to a text-only preview and
 still apply the wallpaper). `rstl-power` needs `swayidle` and `swaylock`; the power-profile

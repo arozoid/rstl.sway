@@ -36,6 +36,7 @@ case "${1:-}" in
         ;;
 esac
 
+settings_need_tty "$@"
 inputs=$(sway_inputs) || settings_die "swaymsg could not read the input devices"
 device_options=$(printf '%s' "$inputs" | jq '
     [ .[]

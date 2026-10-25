@@ -35,6 +35,7 @@ case "${1:-}" in
         ;;
 esac
 
+settings_need_tty "$@"
 if ! settings_have swayidle; then
     ratl_message "Power management" \
         "swayidle is not installed. Install swayidle (and swaylock) to use idle timers."

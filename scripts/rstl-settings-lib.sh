@@ -7,7 +7,16 @@
 
 RSTL_SETTINGS_DIR="${RSTL_SWAY_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/rstl.sway}"
 RSTL_LOCAL_DIR="$RSTL_SETTINGS_DIR/local"
-RATL_BIN="${RATL:-ratl}"
+if [ -n "${RATL:-}" ]; then
+    RATL_BIN="$RATL"
+elif [ -x "$HOME/.local/bin/ratl" ]; then
+    # foot's server keeps the PATH it was started with, which often predates
+    # ~/.local/bin. Prefer the user's build so the settings dialogs do not fall
+    # back to an older system ratl.
+    RATL_BIN="$HOME/.local/bin/ratl"
+else
+    RATL_BIN=ratl
+fi
 
 settings_die() {
     printf '%s: %s\n' "${0##*/}" "$*" >&2
@@ -29,6 +38,42 @@ settings_need_jq() {
 
 settings_need_sway() {
     settings_have swaymsg || settings_die "swaymsg is not available"
+}
+
+# ratl is a TUI and needs a terminal on both ends. When a settings script is
+# started from swaymsg/cron/another non-interactive context, reopen it in foot
+# instead of failing with ratl's tty error. Normal terminal and win+comma
+# launches already have a tty and pass straight through.
+settings_need_tty() {
+    if [ -t 0 ] && [ -t 1 ]; then
+        return 0
+    fi
+    [ "${DRY_RUN:-0}" = 1 ] && return 0
+
+    if [ "${RSTL_TERMINAL_RELAUNCHED:-0}" = 1 ]; then
+        settings_die "ratl needs an interactive terminal (run this from foot or another terminal)"
+    fi
+
+    # Only auto-open a terminal when both ends are non-interactive. A redirected
+    # stdout in an interactive shell should stay a plain error, not spawn a
+    # second window.
+    if [ ! -t 0 ] && [ ! -t 1 ] && [ -n "${WAYLAND_DISPLAY:-}" ]; then
+        # footclient does not forward the caller's environment to the client
+        # (the foot server supplies its own), so pass the recursion marker
+        # through env explicitly.
+        if [ -x "$RSTL_SETTINGS_DIR/scripts/foot-smart.sh" ]; then
+            exec "$RSTL_SETTINGS_DIR/scripts/foot-smart.sh" \
+                --app-id=rstl-settings -e env RSTL_TERMINAL_RELAUNCHED=1 "$0" "$@"
+        elif settings_have footclient; then
+            exec footclient --app-id=rstl-settings \
+                -e env RSTL_TERMINAL_RELAUNCHED=1 "$0" "$@"
+        elif settings_have foot; then
+            exec foot --app-id=rstl-settings \
+                -e env RSTL_TERMINAL_RELAUNCHED=1 "$0" "$@"
+        fi
+    fi
+
+    settings_die "ratl needs an interactive terminal (run this from foot or another terminal)"
 }
 
 # Image elements are newer than the first ratl release. Keep the wallpaper
