@@ -44,6 +44,8 @@ greetd
 greetd-tuigreet
 foot
 git
+rsync
+jq
 curl
 wget
 unzip

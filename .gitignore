@@ -5,8 +5,8 @@
 # bin/update.sh. It describes the machine, not the repository.
 .rstl-edition
 
-# settings written by bin/rstl-settings and its sub-tools. The directory and
-# its README are tracked; generated state is not.
+# settings written by ratl/rstl-settings and its sub-tools. The directory
+# and its README are tracked; generated state is not.
 local/*
 !local/README.md
 

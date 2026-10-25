@@ -394,7 +394,7 @@ list_each() {
 copy_dotfiles() {
     dest="$DOTFILES_DIR"
     mkdir -p "$dest"
-    for owned in sway/config sway/config.d bin \
+    for owned in sway/config sway/config.d bin ratl \
                  packages-install.txt packages-install-min.txt packages-install-base.txt \
                  .rstl-edition; do
         [ -e "$dest/$owned" ] || continue
@@ -509,7 +509,8 @@ step_1() {
     ok "copied dotfiles from ${REPO_DIR}"
   fi
   mkdir -p "${DOTFILES_DIR}"
-  chmod +x "$DOTFILES_DIR"/scripts/*.sh "$DOTFILES_DIR"/bin/*.sh 2>/dev/null || true
+  chmod +x "$DOTFILES_DIR"/scripts/*.sh "$DOTFILES_DIR"/bin/*.sh \
+        "$DOTFILES_DIR"/ratl/rstl-* 2>/dev/null || true
   ok "scripts are executable"
 
   # record which flavor (and program) owns this dotfiles dir; bin/update.sh
@@ -530,8 +531,9 @@ EOF
     ok "installed rstl-first-login + profile.d hook"
   fi
 
-  # the `rstl` wrapper: run any script in bin/ by name (rstl install.sh --yes,
-  # rstl update.sh). Installed system-wide so it works from any directory.
+  # the `rstl` wrapper: run any script in bin/ or ratl/ by name
+  # (rstl install.sh --yes, rstl rstl-settings). Installed system-wide so it
+  # works from any directory.
   if [ -f "$DOTFILES_DIR/bin/rstl" ]; then
     run_sudo install -Dm755 "$DOTFILES_DIR/bin/rstl" /usr/local/bin/rstl
     ok "installed the rstl wrapper (/usr/local/bin/rstl)"

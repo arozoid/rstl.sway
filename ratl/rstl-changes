@@ -1,0 +1,284 @@
+#!/bin/sh
+# rstl.sway FRUGAL changes - merge RAM-only changes into the real profile.
+#
+# Usage:
+#   rstl-changes               find the running RAM overlay and merge it
+#   rstl-changes --dry-run     show what would be merged, change nothing
+#   rstl-changes --yes         merge without the confirmation dialog
+#   rstl-changes --help        show this help
+#
+# FRUGAL's w_changes=RAM0, RAM1 and RAM2 modes keep the writable overlay in
+# /mnt/layers/RAM/upper_changes, which is tmpfs. This tool finds the persistent
+# FRUGAL profile and rsyncs that RAM layer into its upper_changes directory on
+# real storage. The RAM copy is left untouched, so a reboot with
+# w_changes=media (or no w_changes= argument) starts using the merged data.
+#
+# The merge runs as root because the profile is normally root-owned. It keeps
+# whiteouts, xattrs, ACLs, hardlinks and device nodes, so deletions made while
+# running from RAM remain deletions after the merge.
+
+set -u
+
+DOTFILES_DIR="${RSTL_SWAY_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/rstl.sway}"
+. "$DOTFILES_DIR/ratl/lib.sh"
+
+settings_need_jq
+settings_need_rsync
+
+ASSUME_YES=0
+
+usage() {
+    sed -n '2,$ { /^#/!q; s/^#[[:space:]]\{0,1\}//p; }' "$0"
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --help | -h)
+            usage
+            exit 0
+            ;;
+        --dry-run)
+            DRY_RUN=1
+            shift
+            ;;
+        --yes | -y)
+            ASSUME_YES=1
+            shift
+            ;;
+        *)
+            printf 'rstl-changes: unknown option: %s\n' "$1" >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+done
+
+if [ "$ASSUME_YES" -eq 0 ] && [ "${DRY_RUN:-0}" != 1 ]; then
+    settings_need_tty "$@"
+fi
+
+# Print a message to the terminal. Interactive use gets a ratl dialog; a
+# --dry-run or --yes run stays scriptable and writes to stderr instead.
+notify() {
+    title="$1"
+    text="$2"
+    if [ "$ASSUME_YES" -eq 1 ] || [ "${DRY_RUN:-0}" = 1 ] || [ ! -t 0 ] || [ ! -t 1 ]; then
+        printf '%s: %s\n' "$title" "$text" >&2
+    else
+        ratl_message "$title" "$text"
+    fi
+}
+
+fail() {
+    notify "$1" "$2"
+    exit 1
+}
+
+human_kb() {
+    kb="${1:-0}"
+    case "$kb" in
+        '' | *[!0-9]*) kb=0 ;;
+    esac
+    if [ "$kb" -ge 1048576 ]; then
+        awk -v kb="$kb" 'BEGIN { printf "%.1f GiB", kb / 1048576 }'
+    elif [ "$kb" -ge 1024 ]; then
+        awk -v kb="$kb" 'BEGIN { printf "%.1f MiB", kb / 1024 }'
+    else
+        printf '%s KiB' "$kb"
+    fi
+}
+
+# The root overlay's upperdir. findmnt keeps the value together even when a
+# path contains a comma; the kernel escapes spaces as \040.
+overlay_upperdir() {
+    if [ -n "${RSTL_RAM_UPPERDIR:-}" ]; then
+        printf '%s\n' "$RSTL_RAM_UPPERDIR"
+        return 0
+    fi
+    options=$(findmnt -n -o OPTIONS / 2>/dev/null || true)
+    [ -n "$options" ] ||
+        options=$(awk '$2 == "/" { print $4 }' /proc/mounts 2>/dev/null)
+    upper=$(printf '%s\n' "$options" |
+        tr ',' '\n' |
+        sed -n 's/^upperdir=//p' |
+        head -n 1)
+    printf '%s\n' "$upper" |
+        sed 's/\\040/ /g; s/\\011/	/g; s/\\134/\\/g'
+}
+
+is_ram_upper() {
+    case "$1" in
+        */RAM/upper_changes | */RAM/upper_changes/*) return 0 ;;
+    esac
+    fstype=$(findmnt -n -o FSTYPE --target "$1" 2>/dev/null || true)
+    [ "$fstype" = tmpfs ]
+}
+
+# A FRUGAL profile owns an overlay/rootfs layer and the kernel files. A
+# versioned BOOT directory has the kernel files too, so require the layer.
+profile_valid() {
+    profile="$1"
+    [ -d "$profile" ] || return 1
+    [ -e "$profile/vmlinuz" ] || return 1
+    [ -e "$profile/initrd.gz" ] || return 1
+    [ -e "$profile/00modules.sfs" ] || [ -e "$profile/02modules.new" ] || return 1
+    [ -e "$profile/upper_changes" ] ||
+        [ -e "$profile/07rootfs" ] ||
+        [ -e "$profile/rootfs" ] ||
+        return 1
+}
+
+candidate_file=$(mktemp) || fail "Save RAM changes" "cannot create a temporary file"
+trap 'rm -f "$candidate_file"' EXIT HUP INT TERM
+
+add_candidate() {
+    candidate="$1"
+    [ -n "$candidate" ] || return 0
+    [ -d "$candidate" ] || return 0
+    candidate=$(readlink -f "$candidate" 2>/dev/null || printf '%s' "$candidate")
+    profile_valid "$candidate" || return 0
+    printf '%s\n' "$candidate" >> "$candidate_file"
+}
+
+# Explicit overrides first: the package helper and the tests use these.
+add_candidate "${RSTL_FRUGAL_PROFILE:-}"
+add_candidate "${FRUGAL_DIR:-}"
+if [ -r /var/lib/linux-cachyos-frugal/profile ]; then
+    add_candidate "$(head -n 1 /var/lib/linux-cachyos-frugal/profile)"
+fi
+
+# w_bootfrom can be a path or UUID=...=/path / LABEL=...=/path. Resolve the
+# path against every mounted filesystem; the same directory can be visible
+# through both a whole-disk mount and a subvolume mount.
+bootfrom=$(tr ' ' '\n' < /proc/cmdline 2>/dev/null |
+    sed -n 's/^w_bootfrom=//p' |
+    head -n 1)
+boot_rel=""
+if [ -n "$bootfrom" ]; then
+    boot_rel="$bootfrom"
+    case "$boot_rel" in
+        *"="*) boot_rel=${boot_rel#*=}; boot_rel=${boot_rel#*=} ;;
+    esac
+    case "$boot_rel" in
+        /*) ;;
+        *) boot_rel="" ;;
+    esac
+fi
+if [ -n "$boot_rel" ]; then
+    findmnt -rn -o TARGET 2>/dev/null | while IFS= read -r target; do
+        [ -n "$target" ] || continue
+        for suffix in "$boot_rel" "${boot_rel#/@}" "${boot_rel#/}"; do
+            [ -n "$suffix" ] || continue
+            add_candidate "${target%/}/$suffix"
+        done
+    done
+fi
+
+# Fall back to any mounted FRUGALS directory. This is what makes the tool work
+# when w_bootfrom is a UUID/LABEL that cannot be resolved directly.
+findmnt -rn -o TARGET 2>/dev/null | while IFS= read -r target; do
+    [ -d "$target" ] || continue
+    for base in "$target" "$target"/*; do
+        [ -d "$base/FRUGALS" ] || continue
+        for candidate in "$base"/FRUGALS/*; do
+            add_candidate "$candidate"
+        done
+    done
+done
+
+candidates=$(awk '!seen[$0]++' "$candidate_file")
+if [ -z "$candidates" ]; then
+    fail "Save RAM changes" \
+        "No persistent FRUGAL profile was found. Pass FRUGAL_DIR=/path/to/FRUGALS/profile or install linux-cachyos-frugal so it records the profile."
+fi
+
+source=$(overlay_upperdir)
+if [ -z "$source" ]; then
+    fail "Save RAM changes" \
+        "The root filesystem is not an overlay, so there are no FRUGAL changes to merge."
+fi
+if ! is_ram_upper "$source"; then
+    fail "Save RAM changes" \
+        "Changes are already on real storage ($source); nothing needs merging."
+fi
+[ -d "$source" ] || fail "Save RAM changes" "RAM overlay directory not found: $source"
+
+entries=$(find "$source" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l | tr -d ' ')
+if [ "$entries" -eq 0 ]; then
+    fail "Save RAM changes" "The RAM overlay is empty; there is nothing to save."
+fi
+
+# Prefer the profile whose basename matches w_bootfrom (for example
+# rstl.sway), then fall back to the first candidate.
+desired=""
+if [ -n "$boot_rel" ]; then
+    desired=$(basename "$boot_rel" 2>/dev/null || true)
+fi
+
+count=$(printf '%s\n' "$candidates" | wc -l | tr -d ' ')
+selected=0
+if [ -n "$desired" ]; then
+    match=$(printf '%s\n' "$candidates" |
+        awk -v want="/$desired" 'index($0, want) == length($0) - length(want) + 1 { print NR - 1; exit }')
+    [ -n "$match" ] && selected="$match"
+fi
+
+if [ "$count" -eq 1 ]; then
+    target=$(printf '%s\n' "$candidates" | sed -n '1p')
+elif [ "$ASSUME_YES" -eq 1 ] || [ "${DRY_RUN:-0}" = 1 ]; then
+    target=$(printf '%s\n' "$candidates" | sed -n "$((selected + 1))p")
+else
+    options=$(printf '%s\n' "$candidates" |
+        jq -R -s 'split("\n") | map(select(length > 0)) | map({ label: ., value: . })')
+    result=$(ratl_select "Save RAM changes" "Persistent FRUGAL profile" "$options" "$selected") ||
+        exit 0
+    target=$(printf '%s' "$result" | jq -r '.values.choice // empty')
+    [ -n "$target" ] || exit 0
+fi
+
+profile_valid "$target" || fail "Save RAM changes" "Not a FRUGAL profile: $target"
+target_upper="$target/upper_changes"
+case "$target_upper" in
+    "$source" | "$source"/*)
+        fail "Save RAM changes" "The target is inside the RAM overlay; choose a profile on real storage."
+        ;;
+esac
+
+source_kb=$(du -sk "$source" 2>/dev/null | awk '{ print $1 }')
+[ -n "$source_kb" ] || source_kb=0
+free_kb=$(df -Pk "$target" 2>/dev/null | awk 'NR == 2 { print $4 }')
+[ -n "$free_kb" ] || free_kb=0
+if [ "$free_kb" -gt 0 ] && [ "$source_kb" -gt "$free_kb" ]; then
+    fail "Save RAM changes" \
+        "Not enough space in $target: the RAM overlay needs $(human_kb "$source_kb"), only $(human_kb "$free_kb") is free."
+fi
+
+summary="RAM changes: $source ($(human_kb "$source_kb"))
+Merge into: $target_upper
+Free space: $(human_kb "$free_kb")
+
+The RAM copy is left untouched. Reboot with w_changes=media (or without w_changes=RAM*) to boot from the merged profile."
+
+if [ "$ASSUME_YES" -eq 0 ] && [ "${DRY_RUN:-0}" != 1 ]; then
+    ratl_confirm "Save RAM changes" "$summary" "Merge" || exit 0
+fi
+
+if [ "${DRY_RUN:-0}" = 1 ]; then
+    printf 'would run: sudo mkdir -p %s\n' "$target_upper" >&2
+    printf 'would run: sudo rsync -aHAX --numeric-ids --force %s/ %s/\n' \
+        "$source" "$target_upper" >&2
+    printf 'would run: sudo sync\n' >&2
+    exit 0
+fi
+
+run_sudo mkdir -p "$target_upper" ||
+    fail "Save RAM changes" "Cannot create $target_upper."
+if ! run_sudo rsync -aHAX --numeric-ids --force --info=progress2 \
+    "$source"/ "$target_upper"/; then
+    fail "Save RAM changes" \
+        "rsync failed. The RAM copy is still at $source; fix the error and rerun."
+fi
+run_sudo sync || true
+
+notify "RAM changes saved" \
+    "Merged $(human_kb "$source_kb") from $source into $target_upper. Reboot with w_changes=media to use the merged profile."

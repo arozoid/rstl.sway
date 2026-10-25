@@ -17,8 +17,9 @@
 # copy it again on every install, so what you want to keep belongs in git.
 #
 # local/ is the opposite: the installers leave it alone. The ratl settings
-# tools (win+comma, or `rstl rstl-settings`) write their generated overrides
-# there, and the include at the bottom of this file gives them the last word.
+# tools (win+comma, or `rstl rstl-settings`) live in ratl/ and write their
+# generated overrides to local/; the include at the bottom gives them the last
+# word.
 
 ### modifier
 set $mod Mod4 
@@ -26,7 +27,7 @@ set $mod Mod4
 ### terminal / launcher
 set $term ~/.config/rstl.sway/scripts/foot-smart.sh
 set $menu rstl-pick
-set $settings ~/.config/rstl.sway/bin/rstl-settings
+set $settings ~/.config/rstl.sway/ratl/rstl-settings
 
 bindsym $mod+Return exec $term
 bindsym $mod+d exec rofi -show drun 

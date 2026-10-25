@@ -786,6 +786,7 @@ info "staging dotfiles into /etc/skel/.config/rstl.sway (single copy)"
 copy_repo "$ROOTFS/etc/skel/.config/rstl.sway"
 trim_git_dirs "$ROOTFS/etc/skel"
 chmod +x "$ROOTFS/etc/skel/.config/rstl.sway"/bin/* \
+         "$ROOTFS/etc/skel/.config/rstl.sway"/ratl/rstl-* \
          "$ROOTFS/etc/skel/.config/rstl.sway"/scripts/*.sh 2>/dev/null || true
 # root does NOT get a second copy: /root/.config/rstl.sway is a link into the
 # skel tree, so every root flow (install-min/install-base run as root, the

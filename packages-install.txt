@@ -53,6 +53,7 @@ jq
 fastfetch
 neovim
 git
+rsync
 curl
 wget
 unzip

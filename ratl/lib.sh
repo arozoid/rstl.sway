@@ -1,5 +1,5 @@
 #!/bin/sh
-# Shared helpers for the ratl-based settings tools in ../bin.
+# Shared helpers for the ratl-based settings tools in this directory.
 #
 # This file is sourced, so it must not call `set` or `exit` at the top level.
 # Every tool gets the same dialog look, the same local state directory, and the
@@ -38,6 +38,22 @@ settings_need_jq() {
 
 settings_need_sway() {
     settings_have swaymsg || settings_die "swaymsg is not available"
+}
+
+settings_need_rsync() {
+    settings_have rsync || settings_die "rsync is not installed"
+}
+
+# Run a command as root. The settings dialogs are started as the desktop user;
+# writing to the FRUGAL profile on disk needs root even when the profile itself
+# is world-readable.
+run_sudo() {
+    if [ "$(id -u)" -eq 0 ]; then
+        "$@"
+        return $?
+    fi
+    settings_have sudo || settings_die "sudo is not installed"
+    sudo "$@"
 }
 
 # ratl is a TUI and needs a terminal on both ends. When a settings script is
@@ -87,11 +103,32 @@ ensure_local_dir() {
         settings_die "cannot create $RSTL_LOCAL_DIR"
 }
 
+# The forest-green palette from foot/themes/rstl-term.ini and the sway border
+# colours. Every settings dialog gets this theme, including on an older ratl
+# whose built-in default is still cyan.
+RATL_THEME_JSON='{
+    "foreground": "#d0d5d1",
+    "background": "#171a18",
+    "label": "#d0d5d1",
+    "muted": "#659b75",
+    "border": "#76a882",
+    "title": "#e8f5ea",
+    "accent": "#83b394",
+    "focus_foreground": "#171a18",
+    "focus_background": "#76a882",
+    "input_foreground": "#e0e6e0",
+    "input_background": "#252825",
+    "danger": "#d97583",
+    "error": "#d97583"
+}'
+
 # Run a ratl dialog and print its JSON result. Returns 1 when the user
 # cancels, so callers can simply `|| exit 0`.
 ratl_run() {
     settings_need_ratl
-    "$RATL_BIN" --json "$1"
+    json=$(printf '%s' "$1" | jq --argjson theme "$RATL_THEME_JSON" '
+        if has("theme") then . else . + { theme: $theme } end') || return 1
+    "$RATL_BIN" --json "$json"
 }
 
 ratl_select() {
@@ -145,6 +182,32 @@ ratl_message() {
             ]
         }') || return 1
     ratl_run "$json" >/dev/null || true
+}
+
+# Ask before a destructive or persistent action. Returns 0 on submit and 1 on
+# cancel, matching ratl_run.
+ratl_confirm() {
+    title="$1"
+    text="$2"
+    accept="${3:-Merge}"
+    json=$(jq -n \
+        --arg title "$title" \
+        --arg text "$text" \
+        --arg accept "$accept" \
+        '{
+            title: $title,
+            width: 86,
+            min_width: 60,
+            max_width: 100,
+            children: [
+                { type: "label", text: $text }
+            ],
+            buttons: [
+                { label: $accept, action: "submit", kind: "primary" },
+                { label: "Cancel", action: "cancel" }
+            ]
+        }') || return 1
+    ratl_run "$json" >/dev/null
 }
 
 atomic_write() {

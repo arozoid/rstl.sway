@@ -24,7 +24,7 @@ this setup includes but is not limited to:
 - login screen (tuigreet)
 - browser (firefox)
 - [rstl-pick](https://github.com/arozoid/rstl-pick) app picker
-- [ratl](https://github.com/arozoid/ratl) settings dialogs for display, wallpaper, input, keyboard shortcuts and power
+- [ratl](https://github.com/arozoid/ratl) settings dialogs for display, wallpaper, input, keyboard shortcuts, power and saving FRUGAL RAM changes
 
 and several more features, such as [polkit authentication](https://github.com/arozoid/rstlpk) + dssd secret service + xdg portal integration. (full rootfs: \~1.0 GiB installed; a bare arch base install is \~200 MiB, so the desktop itself adds \~800 MiB over base)
 
@@ -50,9 +50,9 @@ three editions share one set of dotfiles, each with its own installer and its ow
 
 | edition | installer | package list | what you get |
 | --- | --- | --- | --- |
-| install | `bin/install.sh` | `packages-install.txt` | the full desktop (57 core packages) |
-| install-min | `bin/install-min.sh` | `packages-install-min.txt` | the same without the editor and the extras (56) |
-| install-base | `bin/install-base.sh` | `packages-install-base.txt` | no editor, no lock/idle, no clipboard daemon (39) |
+| install | `bin/install.sh` | `packages-install.txt` | the full desktop (58 core packages) |
+| install-min | `bin/install-min.sh` | `packages-install-min.txt` | the same without the editor and the extras (58) |
+| install-base | `bin/install-base.sh` | `packages-install-base.txt` | no editor, no lock/idle, no clipboard daemon (40) |
 
 the lists are plain text, one package per line, and you are free to edit them. the sections are `#@core` (one atomic transaction), `#@optional` (one at a time, so one failure does not abort the rest), `#@program:vim` / `#@program:mouse` and `#@firefox`. all three installers take the same flags:
 
@@ -115,7 +115,7 @@ which edition is installed, and with which program, is written from scratch to `
 
 ### the `rstl` command
 
-every edition installs a small wrapper as `/usr/local/bin/rstl`, so any script in `bin/` runs by name from anywhere:
+every edition installs a small wrapper as `/usr/local/bin/rstl`, so any script in `bin/` or `ratl/` runs by name from anywhere:
 
 ```bash
 rstl install.sh --yes      # reinstall this edition
@@ -125,22 +125,33 @@ rstl install-min.sh        # switch to the minimal edition
 
 everything after the script name is passed through untouched.
 
-with no arguments at all, `rstl` is a picker: it lists everything runnable in `bin/`, one row per script with the description from that script's own header, and takes a number or a name:
+with no arguments at all, `rstl` is a picker: it lists everything runnable in `bin/` and `ratl/`, one row per script with the description from that script's own header, and takes a number or a name:
 
 ```bash
 rstl
 ```
 
 ```
-== pick a script
+== dotfiles + settings ops
 ==========================================================================
-  1  install-base.sh    dotfiles installer for Arch Linux (base / bare minimum)
-  2  install-min.sh     dotfiles installer for Arch Linux (minimal)
-  3  install.sh         dotfiles installer for Arch Linux
-  4  update.sh          updater - brings an existing installation up to date.
+  1  install-base-root.sh  dotfiles installer for Arch Linux (base, root-friendly)
+  2  install-base.sh       dotfiles installer for Arch Linux (base / bare minimum)
+  3  install-min-root.sh   dotfiles installer for Arch Linux (minimal, root-friendly)
+  4  install-min.sh        dotfiles installer for Arch Linux (minimal)
+  5  install-root.sh       dotfiles installer for Arch Linux (full, root-friendly)
+  6  install.sh            dotfiles installer for Arch Linux
+  7  update-root.sh        updater (root-friendly)
+  8  update.sh             updater - brings an existing installation up to date.
+  9  rstl-changes          FRUGAL changes - merge RAM-only changes into the real profile.
+ 10  rstl-display          display options - resolution, scale and rotation per output.
+ 11  rstl-input            input options - keyboard, pointer and touchpad settings.
+ 12  rstl-keys             keyboard shortcuts - inspect and rebind top-level sway bindings.
+ 13  rstl-power            power management - idle timeouts, lid switch and power profile.
+ 14  rstl-settings         settings - one ratl menu for display, wallpaper, input, keys, power and FRUGAL changes.
+ 15  rstl-wallpaper        wallpaper options - pick a wallpaper, preview it, apply per output.
 
   -> enter a number or a name; an empty line leaves
-  number [1-4]
+  number [1-15]
 ```
 
 then it prints that script's `--help`, asks for the arguments (`--program "vim mouse"` is one argument, not two), runs it, and comes back to the menu. an empty line leaves, as does `q`. without a terminal it just prints the list and exits 2, so a script asking "what can I run here?" gets an answer. the root variants (`install-root.sh`, `install-min-root.sh`, `install-base-root.sh`, `update-root.sh`) appear in the same list.
@@ -170,10 +181,15 @@ win+comma (or `rstl rstl-settings`) opens the ratl settings menu. the same tools
 | `rstl rstl-input` | keyboard layout/repeat and pointer/touchpad options |
 | `rstl rstl-keys` | top-level sway keybindings and new shortcuts |
 | `rstl rstl-power` | lock/blank/suspend timers, lid action and power profile |
+| `rstl rstl-changes` | merge a FRUGAL RAM overlay into the persistent profile |
 
 the dialogs write generated overrides to `~/.config/rstl.sway/local/` (`display.conf`, `input.conf`, `keys.conf`, `power.conf`, `swayidle`, `wallpaper`, `wallpapers/<OUTPUT>`), which `sway/config` includes after `sway/config.d/`. the installers leave `local/` alone, so dialog changes survive `rstl update.sh`; the repository files stay untouched. delete a generated file to go back to the repository default. `local/` is git-ignored except for its README.
 
-the dialogs need an interactive terminal because ratl is a TUI. win+comma opens them in foot; if you start a settings command without a terminal, it reopens itself in foot when Wayland is available, and otherwise exits with a clear message. the tools prefer `~/.local/bin/ratl` when it exists, so a locally built ratl works even when foot's server has an older PATH. they need a ratl build that draws on `/dev/tty` while its JSON result is captured; the old 0.1.0-1 package does not, so update ratl if the dialogs still report that they need a terminal.
+the dialogs live in `ratl/`; `bin/rstl` searches both `bin/` and `ratl/`. they share a forest-green theme, and every select shows a scrolling list of up to eight choices instead of only the current value.
+
+`rstl rstl-changes` is for FRUGAL's `w_changes=RAM0`, `RAM1` and `RAM2` modes. it finds `/mnt/layers/RAM/upper_changes`, locates the persistent profile (from `w_bootfrom`, the package's cached profile, or a mounted `FRUGALS` directory), and merges the RAM layer into `upper_changes` as root with `rsync -aHAX --force`. the RAM copy is left untouched; reboot with `w_changes=media` (or without a `w_changes=RAM*` argument) to use the merged profile. it refuses to run when changes are already on real storage. `rstl rstl-changes --dry-run` prints the exact `rsync` command without changing anything.
+
+the dialogs need an interactive terminal because ratl is a TUI. win+comma opens them in foot; if you start a settings command without a terminal, it reopens itself in foot when Wayland is available, and otherwise exits with a clear message. the tools prefer `~/.local/bin/ratl` when it exists, so a locally built ratl works even when foot's server has an older PATH. they need a ratl build that draws on `/dev/tty` while its JSON result is captured; the old 0.1.0-1 package does not, so update ratl if the dialogs still report that they need a terminal or show only one choice.
 
 `rstl-wallpaper` previews images with ratl's true-colour image element (a ratl build with image support; an older ratl falls back to a text-only preview and still applies the wallpaper). `rstl-power` needs `swayidle` and `swaylock`; the power-profile selector appears when `power-profiles-daemon` is installed. display scale choices match the range `scripts/auto-scale.sh` accepts (1.0–2.0).
 
@@ -188,6 +204,7 @@ the base edition does not install `awww`, `swayidle` or `swaylock`: display, inp
 - rofi: minimal and customizable launcher (used for app picker and power menu)
 - ratl ([rstl.repo](https://github.com/arozoid/rstl.repo)): JSON-driven terminal dialogs used by the settings tools
 - power-profiles-daemon (optional): backs the power-profile selector in `rstl-power`
+- rsync: merges a FRUGAL RAM overlay into the persistent profile from `rstl-changes`
 
 ---
 
@@ -228,7 +245,7 @@ the base edition does not install `awww`, `swayidle` or `swaylock`: display, inp
 - win+enter: foot terminal
 - win+shift+s: screenshot to clipboard and Pictures/Screenshots/*
 - win+backspace: power menu (3x2 grid, wlogout-style)
-- win+comma: ratl settings (display, wallpaper, input, shortcuts, power)
+- win+comma: ratl settings (display, wallpaper, input, shortcuts, power, save RAM changes)
 - win+o: rstl-pick (calculator, file manager, bluetooth, wifi, etc.)
 
 ---

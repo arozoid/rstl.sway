@@ -118,7 +118,7 @@ sudo pacman -S --needed xorg-xwayland xdg-utils xdg-desktop-portal-wlr
 ### misc CLI referenced by the dotfiles
 
 ```bash
-sudo pacman -S --needed git cronie
+sudo pacman -S --needed git cronie rsync
 ```
 
 ### audio codecs
@@ -206,6 +206,17 @@ includes after `sway/config.d/`. the installers leave `local/` alone, so those
 changes survive updates; delete a generated file to return to the repository
 default. the files are git-ignored except for `local/README.md`.
 
+the dialogs live in `ratl/`; `bin/rstl` searches both `bin/` and `ratl/`. they
+use a forest-green theme, and each select shows a scrolling list of up to eight
+choices instead of only the current value.
+
+`rstl rstl-changes` handles FRUGAL's `w_changes=RAM0`, `RAM1` and `RAM2` modes:
+it finds `/mnt/layers/RAM/upper_changes`, locates the persistent profile, and
+merges the RAM layer into its `upper_changes` directory as root with
+`rsync -aHAX --force`. the RAM copy stays in place; reboot with `w_changes=media` (or
+without `w_changes=RAM*`) to boot from the merged profile. `rstl rstl-changes
+--dry-run` shows the command without touching either directory.
+
 the dialogs need an interactive terminal because ratl is a TUI. win+comma opens
 them in foot; if you start a settings command without a terminal, it reopens
 itself in foot when Wayland is available, and otherwise exits with a clear
@@ -213,7 +224,7 @@ message. the tools prefer `~/.local/bin/ratl` when it exists, so a locally
 built ratl works even when foot's server has an older PATH. they need a ratl
 build that draws on `/dev/tty` while its JSON result is captured; the old
 0.1.0-1 package does not, so update ratl if the dialogs still report that they
-need a terminal.
+need a terminal or show only one choice.
 
 `rstl-wallpaper` previews images with ratl's true-colour image element (a ratl
 build with image support; older versions fall back to a text-only preview and
@@ -242,7 +253,7 @@ git -C ~/.config/rstl.sway submodule update --init --depth 1 nvim
 
 then re-apply the dotfiles by hand (a `cp -a` of the repo over
 `~/.config/rstl.sway`, minus `.git`, purging `sway/config`, `sway/config.d`,
-`bin/`, the package lists and `.rstl-edition` first - see `copy_dotfiles` in
+`bin/`, `ratl/`, the package lists and `.rstl-edition` first - see `copy_dotfiles` in
 `bin/install.sh`, which is exactly what the installers do). packages you
 installed by hand are not touched: the lists in `packages-install*.txt` are what
 the installers install, and the ones listed there for your flavor are what
