@@ -1,0 +1,67 @@
+#!/bin/sh
+# rstl.sway settings - one ratl menu for display, wallpaper, input, keys, power.
+#
+# Usage:
+#   rstl-settings              open the settings menu
+#   rstl-settings display      open a category directly
+#   rstl-settings --help       show this help
+#
+# Every category is also available as its own script in bin/ (rstl-display,
+# rstl-wallpaper, rstl-input, rstl-keys, rstl-power), so it can be bound to a
+# key or run directly. The menu simply runs those scripts and comes back.
+
+set -u
+
+DOTFILES_DIR="${RSTL_SWAY_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/rstl.sway}"
+. "$DOTFILES_DIR/scripts/rstl-settings-lib.sh"
+
+settings_need_jq
+
+usage() {
+    sed -n '2,$ { /^#/!q; s/^#[[:space:]]\{0,1\}//p; }' "$0"
+}
+
+open_page() {
+    page="$1"
+    case "$page" in
+        display) "$DOTFILES_DIR/bin/rstl-display" ;;
+        wallpaper) "$DOTFILES_DIR/bin/rstl-wallpaper" ;;
+        input) "$DOTFILES_DIR/bin/rstl-input" ;;
+        keys) "$DOTFILES_DIR/bin/rstl-keys" ;;
+        power) "$DOTFILES_DIR/bin/rstl-power" ;;
+        *) return 1 ;;
+    esac
+}
+
+case "${1:-}" in
+    --help | -h)
+        usage
+        exit 0
+        ;;
+    display | wallpaper | input | keys | power)
+        open_page "$1"
+        exit $?
+        ;;
+    "")
+        ;;
+    *)
+        printf 'rstl-settings: unknown category: %s\n' "$1" >&2
+        usage >&2
+        exit 2
+        ;;
+esac
+
+options=$(jq -n '[
+    { label: "Display", value: "display" },
+    { label: "Wallpaper", value: "wallpaper" },
+    { label: "Input devices", value: "input" },
+    { label: "Keyboard shortcuts", value: "keys" },
+    { label: "Power management", value: "power" }
+]')
+
+while :; do
+    result=$(ratl_select "rstl.sway settings" "Category" "$options" 0) || exit 0
+    page=$(printf '%s' "$result" | jq -r '.values.choice // empty')
+    [ -n "$page" ] || exit 0
+    open_page "$page" || true
+done

@@ -53,8 +53,10 @@ sudo pacman -S --needed awww
 ### hardware / media keys
 
 ```bash
-sudo pacman -S --needed playerctl brightnessctl light acpi
+sudo pacman -S --needed playerctl brightnessctl light acpi power-profiles-daemon
 ```
+
+`power-profiles-daemon` is optional: without it `rstl-power` hides the power-profile selector and still manages idle timers and the lid switch.
 
 ### network + bluetooth
 
@@ -138,7 +140,7 @@ printf '\n[rstl-repo]\nSigLevel = Optional TrustAll\nServer = https://arozoid.gi
 | sudo tee -a /etc/pacman.conf >/dev/null
 sudo pacman -Sy --needed \
   yambar xdg-desktop-portal-termfilechooser ttf-jetbrains-mono-nerd-min \
-  papirus-icon-theme-dark-only notwaita-cursors-grey adwaita-cursors dssd
+  papirus-icon-theme-dark-only notwaita-cursors-grey adwaita-cursors dssd ratl
 ```
 
 `dssd` is only listed to satisfy `org.freedesktop.secrets`; remove it from the
@@ -196,6 +198,24 @@ sudo ln -s ~/.config/rstl.sway/greetd /etc/greetd
 drop a file of your own next to them (`50-mine.conf`), and reload with
 win+shift+c. `sway -C -c ~/.config/sway/config` checks a config without
 starting a session.
+
+win+comma opens the ratl settings menu (`rstl rstl-settings` from a terminal).
+the display, wallpaper, input, keyboard-shortcut and power dialogs write
+generated overrides to `~/.config/rstl.sway/local/`, which `sway/config`
+includes after `sway/config.d/`. the installers leave `local/` alone, so those
+changes survive updates; delete a generated file to return to the repository
+default. the files are git-ignored except for `local/README.md`.
+
+`rstl-wallpaper` previews images with ratl's true-colour image element (a ratl
+build with image support; older versions fall back to a text-only preview and
+still apply the wallpaper). `rstl-power` needs `swayidle` and `swaylock`; the power-profile
+selector appears only when `power-profiles-daemon` is installed. display scale
+choices match the 1.0–2.0 range accepted by `scripts/auto-scale.sh`.
+
+the base edition does not install `awww`, `swayidle` or `swaylock`: display,
+input and shortcut settings work there, but `rstl-wallpaper` saves the choice
+without applying it and `rstl-power` reports that it is unavailable. install
+those packages to enable wallpaper and power management on the base edition.
 
 the cursor theme is read from `20-cursor.conf` by `scripts/auto-scale.sh` (it
 re-applies the theme with a runtime-computed size on every start and reload), so

@@ -79,6 +79,8 @@ util-linux
 less
 
 #@optional
+ratl
+power-profiles-daemon
 
 #@program:vim
 superfile

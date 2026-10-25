@@ -1,0 +1,314 @@
+#!/bin/sh
+# rstl.sway keyboard shortcuts - inspect and rebind top-level sway bindings.
+#
+# Usage:
+#   rstl-keys                  choose a binding, edit its key and command
+#   rstl-keys --help           show this help
+#
+# Existing bindings are read from sway/config and sway/config.d/*.conf. Edits
+# and new shortcuts are written to local/keys.conf as `unbindsym`/`bindsym`
+# pairs, so the repository files stay untouched. The config is validated with
+# `sway -C` before it is reloaded.
+
+set -u
+
+DOTFILES_DIR="${RSTL_SWAY_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/rstl.sway}"
+. "$DOTFILES_DIR/scripts/rstl-settings-lib.sh"
+
+settings_need_jq
+settings_need_sway
+
+usage() {
+    sed -n '2,$ { /^#/!q; s/^#[[:space:]]\{0,1\}//p; }' "$0"
+}
+
+case "${1:-}" in
+    --help | -h)
+        usage
+        exit 0
+        ;;
+    "")
+        ;;
+    *)
+        printf 'rstl-keys: unknown option: %s\n' "$1" >&2
+        usage >&2
+        exit 2
+        ;;
+esac
+
+tab=$(printf '\t')
+bindings_tsv=$(mktemp) || settings_die "cannot create a temporary file"
+effective_tsv=$(mktemp) || settings_die "cannot create a temporary file"
+old_conf=$(mktemp) || settings_die "cannot create a temporary file"
+old_state=$(mktemp) || settings_die "cannot create a temporary file"
+state_tmp=""
+trap 'rm -f "$bindings_tsv" "$effective_tsv" "$old_conf" "$old_state" ${state_tmp:+"$state_tmp"}' EXIT HUP INT TERM
+
+for file in "$DOTFILES_DIR/sway/config" "$DOTFILES_DIR"/sway/config.d/*.conf; do
+    [ -r "$file" ] || continue
+    awk '
+        /^[[:space:]]*#/ { next }
+        /^bindsym[[:space:]]/ {
+            line = $0
+            sub(/^bindsym[[:space:]]+/, "", line)
+            while (line ~ /^--/) {
+                sub(/^--[^[:space:]]+[[:space:]]*/, "", line)
+            }
+            if (line !~ /[[:space:]]/) next
+            split(line, parts, /[[:space:]]+/)
+            key = parts[1]
+            command = line
+            sub(/^[^[:space:]]+[[:space:]]+/, "", command)
+            if (key != "" && command != "") {
+                print key "\t" command
+            }
+        }
+    ' "$file"
+done | awk -F '\t' '!seen[$0]++' > "$bindings_tsv"
+
+state="$RSTL_LOCAL_DIR/keybindings.tsv"
+while IFS="$tab" read -r original command; do
+    [ -n "$original" ] || continue
+    current="$original"
+    current_command="$command"
+    if [ -f "$state" ]; then
+        override=$(awk -F '\t' -v key="$original" '
+            $1 == key { print $2 "\t" $3; exit }' "$state")
+        if [ -n "$override" ]; then
+            old_ifs=$IFS
+            IFS="$tab"
+            set -- $override
+            IFS=$old_ifs
+            current="$1"
+            current_command="${2:-}"
+        fi
+    fi
+    printf '%s\t%s\t%s\n' "$original" "$current" "$current_command" >> "$effective_tsv"
+done < "$bindings_tsv"
+
+# New shortcuts have no repository original, so they only live in the state
+# file. Append them after the repository bindings.
+if [ -f "$state" ]; then
+    while IFS="$tab" read -r original current command; do
+        [ -z "$original" ] || [ "$original" = "__local__" ] || continue
+        [ -n "$current" ] || continue
+        # Tab is an IFS whitespace character, so an empty first field would
+        # disappear when the file is read back. Use a sentinel for local-only
+        # shortcuts instead.
+        printf '__local__\t%s\t%s\n' "$current" "$command" >> "$effective_tsv"
+    done < "$state"
+fi
+
+effective_json=$(jq -R -s '
+    split("\n")
+    | map(select(length > 0)
+        | split("\t")
+        | {
+            original: .[0],
+            current: .[1],
+            command: (.[2:] | join("\t"))
+          })
+' < "$effective_tsv")
+
+options=$(printf '%s' "$effective_json" | jq '
+    to_entries
+    | map({
+        label: (.value.current + "  —  " + .value.command),
+        value: (.key | tostring)
+      })')
+options=$(printf '%s' "$options" | jq '
+    [{ label: "+ Add a new shortcut", value: "__new__" }] + .')
+
+result=$(ratl_select "Keyboard shortcuts" "Binding" "$options" 0) || exit 0
+choice=$(printf '%s' "$result" | jq -r '.values.choice // empty')
+[ -n "$choice" ] || exit 0
+
+old_original=""
+old_current=""
+old_command=""
+if [ "$choice" != "__new__" ]; then
+    case "$choice" in
+        '' | *[!0-9]*) settings_die "invalid binding index from the dialog" ;;
+    esac
+    binding=$(printf '%s' "$effective_json" | jq -c --argjson index "$choice" '.[$index]')
+    [ -n "$binding" ] || settings_die "binding disappeared"
+    old_original=$(printf '%s' "$binding" | jq -r '.original // empty')
+    old_current=$(printf '%s' "$binding" | jq -r '.current // empty')
+    old_command=$(printf '%s' "$binding" | jq -r '.command // empty')
+fi
+
+if [ "$choice" = "__new__" ]; then
+    old_original="__local__"
+    title="New shortcut"
+    hint="Enter a key binding and the command it should run."
+else
+    title="Edit shortcut"
+    hint="Current: $old_current  —  $old_command"
+fi
+
+dialog=$(jq -n \
+    --arg title "$title" \
+    --arg hint "$hint" \
+    --arg binding "$old_current" \
+    --arg command "$old_command" \
+    '{
+        title: $title,
+        width: 92,
+        min_width: 60,
+        max_width: 100,
+        children: [
+            { type: "label", text: $hint },
+            {
+                type: "text",
+                id: "binding",
+                label: "Key binding (for example $mod+Shift+x)",
+                value: $binding
+            },
+            {
+                type: "text",
+                id: "command",
+                label: "Command",
+                value: $command
+            },
+            {
+                type: "label",
+                text: "Saved in local/keys.conf and applied with swaymsg reload.",
+                style: { dim: true }
+            }
+        ],
+        buttons: [
+            { label: "Apply", action: "submit", kind: "primary" },
+            { label: "Cancel", action: "cancel" }
+        ]
+    }')
+
+result=$(ratl_run "$dialog") || exit 0
+new_key=$(printf '%s' "$result" | jq -r '.values.binding // empty')
+new_command=$(printf '%s' "$result" | jq -r '.values.command // empty')
+
+case "$new_key" in
+    "" | *[[:space:]]* | *[!A-Za-z0-9_+$:-]*)
+        ratl_message "Shortcut not applied" \
+            "Key bindings cannot be empty or contain whitespace. Use a form such as \$mod+Shift+x."
+        exit 1
+        ;;
+esac
+[ -n "$new_command" ] || {
+    ratl_message "Shortcut not applied" "The command cannot be empty."
+    exit 1
+}
+if printf '%s' "$new_command" | LC_ALL=C grep -q '[[:cntrl:]]'; then
+    ratl_message "Shortcut not applied" "The command contains a control character."
+    exit 1
+fi
+
+conflict=""
+line_number=0
+while IFS="$tab" read -r original current command; do
+    line_number=$((line_number + 1))
+    if [ "$choice" != "__new__" ] && [ "$line_number" -eq $((choice + 1)) ]; then
+        continue
+    fi
+    if [ "$current" = "$new_key" ]; then
+        conflict="$current  —  $command"
+        break
+    fi
+done < "$effective_tsv"
+
+if [ -n "$conflict" ]; then
+    ratl_message "Shortcut not applied" \
+        "That key is already bound to: $conflict"
+    exit 1
+fi
+
+ensure_local_dir
+had_old_state=0
+if [ -f "$state" ]; then
+    cp "$state" "$old_state" || settings_die "cannot back up $state"
+    had_old_state=1
+fi
+state_tmp="${state}.tmp.$$"
+{
+    if [ -f "$state" ]; then
+        awk -F '\t' -v original="$old_original" -v current="$old_current" '
+            !($1 == original && $2 == current) { print }
+        ' "$state"
+    fi
+    printf '%s\t%s\t%s\n' "$old_original" "$new_key" "$new_command"
+} > "$state_tmp" || {
+    rm -f "$state_tmp"
+    settings_die "cannot write $state"
+}
+mv -f "$state_tmp" "$state"
+state_tmp=""
+
+keys_conf="$RSTL_LOCAL_DIR/keys.conf"
+had_old=0
+if [ -f "$keys_conf" ]; then
+    cp "$keys_conf" "$old_conf" || settings_die "cannot back up $keys_conf"
+    had_old=1
+fi
+
+restore_key_state() {
+    if [ "$had_old_state" = 1 ]; then
+        cp "$old_state" "$state"
+    else
+        rm -f "$state"
+    fi
+    if [ "$had_old" = 1 ]; then
+        cp "$old_conf" "$keys_conf"
+    else
+        rm -f "$keys_conf"
+    fi
+}
+
+{
+    printf '%s\n' "# generated by bin/rstl-keys; edit through the dialog"
+    while IFS="$tab" read -r original current command; do
+        [ -n "$current" ] || continue
+        [ -n "$command" ] || continue
+        case "$current" in
+            *[!A-Za-z0-9_+$:-]*) continue ;;
+        esac
+        case "$command" in
+            *[[:cntrl:]]*) continue ;;
+        esac
+        if [ -n "$original" ] && [ "$original" != "__local__" ]; then
+            case "$original" in
+                *[!A-Za-z0-9_+$:-]*) continue ;;
+            esac
+            printf 'unbindsym %s\n' "$original"
+        fi
+        printf 'bindsym %s %s\n' "$current" "$command"
+    done < "$state"
+} > "$keys_conf.tmp.$$" || {
+    rm -f "$keys_conf.tmp.$$"
+    if [ "$had_old_state" = 1 ]; then
+        cp "$old_state" "$state"
+    else
+        rm -f "$state"
+    fi
+    settings_die "cannot write $keys_conf"
+}
+mv -f "$keys_conf.tmp.$$" "$keys_conf"
+
+if settings_have sway; then
+    # `sway -C` exits 0 even when the config has errors; the diagnostics are
+    # the only signal, so check them as well as the exit status.
+    if ! error=$(sway -c "$DOTFILES_DIR/sway/config" -C 2>&1) ||
+        printf '%s' "$error" | grep -q '\[ERROR\]\|Error(s) loading config'
+    then
+        restore_key_state
+        ratl_message "Shortcut not applied" "$error"
+        exit 1
+    fi
+fi
+
+if ! error=$(run_cmd_capture swaymsg reload); then
+    restore_key_state
+    run_cmd swaymsg reload >/dev/null 2>&1 || true
+    ratl_message "Shortcut not applied" "$error"
+    exit 1
+fi
+
+ratl_message "Shortcut saved" "$new_key  —  $new_command"

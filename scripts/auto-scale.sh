@@ -57,7 +57,9 @@ CURSOR_THEME="$(sed -nE 's/^[^#]*xcursor_theme[[:space:]]+([^[:space:]]+).*/\1/p
     "$CURSOR_CONF" 2>/dev/null | head -n 1)"
 [ -n "$CURSOR_THEME" ] || CURSOR_THEME="Notwaita-Gray"
 
-# per-output scale overrides (an `output <name> scale <n>` line here wins)
+# per-output scale overrides. The ratl display dialog writes local/display.conf;
+# an `output <name> scale <n>` line there wins, then 25-displays.conf.
+DISPLAY_SETTINGS="$DOTFILES_DIR/local/display.conf"
 DISPLAYS_CONF="$DOTFILES_DIR/sway/config.d/25-displays.conf"
 
 # ---------- reference ("on here") ----------
@@ -124,10 +126,14 @@ TARGET_PPI=$(calc "$REF_PPI / $REF_SCALE")                                      
 # $1 = sway output name ("eDP-1"); echoes the explicit scale or nothing
 scale_override() {
     name="$1"
-    [ -f "$DISPLAYS_CONF" ] || return 1
-    value=$(sed -nE \
-        "s/^[[:space:]]*output[[:space:]]+${name}[[:space:]]+scale[[:space:]]+([0-9]+([.][0-9]+)?).*/\\1/p" \
-        "$DISPLAYS_CONF" 2>/dev/null | head -n 1)
+    value=""
+    for conf in "$DISPLAY_SETTINGS" "$DISPLAYS_CONF"; do
+        [ -f "$conf" ] || continue
+        value=$(sed -nE \
+            "s/^[[:space:]]*output[[:space:]]+${name}[[:space:]]+scale[[:space:]]+([0-9]+([.][0-9]+)?).*/\\1/p" \
+            "$conf" 2>/dev/null | head -n 1)
+        [ -n "$value" ] && break
+    done
     [ -n "$value" ] || return 1
     # keep the override inside the same supported range as the auto rule
     [ "$(calc "$value >= $MIN_SCALE && $value <= $MAX_SCALE")" -eq 1 ] || return 1

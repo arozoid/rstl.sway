@@ -1,12 +1,20 @@
 #!/bin/sh
 # Start awww-daemon and apply the configured wallpaper.
 #
-# The wallpaper path is read from ${WALLPAPER_CONF} (default
-# ~/.config/rstl.sway/wallpaper), a plain text file holding one path.
-# If that file is missing or points to a file that does not exist, the
-# previously cached wallpaper is restored instead (awww restore).
+# The wallpaper path is read from ${WALLPAPER_CONF}, then local/wallpaper
+# (written by the ratl wallpaper dialog), then the repository wallpaper file;
+# each is a plain text file holding one path. If that file is missing or points
+# to a file that does not exist, the previously cached wallpaper is restored
+# instead (awww restore).
 
-WALLPAPER_CONF="${WALLPAPER_CONF:-$HOME/.config/rstl.sway/wallpaper}"
+DOTFILES_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/rstl.sway"
+if [ -n "${WALLPAPER_CONF:-}" ]; then
+    :
+elif [ -r "$DOTFILES_DIR/local/wallpaper" ]; then
+    WALLPAPER_CONF="$DOTFILES_DIR/local/wallpaper"
+else
+    WALLPAPER_CONF="$DOTFILES_DIR/wallpaper"
+fi
 
 # wait until the compositor is actually up (wayland socket present)
 while [ -z "${WAYLAND_DISPLAY:-}" ] ||

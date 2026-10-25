@@ -88,8 +88,10 @@ clipse
 wiremix
 eva
 awww
+ratl
 rstl-pick
 zsh-auto-notify
+power-profiles-daemon
 
 #@program:vim
 superfile

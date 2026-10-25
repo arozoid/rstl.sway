@@ -1,0 +1,167 @@
+#!/bin/sh
+# rstl.sway wallpaper options - pick a wallpaper, preview it, apply per output.
+#
+# Usage:
+#   rstl-wallpaper             choose an output (or all), pick an image, preview
+#   rstl-wallpaper --help      show this help
+#
+# The image preview uses ratl's true-colour image element. The choice is saved
+# in local/wallpaper (all outputs) or local/wallpapers/<OUTPUT>, which
+# rstl_desktop.sh prefers over the repository defaults. A solid colour can be
+# entered instead of an image, using awww's 0xRRGGBBAA form.
+
+set -u
+
+DOTFILES_DIR="${RSTL_SWAY_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/rstl.sway}"
+. "$DOTFILES_DIR/scripts/rstl-settings-lib.sh"
+
+settings_need_jq
+settings_need_sway
+
+usage() {
+    sed -n '2,$ { /^#/!q; s/^#[[:space:]]\{0,1\}//p; }' "$0"
+}
+
+case "${1:-}" in
+    --help | -h)
+        usage
+        exit 0
+        ;;
+    "")
+        ;;
+    *)
+        printf 'rstl-wallpaper: unknown option: %s\n' "$1" >&2
+        usage >&2
+        exit 2
+        ;;
+esac
+
+outputs=$(sway_outputs) || settings_die "swaymsg could not read the outputs"
+output_options=$(printf '%s' "$outputs" | jq '
+    [ .[]
+      | select(.active == true)
+      | { label: .name, value: .name }
+    ]')
+if [ "$(printf '%s' "$output_options" | jq 'length')" -eq 0 ]; then
+    ratl_message "Wallpaper" "No active outputs. Turn one on with swaymsg or wlr-randr first."
+    exit 1
+fi
+target_options=$(printf '%s' "$output_options" | jq '
+    [{ label: "All outputs", value: "__all__" }] + .')
+
+result=$(ratl_select "Wallpaper" "Apply to" "$target_options" 0) || exit 0
+target=$(printf '%s' "$result" | jq -r '.values.choice // empty')
+[ -n "$target" ] || exit 0
+if [ "$target" != "__all__" ]; then
+    valid_name "$target" || settings_die "invalid output name from the dialog"
+fi
+
+paths=$(wallpaper_paths)
+if [ -z "$paths" ]; then
+    ratl_message "Wallpaper" "No image files found. Put some in ~/Pictures/Wallpapers and try again."
+    exit 1
+fi
+
+paths_json=$(printf '%s\n' "$paths" | jq -R -s '
+    split("\n") | map(select(length > 0))')
+wallpaper_options=$(printf '%s' "$paths_json" | jq '
+    map(. as $path | {
+        label: (($path | split("/") | .[-1]) + "  —  " + ($path | split("/") | .[-2] // "")),
+        value: $path
+    })')
+
+result=$(ratl_select "Wallpaper" "Image" "$wallpaper_options" 0) || exit 0
+wallpaper=$(printf '%s' "$result" | jq -r '.values.choice // empty')
+[ -n "$wallpaper" ] || exit 0
+[ -f "$wallpaper" ] || settings_die "wallpaper disappeared: $wallpaper"
+
+images=false
+ratl_supports_images && images=true
+preview=$(jq -n \
+    --arg title "Wallpaper preview" \
+    --arg path "$wallpaper" \
+    --argjson images "$images" \
+    '{
+        title: $title,
+        width: 94,
+        min_width: 60,
+        max_width: 100,
+        children: [
+            {
+                type: "label",
+                text: ("Preview: " + ($path | split("/") | .[-1]))
+            },
+            if $images then
+                {
+                    type: "image",
+                    path: $path,
+                    height: 16,
+                    width: "100%",
+                    fit: "contain",
+                    align: "center",
+                    valign: "center",
+                    alt: "Wallpaper preview"
+                }
+            else
+                {
+                    type: "label",
+                    text: "Image preview needs a ratl build with image support; the wallpaper can still be applied.",
+                    style: { dim: true }
+                }
+            end,
+            {
+                type: "label",
+                text: $path,
+                style: { dim: true }
+            },
+            {
+                type: "text",
+                id: "color",
+                label: "Solid colour instead (0xRRGGBBAA, optional)",
+                placeholder: "leave empty to use the image"
+            }
+        ],
+        buttons: [
+            { label: "Apply", action: "submit", kind: "primary" },
+            { label: "Cancel", action: "cancel" }
+        ]
+    }')
+
+result=$(ratl_run "$preview") || exit 0
+color=$(printf '%s' "$result" | jq -r '.values.color // empty')
+value="$wallpaper"
+if [ -n "$color" ]; then
+    case "$color" in
+        0x[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F])
+            value="$color"
+            ;;
+        *)
+            ratl_message "Wallpaper not applied" \
+                "Solid colours must use 0xRRGGBBAA (for example 0x1b1b1bff)."
+            exit 1
+            ;;
+    esac
+fi
+
+ensure_local_dir
+if [ "$target" = "__all__" ]; then
+    printf '%s\n' "$value" | atomic_write "$RSTL_LOCAL_DIR/wallpaper" ||
+        settings_die "cannot write $RSTL_LOCAL_DIR/wallpaper"
+    # A per-output override would keep "all outputs" from meaning all.
+    if [ -d "$RSTL_LOCAL_DIR/wallpapers" ]; then
+        rm -f "$RSTL_LOCAL_DIR"/wallpapers/* 2>/dev/null || true
+    fi
+else
+    mkdir -p "$RSTL_LOCAL_DIR/wallpapers" ||
+        settings_die "cannot create $RSTL_LOCAL_DIR/wallpapers"
+    printf '%s\n' "$value" |
+        atomic_write "$RSTL_LOCAL_DIR/wallpapers/$target" ||
+        settings_die "cannot write $RSTL_LOCAL_DIR/wallpapers/$target"
+fi
+
+if ! error=$(run_cmd_capture "$DOTFILES_DIR/scripts/rstl_desktop.sh" --once); then
+    ratl_message "Wallpaper saved, not applied" "$error"
+    exit 1
+fi
+
+printf '%s\n' "$value"

@@ -702,7 +702,7 @@ org.freedesktop.impl.portal.FileChooser=termfilechooser'
     # lock binding lives in sway/config, the daemons in config.d/40-autostart.
     echo "patching sway config for base (no idling/lock/clip daemon)"
     sway_comment "config" "scripts/lock.sh"
-    sway_comment "config.d/40-autostart.conf" "exec --no-startup-id swayidle -w"
+    sway_comment "config.d/40-autostart.conf" "scripts/swayidle.sh"
     # cliphist is an on-demand clipboard store (no boot daemon): drop the
     # clipse listener line from the shared config.
     sed -i '/exec --no-startup-id clipse -listen/d' \

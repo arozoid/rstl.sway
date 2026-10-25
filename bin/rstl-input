@@ -1,0 +1,553 @@
+#!/bin/sh
+# rstl.sway input options - keyboard, pointer and touchpad settings.
+#
+# Usage:
+#   rstl-input                 choose an input device, then edit its settings
+#   rstl-input --help          show this help
+#
+# Changes are applied with swaymsg immediately and written to
+# local/input.conf, which sway includes after config.d. Only settings that
+# swaymsg accepts are saved, so an unsupported option on one device does not
+# poison the next session's config.
+
+set -u
+
+DOTFILES_DIR="${RSTL_SWAY_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/rstl.sway}"
+. "$DOTFILES_DIR/scripts/rstl-settings-lib.sh"
+
+settings_need_jq
+settings_need_sway
+
+usage() {
+    sed -n '2,$ { /^#/!q; s/^#[[:space:]]\{0,1\}//p; }' "$0"
+}
+
+case "${1:-}" in
+    --help | -h)
+        usage
+        exit 0
+        ;;
+    "")
+        ;;
+    *)
+        printf 'rstl-input: unknown option: %s\n' "$1" >&2
+        usage >&2
+        exit 2
+        ;;
+esac
+
+inputs=$(sway_inputs) || settings_die "swaymsg could not read the input devices"
+device_options=$(printf '%s' "$inputs" | jq '
+    [ .[]
+      | select(
+          .type == "keyboard"
+          or .type == "pointer"
+          or .type == "touchpad"
+          or .type == "touch"
+          or .type == "tablet"
+          or .type == "tablet_pad"
+        )
+      | {
+          label: (.name + "  [" + .type + "]"),
+          value: .identifier
+        }
+    ]')
+if [ "$(printf '%s' "$device_options" | jq 'length')" -eq 0 ]; then
+    ratl_message "Input devices" "Sway reports no keyboards, pointers or touchpads."
+    exit 1
+fi
+
+result=$(ratl_select "Input devices" "Device" "$device_options" 0) || exit 0
+identifier=$(printf '%s' "$result" | jq -r '.values.choice // empty')
+valid_identifier "$identifier" || settings_die "invalid input identifier from the dialog"
+
+device_json=$(printf '%s' "$inputs" | jq -c --arg id "$identifier" '
+    .[] | select(.identifier == $id)')
+[ -n "$device_json" ] || settings_die "input device $identifier disappeared"
+name=$(printf '%s' "$device_json" | jq -r '.name // .identifier')
+type=$(printf '%s' "$device_json" | jq -r '.type // "unknown"')
+
+state="$RSTL_LOCAL_DIR/input.tsv"
+state_value() {
+    key="$1"
+    [ -f "$state" ] || return 0
+    awk -F '\t' -v id="$identifier" -v key="$key" '
+        $1 == id && $2 == key { print $3; exit }' "$state"
+}
+state_or() {
+    key="$1"
+    fallback="$2"
+    value=$(state_value "$key")
+    [ -n "$value" ] || value="$fallback"
+    printf '%s' "$value"
+}
+state_bool() {
+    key="$1"
+    fallback="$2"
+    value=$(state_value "$key")
+    [ -n "$value" ] || value="$fallback"
+    [ "$value" = enabled ] && printf 'true' || printf 'false'
+}
+enabled_value() {
+    [ "$1" = true ] && printf 'enabled' || printf 'disabled'
+}
+
+send_events=$(state_or events "$(printf '%s' "$device_json" | jq -r '.libinput.send_events // "enabled"')")
+natural_scroll=$(state_bool natural_scroll "$(printf '%s' "$device_json" | jq -r '.libinput.natural_scroll // "disabled"')")
+left_handed=$(state_bool left_handed "$(printf '%s' "$device_json" | jq -r '.libinput.left_handed // "disabled"')")
+middle_emulation=$(state_bool middle_emulation "$(printf '%s' "$device_json" | jq -r '.libinput.middle_emulation // "disabled"')")
+tap=$(state_bool tap "$(printf '%s' "$device_json" | jq -r '.libinput.tap // "disabled"')")
+dwt=$(state_bool dwt "$(printf '%s' "$device_json" | jq -r '.libinput.dwt // "disabled"')")
+dwtp=$(state_bool dwtp "$(printf '%s' "$device_json" | jq -r '.libinput.dwtp // "disabled"')")
+tap_button_map=$(state_or tap_button_map "$(printf '%s' "$device_json" | jq -r '.libinput.tap_button_map // "lmr"')")
+scroll_method=$(state_or scroll_method "$(printf '%s' "$device_json" | jq -r '.libinput.scroll_method // "two_finger"')")
+accel_profile=$(state_or accel_profile "$(printf '%s' "$device_json" | jq -r '.libinput.accel_profile // "adaptive"')")
+accel_speed=$(state_or pointer_accel "$(printf '%s' "$device_json" | jq -r '(.libinput.accel_speed // 0) | tostring')")
+repeat_delay=$(state_or repeat_delay "$(printf '%s' "$device_json" | jq -r '(.repeat_delay // 600) | tostring')")
+repeat_rate=$(state_or repeat_rate "$(printf '%s' "$device_json" | jq -r '(.repeat_rate // 25) | tostring')")
+xkb_layout=$(state_or xkb_layout "us")
+xkb_variant=$(state_or xkb_variant "")
+xkb_options=$(state_or xkb_options "")
+map_to_output=$(state_or map_to_output "")
+
+case "$repeat_delay" in
+    '' | *[!0-9]*) repeat_delay=600 ;;
+esac
+case "$repeat_rate" in
+    '' | *[!0-9]*) repeat_rate=25 ;;
+esac
+# Keep the dialog values inside the slider ranges. A device or an older state
+# file can report a value the current dialog would reject.
+[ "$repeat_delay" -lt 100 ] && repeat_delay=100
+[ "$repeat_delay" -gt 1000 ] && repeat_delay=1000
+[ "$repeat_rate" -lt 10 ] && repeat_rate=10
+[ "$repeat_rate" -gt 100 ] && repeat_rate=100
+accel_speed_slider=$(awk -v value="$accel_speed" 'BEGIN {
+    number = value * 10
+    if (number > 10) number = 10
+    if (number < -10) number = -10
+    printf "%d", number
+}')
+
+case "$send_events" in
+    disabled) events_selected=1 ;;
+    disabled_on_external_mouse) events_selected=2 ;;
+    *) events_selected=0 ;;
+esac
+case "$accel_profile" in
+    flat) accel_profile_selected=1 ;;
+    *) accel_profile_selected=0 ;;
+esac
+case "$scroll_method" in
+    edge) scroll_method_selected=1 ;;
+    on_button_down) scroll_method_selected=2 ;;
+    none) scroll_method_selected=3 ;;
+    *) scroll_method_selected=0 ;;
+esac
+case "$tap_button_map" in
+    lrm) tap_button_map_selected=1 ;;
+    *) tap_button_map_selected=0 ;;
+esac
+
+children=$(jq -n \
+    --arg name "$name" \
+    --arg type "$type" \
+    --arg xkb_layout "$xkb_layout" \
+    --arg xkb_variant "$xkb_variant" \
+    --arg xkb_options "$xkb_options" \
+    --arg map_to_output "$map_to_output" \
+    --argjson repeat_delay "$repeat_delay" \
+    --argjson repeat_rate "$repeat_rate" \
+    --argjson natural_scroll "$natural_scroll" \
+    --argjson left_handed "$left_handed" \
+    --argjson middle_emulation "$middle_emulation" \
+    --argjson tap "$tap" \
+    --argjson dwt "$dwt" \
+    --argjson dwtp "$dwtp" \
+    --argjson accel_speed "$accel_speed_slider" \
+    --argjson events_selected "$events_selected" \
+    --argjson accel_profile_selected "$accel_profile_selected" \
+    --argjson scroll_method_selected "$scroll_method_selected" \
+    --argjson tap_button_map_selected "$tap_button_map_selected" \
+    '[
+        {
+            type: "label",
+            text: ("Device: " + $name + "  [" + $type + "]")
+        },
+        if $type == "keyboard" then
+            {
+                type: "text",
+                id: "xkb_layout",
+                label: "Layout (xkb code; empty = unchanged)",
+                value: $xkb_layout
+            },
+            {
+                type: "text",
+                id: "xkb_variant",
+                label: "Variant (optional)",
+                value: $xkb_variant
+            },
+            {
+                type: "text",
+                id: "xkb_options",
+                label: "Options (optional, comma-separated)",
+                value: $xkb_options
+            },
+            {
+                type: "slider",
+                id: "repeat_delay",
+                label: "Repeat delay (ms)",
+                min: 100,
+                max: 1000,
+                step: 50,
+                value: $repeat_delay
+            },
+            {
+                type: "slider",
+                id: "repeat_rate",
+                label: "Repeat rate (per second)",
+                min: 10,
+                max: 100,
+                step: 5,
+                value: $repeat_rate
+            }
+        else empty end,
+        if ($type == "pointer" or $type == "touchpad") then
+            {
+                type: "checkbox",
+                id: "natural_scroll",
+                label: "Natural scrolling",
+                checked: $natural_scroll
+            },
+            {
+                type: "checkbox",
+                id: "left_handed",
+                label: "Left-handed",
+                checked: $left_handed
+            },
+            {
+                type: "checkbox",
+                id: "middle_emulation",
+                label: "Middle-button emulation",
+                checked: $middle_emulation
+            },
+            {
+                type: "select",
+                id: "accel_profile",
+                label: "Acceleration profile",
+                options: [
+                    { label: "Adaptive", value: "adaptive" },
+                    { label: "Flat", value: "flat" }
+                ],
+                selected: $accel_profile_selected
+            },
+            {
+                type: "slider",
+                id: "accel_speed",
+                label: "Pointer speed (-1.0 to 1.0)",
+                min: -10,
+                max: 10,
+                step: 1,
+                value: $accel_speed
+            },
+            {
+                type: "select",
+                id: "scroll_method",
+                label: "Scroll method",
+                options: [
+                    { label: "Two finger", value: "two_finger" },
+                    { label: "Edge", value: "edge" },
+                    { label: "On button down", value: "on_button_down" },
+                    { label: "None", value: "none" }
+                ],
+                selected: $scroll_method_selected
+            }
+        else empty end,
+        if $type == "touchpad" then
+            {
+                type: "checkbox",
+                id: "tap",
+                label: "Tap to click",
+                checked: $tap
+            },
+            {
+                type: "select",
+                id: "tap_button_map",
+                label: "Tap button map",
+                options: [
+                    { label: "Left, middle, right", value: "lmr" },
+                    { label: "Left, right, middle", value: "lrm" }
+                ],
+                selected: $tap_button_map_selected
+            },
+            {
+                type: "checkbox",
+                id: "dwt",
+                label: "Disable while typing",
+                checked: $dwt
+            },
+            {
+                type: "checkbox",
+                id: "dwtp",
+                label: "Disable while trackpointing",
+                checked: $dwtp
+            }
+        else empty end,
+        if ($type == "touch" or $type == "tablet" or $type == "tablet_pad") then
+            {
+                type: "text",
+                id: "map_to_output",
+                label: "Map to output (empty = all outputs)",
+                value: $map_to_output
+            }
+        else empty end,
+        {
+            type: "select",
+            id: "events",
+            label: "Device events",
+            options: [
+                { label: "Enabled", value: "enabled" },
+                { label: "Disabled", value: "disabled" },
+                { label: "Disabled on external mouse", value: "disabled_on_external_mouse" }
+            ],
+            selected: $events_selected
+        },
+        {
+            type: "label",
+            text: "Applied now and saved in local/input.conf.",
+            style: { dim: true }
+        }
+    ]')
+
+dialog=$(jq -n \
+    --arg title "Input: $name" \
+    --argjson children "$children" \
+    '{
+        title: $title,
+        width: 88,
+        min_width: 60,
+        max_width: 100,
+        children: $children,
+        buttons: [
+            { label: "Apply", action: "submit", kind: "primary" },
+            { label: "Cancel", action: "cancel" }
+        ]
+    }')
+
+result=$(ratl_run "$dialog") || exit 0
+
+xkb_layout=$(printf '%s' "$result" | jq -r '.values.xkb_layout // empty')
+xkb_variant=$(printf '%s' "$result" | jq -r '.values.xkb_variant // empty')
+xkb_options=$(printf '%s' "$result" | jq -r '.values.xkb_options // empty')
+map_to_output=$(printf '%s' "$result" | jq -r '.values.map_to_output // empty')
+repeat_delay=$(printf '%s' "$result" | jq -r '.values.repeat_delay // 600')
+repeat_rate=$(printf '%s' "$result" | jq -r '.values.repeat_rate // 25')
+natural_scroll=$(printf '%s' "$result" | jq -r '.values.natural_scroll // false')
+left_handed=$(printf '%s' "$result" | jq -r '.values.left_handed // false')
+middle_emulation=$(printf '%s' "$result" | jq -r '.values.middle_emulation // false')
+tap=$(printf '%s' "$result" | jq -r '.values.tap // false')
+dwt=$(printf '%s' "$result" | jq -r '.values.dwt // false')
+dwtp=$(printf '%s' "$result" | jq -r '.values.dwtp // false')
+accel_speed=$(printf '%s' "$result" | jq -r '.values.accel_speed // 0')
+events=$(printf '%s' "$result" | jq -r '.values.events // "enabled"')
+accel_profile=$(printf '%s' "$result" | jq -r '.values.accel_profile // "adaptive"')
+scroll_method=$(printf '%s' "$result" | jq -r '.values.scroll_method // "two_finger"')
+tap_button_map=$(printf '%s' "$result" | jq -r '.values.tap_button_map // "lmr"')
+
+xkb_options=$(printf '%s' "$xkb_options" | tr ' ' ',')
+accel_speed_value=$(awk -v value="$accel_speed" 'BEGIN { printf "%.1f", value / 10 }')
+
+settings_tmp=$(mktemp) || settings_die "cannot create a temporary file"
+applied=$(mktemp) || settings_die "cannot create a temporary file"
+trap 'rm -f "$settings_tmp" "$applied"' EXIT HUP INT TERM
+
+invalid_values=""
+add_setting() {
+    setting="$1"
+    value="$2"
+    [ -n "$value" ] || return 0
+    case "$setting" in
+        xkb_layout | xkb_variant)
+            case "$value" in
+                *[!A-Za-z0-9_,-]*)
+                    invalid_values="$invalid_values
+$setting: $value"
+                    return 1
+                    ;;
+            esac
+            ;;
+        xkb_options)
+            case "$value" in
+                *[!A-Za-z0-9_,:+-]*)
+                    invalid_values="$invalid_values
+$setting: $value"
+                    return 1
+                    ;;
+            esac
+            ;;
+        map_to_output)
+            if ! valid_name "$value"; then
+                invalid_values="$invalid_values
+$setting: $value"
+                return 1
+            fi
+            ;;
+        repeat_delay | repeat_rate)
+            case "$value" in
+                '' | *[!0-9]*)
+                    invalid_values="$invalid_values
+$setting: $value"
+                    return 1
+                    ;;
+            esac
+            ;;
+        pointer_accel)
+            case "$value" in
+                '' | *[!0-9.-]* | *.*.*)
+                    invalid_values="$invalid_values
+$setting: $value"
+                    return 1
+                    ;;
+            esac
+            ;;
+        natural_scroll | left_handed | middle_emulation | tap | dwt | dwtp)
+            case "$value" in
+                enabled | disabled) ;;
+                *)
+                    invalid_values="$invalid_values
+$setting: $value"
+                    return 1
+                    ;;
+            esac
+            ;;
+        events)
+            case "$value" in
+                enabled | disabled | disabled_on_external_mouse) ;;
+                *)
+                    invalid_values="$invalid_values
+$setting: $value"
+                    return 1
+                    ;;
+            esac
+            ;;
+        accel_profile)
+            case "$value" in
+                adaptive | flat) ;;
+                *)
+                    invalid_values="$invalid_values
+$setting: $value"
+                    return 1
+                    ;;
+            esac
+            ;;
+        scroll_method)
+            case "$value" in
+                two_finger | edge | on_button_down | none) ;;
+                *)
+                    invalid_values="$invalid_values
+$setting: $value"
+                    return 1
+                    ;;
+            esac
+            ;;
+        tap_button_map)
+            case "$value" in
+                lmr | lrm) ;;
+                *)
+                    invalid_values="$invalid_values
+$setting: $value"
+                    return 1
+                    ;;
+            esac
+            ;;
+        *)
+            invalid_values="$invalid_values
+$setting: $value"
+            return 1
+            ;;
+    esac
+    printf '%s\t%s\n' "$setting" "$value" >> "$settings_tmp"
+}
+
+if [ "$type" = "keyboard" ]; then
+    add_setting xkb_layout "$xkb_layout" || true
+    add_setting xkb_variant "$xkb_variant" || true
+    add_setting xkb_options "$xkb_options" || true
+    add_setting repeat_delay "$repeat_delay" || true
+    add_setting repeat_rate "$repeat_rate" || true
+fi
+if [ "$type" = "pointer" ] || [ "$type" = "touchpad" ]; then
+    add_setting natural_scroll "$(enabled_value "$natural_scroll")" || true
+    add_setting left_handed "$(enabled_value "$left_handed")" || true
+    add_setting middle_emulation "$(enabled_value "$middle_emulation")" || true
+    add_setting accel_profile "$accel_profile" || true
+    add_setting pointer_accel "$accel_speed_value" || true
+    add_setting scroll_method "$scroll_method" || true
+fi
+if [ "$type" = "touchpad" ]; then
+    add_setting tap "$(enabled_value "$tap")" || true
+    add_setting tap_button_map "$tap_button_map" || true
+    add_setting dwt "$(enabled_value "$dwt")" || true
+    add_setting dwtp "$(enabled_value "$dwtp")" || true
+fi
+if [ "$type" = "touch" ] || [ "$type" = "tablet" ] || [ "$type" = "tablet_pad" ]; then
+    add_setting map_to_output "$map_to_output" || true
+fi
+add_setting events "$events" || true
+
+if [ -n "$invalid_values" ]; then
+    ratl_message "Input not applied" "These values are not valid:$invalid_values"
+    exit 1
+fi
+
+errors=""
+while IFS="$(printf '\t')" read -r setting value; do
+    [ -n "$setting" ] || continue
+    if output=$(run_cmd_capture swaymsg input "$identifier" "$setting" "$value"); then
+        printf '%s\t%s\t%s\n' "$identifier" "$setting" "$value" >> "$applied"
+    else
+        errors="$errors
+$setting: $output"
+    fi
+done < "$settings_tmp"
+
+if [ -s "$applied" ]; then
+    ensure_local_dir
+    state_tmp="${state}.tmp.$$"
+    {
+        if [ -f "$state" ]; then
+            awk -F '\t' -v id="$identifier" '$1 != id' "$state"
+        fi
+        cat "$applied"
+    } > "$state_tmp" || {
+        rm -f "$state_tmp"
+        settings_die "cannot write $state"
+    }
+    mv -f "$state_tmp" "$state"
+
+    {
+        printf '%s\n' "# generated by bin/rstl-input; edit through the dialog"
+        while IFS="$(printf '\t')" read -r saved_id setting value; do
+            valid_identifier "$saved_id" || continue
+            case "$setting" in
+                xkb_layout | xkb_variant | xkb_options | repeat_delay | repeat_rate | \
+                natural_scroll | left_handed | middle_emulation | tap | dwt | dwtp | \
+                accel_profile | pointer_accel | scroll_method | tap_button_map | \
+                map_to_output | events) ;;
+                *) continue ;;
+            esac
+            case "$value" in
+                *[!A-Za-z0-9_,:+.-]*) continue ;;
+            esac
+            printf 'input "%s" %s %s\n' "$saved_id" "$setting" "$value"
+        done < "$state"
+    } | atomic_write "$RSTL_LOCAL_DIR/input.conf" ||
+        settings_die "cannot write $RSTL_LOCAL_DIR/input.conf"
+fi
+
+if [ -n "$errors" ]; then
+    ratl_message "Input partly applied" "swaymsg rejected some settings:$errors"
+    exit 1
+fi
+
+ratl_message "Input updated" "Settings for $name were applied and saved."

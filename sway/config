@@ -15,6 +15,10 @@
 # config.d/ belongs to you: add a file or edit one of these. Everything in it
 # comes straight from the repository - the installers purge the directory and
 # copy it again on every install, so what you want to keep belongs in git.
+#
+# local/ is the opposite: the installers leave it alone. The ratl settings
+# tools (win+comma, or `rstl rstl-settings`) write their generated overrides
+# there, and the include at the bottom of this file gives them the last word.
 
 ### modifier
 set $mod Mod4 
@@ -22,10 +26,12 @@ set $mod Mod4
 ### terminal / launcher
 set $term ~/.config/rstl.sway/scripts/foot-smart.sh
 set $menu rstl-pick
+set $settings ~/.config/rstl.sway/bin/rstl-settings
 
 bindsym $mod+Return exec $term
 bindsym $mod+d exec rofi -show drun 
 bindsym $mod+o exec $term --app-id=rstl-pick -e $menu
+bindsym $mod+comma exec $term --app-id=rstl-settings -e $settings
 bindsym $mod+Backspace exec ~/.config/rstl.sway/rofi/powermenu/rstl-powermenu.sh
 bindsym $mod+Escape exec ~/.config/rstl.sway/scripts/lock.sh
 bindsym $mod+c exec $term --app-id=calpopup sh -c '~/.config/rstl.sway/scripts/ecal.sh; sleep 500'
@@ -43,6 +49,11 @@ for_window [app_id="rstl-pick"] floating enable
 for_window [app_id="rstl-pick"] border pixel 0 
 for_window [app_id="rstl-pick"] move position center
 for_window [app_id="rstl-pick"] resize set width 750 px height 550 px
+
+for_window [app_id="rstl-settings"] floating enable
+for_window [app_id="rstl-settings"] border pixel 1
+for_window [app_id="rstl-settings"] move position center
+for_window [app_id="rstl-settings"] resize set width 950 px height 700 px
 
 ### session
 bindsym $mod+Shift+q kill
@@ -175,3 +186,7 @@ bindsym $mod+Shift+s exec grim -g "$(slurp)" - | tee "$HOME/Pictures/Screenshots
 # settings: included in name order, so a higher number wins over a lower one
 # ---------------------------------------------------------------------------
 include ~/.config/rstl.sway/sway/config.d/*.conf
+
+# settings written by the ratl dialogs (win+comma). Kept outside config.d so
+# the installers do not purge them; they intentionally come last.
+include ~/.config/rstl.sway/local/*.conf

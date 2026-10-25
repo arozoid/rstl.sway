@@ -1,0 +1,310 @@
+#!/bin/sh
+# rstl.sway power management - idle timeouts, lid switch and power profile.
+#
+# Usage:
+#   rstl-power                 edit lock/blank/suspend timers and the lid action
+#   rstl-power --help          show this help
+#
+# Timers are written to local/swayidle, which scripts/swayidle.sh prefers over
+# the repository default. The lid binding and power profile go to
+# local/power.conf. Both are included by sway/config through local/*.conf.
+
+set -u
+
+DOTFILES_DIR="${RSTL_SWAY_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/rstl.sway}"
+. "$DOTFILES_DIR/scripts/rstl-settings-lib.sh"
+
+settings_need_jq
+settings_need_sway
+
+usage() {
+    sed -n '2,$ { /^#/!q; s/^#[[:space:]]\{0,1\}//p; }' "$0"
+}
+
+case "${1:-}" in
+    --help | -h)
+        usage
+        exit 0
+        ;;
+    "")
+        ;;
+    *)
+        printf 'rstl-power: unknown option: %s\n' "$1" >&2
+        usage >&2
+        exit 2
+        ;;
+esac
+
+if ! settings_have swayidle; then
+    ratl_message "Power management" \
+        "swayidle is not installed. Install swayidle (and swaylock) to use idle timers."
+    exit 1
+fi
+if ! settings_have swaylock; then
+    ratl_message "Power management" \
+        "swaylock is not installed. Install swaylock to use lock and lid actions."
+    exit 1
+fi
+
+power_state="$RSTL_LOCAL_DIR/power"
+power_value() {
+    key="$1"
+    fallback="$2"
+    [ -r "$power_state" ] || {
+        printf '%s' "$fallback"
+        return
+    }
+    value=$(sed -n "s/^${key}=//p" "$power_state" 2>/dev/null | head -n 1)
+    [ -n "$value" ] || value="$fallback"
+    printf '%s' "$value"
+}
+
+default_lock=180
+default_blank=600
+if [ -r "$DOTFILES_DIR/swayidle/config" ]; then
+    value=$(sed -nE \
+        's/^timeout ([0-9]+) sh -c .*lock\.sh.*/\1/p' \
+        "$DOTFILES_DIR/swayidle/config" 2>/dev/null | head -n 1)
+    [ -n "$value" ] && default_lock="$value"
+    value=$(sed -nE \
+        's/^timeout ([0-9]+) .*dpms off.*/\1/p' \
+        "$DOTFILES_DIR/swayidle/config" 2>/dev/null | head -n 1)
+    [ -n "$value" ] && default_blank="$value"
+fi
+
+lock_timeout=$(power_value LOCK_TIMEOUT "$default_lock")
+blank_timeout=$(power_value BLANK_TIMEOUT "$default_blank")
+suspend_timeout=$(power_value SUSPEND_TIMEOUT "0")
+lid_action=$(power_value LID_ACTION "ignore")
+
+case "$lock_timeout" in '' | *[!0-9]*) lock_timeout=180 ;; esac
+case "$blank_timeout" in '' | *[!0-9]*) blank_timeout=600 ;; esac
+case "$suspend_timeout" in '' | *[!0-9]*) suspend_timeout=0 ;; esac
+case "$lid_action" in
+    ignore | lock | suspend | hibernate | poweroff) ;;
+    *) lid_action=ignore ;;
+esac
+
+profile_available=false
+profile=""
+if settings_have powerprofilesctl; then
+    profile_available=true
+    profile=$(power_value POWER_PROFILE "$(powerprofilesctl get 2>/dev/null || printf 'balanced')")
+    case "$profile" in
+        performance | balanced | power-saver) ;;
+        *) profile=balanced ;;
+    esac
+fi
+
+timeout_options=$(minutes_options)
+lock_selected=$(printf '%s' "$timeout_options" | jq --arg value "$lock_timeout" '
+    (map(.value) | index($value)) // 0')
+blank_selected=$(printf '%s' "$timeout_options" | jq --arg value "$blank_timeout" '
+    (map(.value) | index($value)) // 0')
+suspend_selected=$(printf '%s' "$timeout_options" | jq --arg value "$suspend_timeout" '
+    (map(.value) | index($value)) // 0')
+
+lid_options=$(jq -n '[
+    { label: "Ignore", value: "ignore" },
+    { label: "Lock only", value: "lock" },
+    { label: "Lock and suspend", value: "suspend" },
+    { label: "Lock and hibernate", value: "hibernate" },
+    { label: "Lock and power off", value: "poweroff" }
+]')
+lid_selected=$(printf '%s' "$lid_options" | jq --arg current "$lid_action" '
+    (map(.value) | index($current)) // 0')
+
+profile_options=$(jq -n '[
+    { label: "Performance", value: "performance" },
+    { label: "Balanced", value: "balanced" },
+    { label: "Power saver", value: "power-saver" }
+]')
+profile_selected=$(printf '%s' "$profile_options" | jq --arg current "$profile" '
+    (map(.value) | index($current)) // 0')
+
+children=$(jq -n \
+    --argjson timeout_options "$timeout_options" \
+    --argjson lock_selected "$lock_selected" \
+    --argjson blank_selected "$blank_selected" \
+    --argjson suspend_selected "$suspend_selected" \
+    --argjson lid_options "$lid_options" \
+    --argjson lid_selected "$lid_selected" \
+    --argjson profile_available "$profile_available" \
+    --argjson profile_options "$profile_options" \
+    --argjson profile_selected "$profile_selected" \
+    '[
+        {
+            type: "label",
+            text: "Idle behavior"
+        },
+        {
+            type: "select",
+            id: "lock_timeout",
+            label: "Lock after",
+            options: $timeout_options,
+            selected: $lock_selected
+        },
+        {
+            type: "select",
+            id: "blank_timeout",
+            label: "Blank screen after",
+            options: $timeout_options,
+            selected: $blank_selected
+        },
+        {
+            type: "select",
+            id: "suspend_timeout",
+            label: "Suspend after",
+            options: $timeout_options,
+            selected: $suspend_selected
+        },
+        {
+            type: "label",
+            text: "Lid switch"
+        },
+        {
+            type: "select",
+            id: "lid_action",
+            label: "When the lid closes",
+            options: $lid_options,
+            selected: $lid_selected
+        },
+        if $profile_available then
+            {
+                type: "select",
+                id: "profile",
+                label: "Power profile",
+                options: $profile_options,
+                selected: $profile_selected
+            }
+        else
+            {
+                type: "label",
+                text: "Power profile: power-profiles-daemon is not installed.",
+                style: { dim: true }
+            }
+        end,
+        {
+            type: "label",
+            text: "Timers are saved in local/swayidle; lid/profile settings in local/power.conf.",
+            style: { dim: true }
+        }
+    ]')
+
+dialog=$(jq -n \
+    --arg title "Power management" \
+    --argjson children "$children" \
+    '{
+        title: $title,
+        width: 82,
+        min_width: 60,
+        max_width: 100,
+        children: $children,
+        buttons: [
+            { label: "Apply", action: "submit", kind: "primary" },
+            { label: "Cancel", action: "cancel" }
+        ]
+    }')
+
+result=$(ratl_run "$dialog") || exit 0
+lock_timeout=$(printf '%s' "$result" | jq -r '.values.lock_timeout // 180')
+blank_timeout=$(printf '%s' "$result" | jq -r '.values.blank_timeout // 600')
+suspend_timeout=$(printf '%s' "$result" | jq -r '.values.suspend_timeout // 0')
+lid_action=$(printf '%s' "$result" | jq -r '.values.lid_action // "ignore"')
+profile=$(printf '%s' "$result" | jq -r '.values.profile // empty')
+
+case "$lock_timeout" in '' | *[!0-9]*) settings_die "invalid lock timeout" ;; esac
+case "$blank_timeout" in '' | *[!0-9]*) settings_die "invalid blank timeout" ;; esac
+case "$suspend_timeout" in '' | *[!0-9]*) settings_die "invalid suspend timeout" ;; esac
+case "$lid_action" in
+    ignore | lock | suspend | hibernate | poweroff) ;;
+    *) settings_die "invalid lid action" ;;
+esac
+if [ "$profile_available" = true ]; then
+    case "$profile" in
+        performance | balanced | power-saver) ;;
+        *) settings_die "invalid power profile" ;;
+    esac
+else
+    profile=""
+fi
+
+ensure_local_dir
+{
+    printf 'LOCK_TIMEOUT=%s\n' "$lock_timeout"
+    printf 'BLANK_TIMEOUT=%s\n' "$blank_timeout"
+    printf 'SUSPEND_TIMEOUT=%s\n' "$suspend_timeout"
+    printf 'LID_ACTION=%s\n' "$lid_action"
+    printf 'POWER_PROFILE=%s\n' "$profile"
+} | atomic_write "$power_state" || settings_die "cannot write $power_state"
+
+{
+    printf '%s\n' "# generated by bin/rstl-power; edit through the dialog"
+    if [ "$lock_timeout" -gt 0 ]; then
+        printf 'timeout %s sh -c %s\n' "$lock_timeout" "'$DOTFILES_DIR/scripts/lock.sh'"
+    fi
+    if [ "$blank_timeout" -gt 0 ]; then
+        printf 'timeout %s %s\n' "$blank_timeout" "'swaymsg \"output * dpms off\"'"
+    fi
+    if [ "$suspend_timeout" -gt 0 ]; then
+        printf 'timeout %s %s\n' "$suspend_timeout" "'systemctl suspend'"
+    fi
+    printf 'lock sh -c %s\n' "'$DOTFILES_DIR/scripts/lock.sh'"
+    printf 'unlock %s\n' "'swaymsg \"output * dpms on\"'"
+    printf 'before-sleep sh -c %s\n' "'$DOTFILES_DIR/scripts/lock.sh'"
+} | atomic_write "$RSTL_LOCAL_DIR/swayidle" ||
+    settings_die "cannot write $RSTL_LOCAL_DIR/swayidle"
+
+{
+    printf '%s\n' "# generated by bin/rstl-power; edit through the dialog"
+    case "$lid_action" in
+        lock)
+            printf 'bindswitch --locked lid:on exec %s\n' \
+                "'$DOTFILES_DIR/scripts/lock.sh'"
+            ;;
+        suspend)
+            printf 'bindswitch --locked lid:on exec %s\n' \
+                "'$DOTFILES_DIR/scripts/lock.sh; systemctl suspend'"
+            ;;
+        hibernate)
+            printf 'bindswitch --locked lid:on exec %s\n' \
+                "'$DOTFILES_DIR/scripts/lock.sh; systemctl hibernate'"
+            ;;
+        poweroff)
+            printf 'bindswitch --locked lid:on exec %s\n' \
+                "'$DOTFILES_DIR/scripts/lock.sh; systemctl poweroff'"
+            ;;
+        ignore) ;;
+    esac
+    if [ "$profile_available" = true ] && [ -n "$profile" ]; then
+        printf 'exec_always --no-startup-id powerprofilesctl set %s\n' "$profile"
+    fi
+} | atomic_write "$RSTL_LOCAL_DIR/power.conf" ||
+    settings_die "cannot write $RSTL_LOCAL_DIR/power.conf"
+
+if [ "$profile_available" = true ] && [ -n "$profile" ]; then
+    if ! error=$(run_cmd_capture powerprofilesctl set "$profile"); then
+        ratl_message "Power profile not applied" "$error"
+        exit 1
+    fi
+fi
+
+if [ "${DRY_RUN:-0}" = 1 ]; then
+    printf 'would run: pkill -x swayidle\n' >&2
+    printf 'would run: %s/scripts/swayidle.sh\n' "$DOTFILES_DIR" >&2
+else
+    pkill -x swayidle 2>/dev/null || true
+    if settings_have setsid; then
+        setsid "$DOTFILES_DIR/scripts/swayidle.sh" >/dev/null 2>&1 &
+    else
+        nohup "$DOTFILES_DIR/scripts/swayidle.sh" >/dev/null 2>&1 &
+    fi
+fi
+
+if ! error=$(run_cmd_capture swaymsg reload); then
+    ratl_message "Power settings saved, reload failed" "$error"
+    exit 1
+fi
+
+ratl_message "Power settings saved" \
+    "Lock: $lock_timeout s, blank: $blank_timeout s, suspend: $suspend_timeout s, lid: $lid_action."

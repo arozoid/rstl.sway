@@ -1,12 +1,20 @@
 #!/bin/sh
 # rstl.sway lock screen — swaylock with the current wallpaper as background.
 #
-# The wallpaper path is read from ${WALLPAPER_CONF} (default
-# ~/.config/rstl.sway/wallpaper), a plain text file holding one path.
+# The wallpaper path is read from ${WALLPAPER_CONF}, then
+# local/wallpaper (written by the ratl wallpaper dialog), then the
+# repository wallpaper file; each is a plain text file holding one path.
 # If that file is missing or points to a missing file, the most recently
 # modified wallpaper in ~/Pictures/Wallpapers is used instead.
 
-WALLPAPER_CONF="${WALLPAPER_CONF:-$HOME/.config/rstl.sway/wallpaper}"
+DOTFILES_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/rstl.sway"
+if [ -n "${WALLPAPER_CONF:-}" ]; then
+    :
+elif [ -r "$DOTFILES_DIR/local/wallpaper" ]; then
+    WALLPAPER_CONF="$DOTFILES_DIR/local/wallpaper"
+else
+    WALLPAPER_CONF="$DOTFILES_DIR/wallpaper"
+fi
 
 image=""
 if [ -r "$WALLPAPER_CONF" ]; then

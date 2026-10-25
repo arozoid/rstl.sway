@@ -55,6 +55,7 @@ latuicon
 clipse
 wiremix
 eva
+ratl
 rstl-pick
 fzf-tab
 zsh-auto-notify

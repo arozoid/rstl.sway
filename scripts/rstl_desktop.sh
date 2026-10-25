@@ -16,12 +16,13 @@
 # the DPI-sized config auto-scale.sh produces and are regenerated
 # whenever that changes, so the bars keep the sizes they had.
 #
-# Wallpapers: `wallpapers/<OUTPUT>` (one file per screen, e.g.
-# `wallpapers/DP-1`, holding an image path or an awww colour such
-# as 0x1b1b1bff) wins over the single `wallpaper` file, which
-# applies to every output. An output with nothing configured goes
-# back to whatever awww had cached for it. RSTL_WALLPAPERS moves
-# the per-output directory out of the dotfiles.
+# Wallpapers: `local/wallpapers/<OUTPUT>` (one file per screen, e.g.
+# `local/wallpapers/DP-1`, holding an image path or an awww colour such
+# as 0x1b1b1bff) wins over `wallpapers/<OUTPUT>` in the repository, which
+# in turn wins over the single `local/wallpaper` or `wallpaper` file that
+# applies to every output. An output with nothing configured goes back to
+# whatever awww had cached for it. RSTL_WALLPAPERS moves the per-output
+# directory out of the dotfiles.
 #
 # Fullscreen is per output: a fullscreen window on a *visible*
 # workspace hides only the bar of the output showing it, the
@@ -55,8 +56,23 @@ YAMBAR_CFG="$YAMBAR_BASE"
 [ -f "$YAMBAR_CFG" ] || YAMBAR_CFG="$YAMBAR_SRC"
 # pids, last applied wallpapers, the event fifo
 STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/rstl.sway/desktop"
-WALLPAPER_CONF="${WALLPAPER_CONF:-$DOTFILES_DIR/wallpaper}"
-WALLPAPER_DIR="${RSTL_WALLPAPERS:-$DOTFILES_DIR/wallpapers}"
+# The wallpaper dialog writes local/wallpaper and local/wallpapers/<OUTPUT>.
+# Prefer those over the repository defaults, and keep the environment
+# overrides working for tests and one-off runs.
+if [ -n "${WALLPAPER_CONF:-}" ]; then
+    :
+elif [ -r "$DOTFILES_DIR/local/wallpaper" ]; then
+    WALLPAPER_CONF="$DOTFILES_DIR/local/wallpaper"
+else
+    WALLPAPER_CONF="$DOTFILES_DIR/wallpaper"
+fi
+if [ -n "${RSTL_WALLPAPERS:-}" ]; then
+    WALLPAPER_DIR="$RSTL_WALLPAPERS"
+elif [ -d "$DOTFILES_DIR/local/wallpapers" ]; then
+    WALLPAPER_DIR="$DOTFILES_DIR/local/wallpapers"
+else
+    WALLPAPER_DIR="$DOTFILES_DIR/wallpapers"
+fi
 # how often the loop wakes up on its own, to notice a bar that died
 # or a wallpaper that was edited
 WATCHDOG=10
@@ -296,6 +312,9 @@ ensure_awww() {
 # wallpaper file. empty when neither names something usable
 wallpaper_for() {
     img=$(read_wallpaper "$WALLPAPER_DIR/$1")
+    # local/wallpapers may only contain the outputs the dialog has touched;
+    # fall back to a repository per-output file, then to the global wallpaper.
+    [ -n "$img" ] || img=$(read_wallpaper "$DOTFILES_DIR/wallpapers/$1")
     [ -n "$img" ] || img=$(read_wallpaper "$WALLPAPER_CONF")
     printf '%s' "$img"
 }

@@ -61,8 +61,10 @@ yambar
 xdg-desktop-portal-termfilechooser
 util-linux
 less
+jq
 
 #@optional
+ratl
 
 #@firefox
 firefox

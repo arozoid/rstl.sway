@@ -24,6 +24,7 @@ this setup includes but is not limited to:
 - login screen (tuigreet)
 - browser (firefox)
 - [rstl-pick](https://github.com/arozoid/rstl-pick) app picker
+- [ratl](https://github.com/arozoid/ratl) settings dialogs for display, wallpaper, input, keyboard shortcuts and power
 
 and several more features, such as [polkit authentication](https://github.com/arozoid/rstlpk) + dssd secret service + xdg portal integration. (full rootfs: \~1.0 GiB installed; a bare arch base install is \~200 MiB, so the desktop itself adds \~800 MiB over base)
 
@@ -51,7 +52,7 @@ three editions share one set of dotfiles, each with its own installer and its ow
 | --- | --- | --- | --- |
 | install | `bin/install.sh` | `packages-install.txt` | the full desktop (57 core packages) |
 | install-min | `bin/install-min.sh` | `packages-install-min.txt` | the same without the editor and the extras (56) |
-| install-base | `bin/install-base.sh` | `packages-install-base.txt` | no editor, no lock/idle, no clipboard daemon (38) |
+| install-base | `bin/install-base.sh` | `packages-install-base.txt` | no editor, no lock/idle, no clipboard daemon (39) |
 
 the lists are plain text, one package per line, and you are free to edit them. the sections are `#@core` (one atomic transaction), `#@optional` (one at a time, so one failure does not abort the rest), `#@program:vim` / `#@program:mouse` and `#@firefox`. all three installers take the same flags:
 
@@ -158,6 +159,24 @@ then it prints that script's `--help`, asks for the arguments (`--program "vim m
 
 add a file of your own (`50-mine.conf`) or edit one of these, and commit it: the installers purge `sway/config.d` and copy it again, so the repository is the only source of truth and a setting you deleted in git stops applying. reload with win+shift+c, or check a config before reloading with `sway -C -c ~/.config/sway/config`.
 
+### settings dialogs
+
+win+comma (or `rstl rstl-settings`) opens the ratl settings menu. the same tools can be run directly:
+
+| command | what it changes |
+| --- | --- |
+| `rstl rstl-display` | output mode, scale and transform |
+| `rstl rstl-wallpaper` | wallpaper or solid colour, for one output or all |
+| `rstl rstl-input` | keyboard layout/repeat and pointer/touchpad options |
+| `rstl rstl-keys` | top-level sway keybindings and new shortcuts |
+| `rstl rstl-power` | lock/blank/suspend timers, lid action and power profile |
+
+the dialogs write generated overrides to `~/.config/rstl.sway/local/` (`display.conf`, `input.conf`, `keys.conf`, `power.conf`, `swayidle`, `wallpaper`, `wallpapers/<OUTPUT>`), which `sway/config` includes after `sway/config.d/`. the installers leave `local/` alone, so dialog changes survive `rstl update.sh`; the repository files stay untouched. delete a generated file to go back to the repository default. `local/` is git-ignored except for its README.
+
+`rstl-wallpaper` previews images with ratl's true-colour image element (a ratl build with image support; an older ratl falls back to a text-only preview and still applies the wallpaper). `rstl-power` needs `swayidle` and `swaylock`; the power-profile selector appears when `power-profiles-daemon` is installed. display scale choices match the range `scripts/auto-scale.sh` accepts (1.0–2.0).
+
+the base edition does not install `awww`, `swayidle` or `swaylock`: display, input and shortcut settings work there, but `rstl-wallpaper` saves the choice without applying it and `rstl-power` explains that it is unavailable. install those three packages to enable wallpaper and power management on the base edition.
+
 ## programs
 
 - awww: lightweight wallpaper daemon
@@ -165,6 +184,8 @@ add a file of your own (`50-mine.conf`) or edit one of these, and commit it: the
 - sway: tiling window manager
 - mako: lightweight notification daemon
 - rofi: minimal and customizable launcher (used for app picker and power menu)
+- ratl ([rstl.repo](https://github.com/arozoid/rstl.repo)): JSON-driven terminal dialogs used by the settings tools
+- power-profiles-daemon (optional): backs the power-profile selector in `rstl-power`
 
 ---
 
@@ -205,6 +226,7 @@ add a file of your own (`50-mine.conf`) or edit one of these, and commit it: the
 - win+enter: foot terminal
 - win+shift+s: screenshot to clipboard and Pictures/Screenshots/*
 - win+backspace: power menu (3x2 grid, wlogout-style)
+- win+comma: ratl settings (display, wallpaper, input, shortcuts, power)
 - win+o: rstl-pick (calculator, file manager, bluetooth, wifi, etc.)
 
 ---

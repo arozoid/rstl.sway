@@ -1,0 +1,232 @@
+#!/bin/sh
+# rstl.sway display options - resolution, scale and rotation per output.
+#
+# Usage:
+#   rstl-display               choose an output, then its mode/scale/rotation
+#   rstl-display --help        show this help
+#
+# Changes are applied with swaymsg immediately and written to
+# local/display.conf, which sway includes after config.d and auto-scale.sh
+# reads for explicit scale overrides.
+
+set -u
+
+DOTFILES_DIR="${RSTL_SWAY_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/rstl.sway}"
+. "$DOTFILES_DIR/scripts/rstl-settings-lib.sh"
+
+settings_need_jq
+settings_need_sway
+
+usage() {
+    sed -n '2,$ { /^#/!q; s/^#[[:space:]]\{0,1\}//p; }' "$0"
+}
+
+case "${1:-}" in
+    --help | -h)
+        usage
+        exit 0
+        ;;
+    "") ;;
+    *)
+        printf 'rstl-display: unknown option: %s\n' "$1" >&2
+        usage >&2
+        exit 2
+        ;;
+esac
+
+outputs=$(sway_outputs) || settings_die "swaymsg could not read the outputs"
+output_options=$(printf '%s' "$outputs" | jq '
+    [ .[]
+      | select(.active == true)
+      | {
+          label: (
+              .name
+              + "  "
+              + ((.current_mode.width // 0) | tostring)
+              + "x"
+              + ((.current_mode.height // 0) | tostring)
+              + " @ "
+              + ((.scale // 1) | tostring)
+              + "x"
+          ),
+          value: .name
+        }
+    ]')
+if [ "$(printf '%s' "$output_options" | jq 'length')" -eq 0 ]; then
+    ratl_message "Display" "No active outputs. Turn one on with swaymsg or wlr-randr first."
+    exit 1
+fi
+
+result=$(ratl_select "Display" "Output" "$output_options" 0) || exit 0
+output=$(printf '%s' "$result" | jq -r '.values.choice // empty')
+valid_name "$output" || settings_die "invalid output name from the dialog"
+
+output_json=$(printf '%s' "$outputs" | jq -c --arg name "$output" '
+    .[] | select(.name == $name)')
+[ -n "$output_json" ] || settings_die "output $output disappeared"
+
+modes=$(printf '%s' "$output_json" | jq '
+    [ .modes[]
+      | {
+          label: (
+              (.width | tostring)
+              + "x"
+              + (.height | tostring)
+              + "@"
+              + ((.refresh / 1000) | tostring)
+              + "Hz"
+          ),
+          value: (
+              (.width | tostring)
+              + "x"
+              + (.height | tostring)
+              + "@"
+              + ((.refresh / 1000) | tostring)
+              + "Hz"
+          )
+        }
+    ] | unique_by(.value)')
+if [ "$(printf '%s' "$modes" | jq 'length')" -eq 0 ]; then
+    ratl_message "Display" "Sway reports no modes for $output."
+    exit 1
+fi
+
+current_mode=$(printf '%s' "$output_json" | jq -r '
+    ((.current_mode.width // 0) | tostring)
+    + "x"
+    + ((.current_mode.height // 0) | tostring)
+    + "@"
+    + (((.current_mode.refresh // 0) / 1000) | tostring)
+    + "Hz"')
+mode_selected=$(printf '%s' "$modes" | jq --arg current "$current_mode" '
+    (map(.value) | index($current)) // 0')
+
+current_scale=$(printf '%s' "$output_json" | jq -r '(.scale // 1) | tostring' |
+    awk '{ printf "%.2f", $1 }' | sed 's/0$//')
+scales=$(jq -n '
+    ["1.0", "1.25", "1.5", "1.75", "2.0"]
+    | map({ label: ., value: . })')
+scale_selected=$(printf '%s' "$scales" | jq --arg current "$current_scale" '
+    (map(.value) | index($current)) // 0')
+
+current_transform=$(printf '%s' "$output_json" | jq -r '.transform // "normal"')
+transforms=$(jq -n '[
+    { label: "Normal", value: "normal" },
+    { label: "90 degrees", value: "90" },
+    { label: "180 degrees", value: "180" },
+    { label: "270 degrees", value: "270" },
+    { label: "Flipped", value: "flipped" },
+    { label: "Flipped 90", value: "flipped-90" },
+    { label: "Flipped 180", value: "flipped-180" },
+    { label: "Flipped 270", value: "flipped-270" }
+]')
+transform_selected=$(printf '%s' "$transforms" | jq --arg current "$current_transform" '
+    (map(.value) | index($current)) // 0')
+
+dialog=$(jq -n \
+    --arg title "Display: $output" \
+    --argjson modes "$modes" \
+    --argjson mode_selected "$mode_selected" \
+    --argjson scales "$scales" \
+    --argjson scale_selected "$scale_selected" \
+    --argjson transforms "$transforms" \
+    --argjson transform_selected "$transform_selected" \
+    '{
+        title: $title,
+        width: 82,
+        min_width: 60,
+        max_width: 100,
+        children: [
+            {
+                type: "label",
+                text: ("Settings for " + $title)
+            },
+            {
+                type: "select",
+                id: "mode",
+                label: "Resolution / refresh",
+                options: $modes,
+                selected: $mode_selected
+            },
+            {
+                type: "select",
+                id: "scale",
+                label: "Scale",
+                options: $scales,
+                selected: $scale_selected
+            },
+            {
+                type: "select",
+                id: "transform",
+                label: "Rotation",
+                options: $transforms,
+                selected: $transform_selected
+            },
+            {
+                type: "label",
+                text: "Applied now and saved in local/display.conf.",
+                style: { dim: true }
+            }
+        ],
+        buttons: [
+            { label: "Apply", action: "submit", kind: "primary" },
+            { label: "Cancel", action: "cancel" }
+        ]
+    }')
+
+result=$(ratl_run "$dialog") || exit 0
+mode=$(printf '%s' "$result" | jq -r '.values.mode // empty')
+scale=$(printf '%s' "$result" | jq -r '.values.scale // empty')
+transform=$(printf '%s' "$result" | jq -r '.values.transform // empty')
+
+valid_mode "$mode" || settings_die "invalid mode from the dialog"
+valid_scale "$scale" || settings_die "invalid scale from the dialog"
+valid_transform "$transform" || settings_die "invalid rotation from the dialog"
+
+for setting in \
+    "mode $mode" \
+    "scale $scale" \
+    "transform $transform"
+do
+    # shellcheck disable=SC2086
+    if ! error=$(run_cmd_capture swaymsg output "$output" $setting); then
+        ratl_message "Display not applied" "$error"
+        exit 1
+    fi
+done
+
+ensure_local_dir
+state="$RSTL_LOCAL_DIR/display.tsv"
+tmp="${state}.tmp.$$"
+{
+    if [ -f "$state" ]; then
+        awk -F '\t' -v OFS='\t' -v name="$output" '$1 != name { print }' "$state"
+    fi
+    printf '%s\t%s\t%s\t%s\n' "$output" "$mode" "$scale" "$transform"
+} > "$tmp" || {
+    rm -f "$tmp"
+    settings_die "cannot write $state"
+}
+sort -o "$tmp" "$tmp"
+mv -f "$tmp" "$state"
+
+{
+    printf '%s\n' "# generated by bin/rstl-display; edit through the dialog"
+    while IFS="$(printf '\t')" read -r name saved_mode saved_scale saved_transform; do
+        valid_name "$name" || continue
+        valid_mode "$saved_mode" || continue
+        valid_scale "$saved_scale" || continue
+        valid_transform "$saved_transform" || continue
+        printf 'output %s mode %s\n' "$name" "$saved_mode"
+        printf 'output %s scale %s\n' "$name" "$saved_scale"
+        printf 'output %s transform %s\n' "$name" "$saved_transform"
+    done < "$state"
+} | atomic_write "$RSTL_LOCAL_DIR/display.conf" ||
+    settings_die "cannot write $RSTL_LOCAL_DIR/display.conf"
+
+# auto-scale re-applies the explicit scale from local/display.conf and resizes
+# the bar/font for the new scale. It is optional; the display change itself
+# already happened through swaymsg.
+if [ -x "$DOTFILES_DIR/scripts/auto-scale.sh" ]; then
+    run_cmd "$DOTFILES_DIR/scripts/auto-scale.sh" >/dev/null 2>&1 || true
+fi
