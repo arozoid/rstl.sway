@@ -29,12 +29,18 @@ also includes multimedia codecs, polkit authentication, secret service and xdg p
 
 the full desktop adds approximately 800 MiB over a bare arch installation, with a total installed rootfs of around 1 GiB.
 
+ISO root filesystems are built as Artix Linux with runit. Their pacman
+configuration enables Artix repositories, Arch compatibility through
+`artix-archlinux-support`, ALHP x86-64-v2/v3/v4 repositories, and CachyOS
+generic/v3/v4 repositories. The ALHP mirrorlist is shipped with the build
+configuration; ALHP currently publishes x86-64 optimized repositories.
+
 ## installation
 
 ```bash
 git clone https://github.com/arozoid/rstl.sway.git ~/.config/rstl.sway/
 cd ~/.config/rstl.sway/
-./bin/install.sh
+./bin/install
 ```
 
 follow the installer prompts to select the features you want.
@@ -43,11 +49,11 @@ follow the installer prompts to select the features you want.
 
 all editions use the same dotfiles and can be switched between at any time.
 
-| edition | installer         | packages |
-| ------- | ----------------- | -------- |
-| full    | `install.sh`      | 58       |
-| minimal | `install-min.sh`  | 58       |
-| base    | `install-base.sh` | 40       |
+| edition | installer   | packages |
+| ------- | ----------- | -------- |
+| full    | `install`   | 58       |
+| minimal | `minstall`  | 58       |
+| base    | `binstall`  | 40       |
 
 - **full:** complete desktop with editor and extras.
 - **minimal:** desktop without editor and extras.
@@ -72,17 +78,16 @@ all installers support:
 for root installations, pass `--root` to the installer itself:
 
 ```bash
-sudo bin/install.sh --root --yes
-sudo bin/install-min.sh --root --yes
-sudo bin/install-base.sh --root --yes
+sudo bin/install --root --yes
+sudo bin/minstall --root --yes
+sudo bin/binstall --root --yes
 sudo bin/update.sh --root --yes
 ```
 
-the distribution is detected from the package manager (`arch`, `fedora`,
-`void`) and recorded in `.rstl-edition`. on Void runit is the default init
-system; `--systemd` overrides that, and `--runit` asks for runit anywhere it is
-installed. Artix is not supported yet: `--runit` on a system without `/etc/sv`
-fails early.
+the distribution is detected from the package manager (`arch`, `artix`,
+`fedora`, `void`) and recorded in `.rstl-edition`. on Void and Artix runit is
+the default init system; `--systemd` overrides that, and `--runit` asks for
+runit anywhere it is installed.
 
 there is no `systemctl --user` under runit, so the installers skip per-user
 services and write `sway/config.d/90-audio.conf`, which starts pipewire in the
@@ -107,7 +112,7 @@ use `--help` to see additional options.
 `rstl` provides access to all scripts in `bin/`.
 
 ```bash
-rstl install.sh --yes
+rstl install --yes
 rstl update.sh
 ```
 

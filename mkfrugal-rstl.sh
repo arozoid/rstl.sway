@@ -77,18 +77,18 @@
 #       --force             rebuild into --target even if it is not empty
 #   -h, --help
 #
-# Requires: root, pacstrap/arch-chroot (arch-install-scripts), squashfs-tools,
+# Requires: root, basestrap/arch-chroot (Artix install tools), squashfs-tools,
 # wget (mkFRkernel), curl, and the mkFRkernel script next to this one.
 #
 # Flavors:
-#   install        full install.sh desktop; greetd/tuigreet login as user 'rustle'
+#   install        full install desktop; greetd/tuigreet login as user 'rustle'
 #                  (it runs via su - rustle with a temporary NOPASSWD wheel sudo,
 #                  exactly like the install_dotfiles() step in rstl-install.sh,
 #                  so the desktop config lands in rustle's home; root keeps a
 #                  copy too)
 #   rstl-inst      same desktop, but boots straight into the rstl-inst TUI on tty1
 #                  (install to disk / try-live sway / network / shell)
-#   install-min    minimal desktop, install-min.sh runs as root
+#   install-min    minimal desktop, minstall runs as root
 #   install-base   bare-minimum sway desktop, no audio codecs/TUIs/BT/NM
 #
 # Program configurations (--program):
@@ -440,8 +440,8 @@ fi
 # preflight
 # ---------------------------------------------------------------------------
 [ "$(id -u)" -eq 0 ] || die "must be run as root (pacstrap / mksquashfs need it)"
-for cmd in pacstrap arch-chroot mksquashfs unsquashfs; do
-    command -v "$cmd" >/dev/null 2>&1 || die "'$cmd' not found (install arch-install-scripts + squashfs-tools)"
+for cmd in basestrap arch-chroot mksquashfs unsquashfs; do
+    command -v "$cmd" >/dev/null 2>&1 || die "'$cmd' not found (install Artix install tools + squashfs-tools)"
 done
 command -v wget >/dev/null 2>&1 || die "'wget' not found (mkFRkernel needs it to fetch the skeleton initrd)"
 [ -x "$REPO/mkFRkernel" ] || die "missing mkFRkernel next to this script"
@@ -496,11 +496,11 @@ ask_level() {
 arch_level="$(ask_level)"
 pacman_conf_name="pacman-v${arch_level}.conf"
 [ -f "$REPO/$pacman_conf_name" ] || die "missing $pacman_conf_name for x86-64-v$arch_level"
-[ -f "$REPO/pacman-base.conf" ] || die "missing pacman-base.conf"
+[ -f "$REPO/pacman-artix-bootstrap.conf" ] || die "missing pacman-artix-bootstrap.conf"
 info "x86-64-v$arch_level -> $pacman_conf_name; flavor: $flavor; kernel: $kernel_pkg"
 
 # ---------------------------------------------------------------------------
-# 1. pacstrap a base rootfs (plain Arch repos; CachyOS comes next)
+# 1. basestrap a runit Artix base rootfs (optimized repos come next)
 # ---------------------------------------------------------------------------
 SELF_BIND=0
 cleanup() {
@@ -513,11 +513,11 @@ trap cleanup EXIT
 header "Preparing rootfs at '$ROOTFS'"
 if [ -n "$reuse_rootfs" ]; then
     [ -d "$ROOTFS" ] || die "--reuse-rootfs '$ROOTFS' is not a directory"
-    info "reusing base rootfs '$ROOTFS' (skip pacstrap / CachyOS bootstrap / -Syu / kernel)"
+    info "reusing base rootfs '$ROOTFS' (skip basestrap / repo bootstrap / -Syu / kernel)"
 else
     mkdir -p "$ROOTFS"
-    pacstrap -C "$REPO/pacman-base.conf" -K "$ROOTFS" --noconfirm base sudo git
-    # marker so install-min.sh / install-base.sh may run as root inside a rootfs
+    basestrap -C "$REPO/pacman-artix-bootstrap.conf" -K "$ROOTFS" --noconfirm base runit elogind-runit sudo git artix-archlinux-support archlinux-mirrorlist
+    # marker so minstall / binstall may run as root inside a rootfs
     touch "$ROOTFS/etc/.rstl-sway-rootfs"
 fi
 
@@ -534,7 +534,8 @@ mount --bind "$ROOTFS" "$ROOTFS"
 SELF_BIND=1
 
 # ---------------------------------------------------------------------------
-# 2. install the CachyOS keyring + mirrorlists, then swap in the pacman.conf
+# 2. install the ALHP mirrorlist and CachyOS keyring + mirrorlists, then swap in
+#    the Artix + Arch compatibility + ALHP + CachyOS pacman.conf
 # ---------------------------------------------------------------------------
 bootstrap_cachyos() {
     info "installing CachyOS keyring + mirrorlists into '$ROOTFS'"
@@ -559,6 +560,8 @@ bootstrap_cachyos() {
 }
 if [ -z "$reuse_rootfs" ]; then
     bootstrap_cachyos
+
+    install -Dm644 "$REPO/alhp-mirrorlist" "$ROOTFS/etc/pacman.d/alhp-mirrorlist"
 
     cp -a "$REPO/$pacman_conf_name" "$ROOTFS/etc/pacman.conf"
 
@@ -890,7 +893,7 @@ EOMKAN
     rm -f "$acc"
 }
 
-# rustle can run install.sh through sudo; grant wheel NOPASSWD only for the
+# rustle can run install through sudo; grant wheel NOPASSWD only for the
 # duration of the installer, then restore normal password sudo (like the
 # install_dotfiles() function in rstl-install.sh).
 install_as_rustle() {
@@ -928,7 +931,7 @@ set_passwords() {
 header "Installing flavor: $flavor"
 case "$flavor" in
     install-min)
-        chr /bin/sh -c "RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox /root/.config/rstl.sway/bin/install-min.sh $FLAG_YES"
+        chr /bin/sh -c "RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox /root/.config/rstl.sway/bin/minstall $FLAG_YES"
         ensure_rustle_user
         # surface the root-staged desktop config for the rustle login too
         home="$ROOTFS/home/rustle"
@@ -942,7 +945,7 @@ case "$flavor" in
         ;;
 
     install-base)
-        chr /bin/sh -c "RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox /root/.config/rstl.sway/bin/install-base.sh $FLAG_YES"
+        chr /bin/sh -c "RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox /root/.config/rstl.sway/bin/binstall $FLAG_YES"
         ensure_rustle_user
         # surface the root-staged desktop config for the rustle login too
         home="$ROOTFS/home/rustle"
@@ -956,10 +959,10 @@ case "$flavor" in
         ;;
 
     install)
-        # run install.sh as rustle so the desktop config lands in rustle's home,
+        # run install as rustle so the desktop config lands in rustle's home,
         # exactly like rstl-install.sh's install_dotfiles() (NOPASSWD wheel, then
         # restore); root keeps a copy of the same config
-        install_as_rustle bin/install.sh
+        install_as_rustle bin/install
         set_passwords
         # root's config stays the skel copy (single repo): re-point the link in
         # case the as-rustle flow ever replaced it, then wire the root symlinks
@@ -970,8 +973,8 @@ case "$flavor" in
         ;;
 
     rstl-inst)
-        install_as_rustle bin/install.sh
-        # root's path to the full staged repo (via the skel link; bin/install.sh
+        install_as_rustle bin/install
+        # root's path to the full staged repo (via the skel link; bin/install
         # + rstl-install.sh intact) so the TUI's "Install" ->
         # ~/.config/rstl.sway/rstl-install.sh works
         replicate_symlinks "$ROOTFS/root"
@@ -980,7 +983,7 @@ case "$flavor" in
 esac
 
 # ---- host-side ELF trim ----
-# install-base.sh / install-min.sh defer their strip for rootfs builds: doing
+# binstall / minstall defer their strip for rootfs builds: doing
 # it inside the chroot strips the chroot's LIVE interpreter/libs, which has
 # been observed to segfault the chrooted bash at exit under CI. Nothing runs
 # from the rootfs binaries now, so strip them here from the build machine.

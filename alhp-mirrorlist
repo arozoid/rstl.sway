@@ -1,0 +1,5 @@
+## ALHP repository mirrors (upstream alhp-mirrorlist format)
+Server = https://cdn.alhp.dev/$repo/os/$arch/
+Server = https://alhp.krautflare.de/$repo/os/$arch/
+Server = https://mirror.sunred.org/alhp/$repo/os/$arch/
+Server = https://alhp.nox.panibrez.com/$repo/os/$arch/

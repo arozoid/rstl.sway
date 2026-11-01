@@ -34,10 +34,11 @@
 #      .git (the build strips it and the installers never copy one in), so
 #      there is nothing to pull from
 #   3. upgrades the system: pacman -Syu, dnf upgrade or xbps-install -Syu
-#   4. re-runs bin/install-<edition>.sh --yes --no-cleanup with the program
-#      configuration and browser bundle this machine had, which re-applies the
-#      dotfiles and makes sure every package in packages-<edition>.txt is
-#      installed and current (the installer skips already-current packages)
+#   4. re-runs the edition's installer (bin/install, bin/minstall or
+#      bin/binstall) with --yes --no-cleanup and the program configuration and
+#      browser bundle this machine had, which re-applies the dotfiles and makes
+#      sure every package in packages-<edition>.txt is installed and current
+#      (the installer skips already-current packages)
 #
 # The cleanup step of the installer is skipped on purpose: it is a build-time
 # size optimization (orphan removal, cache purge, dev headers) and must not run
@@ -216,6 +217,8 @@ detect_distro() {
         echo void
     elif command -v dnf >/dev/null 2>&1; then
         echo fedora
+    elif [ -r /etc/artix-release ]; then
+        echo artix
     elif command -v pacman >/dev/null 2>&1; then
         echo arch
     else
@@ -278,7 +281,7 @@ if [ -z "$INIT" ]; then
     INIT="$(indicator_get init)"
     case "$INIT" in
         systemd|runit) ;;
-        *) if [ "$DISTRO" = "void" ]; then INIT=runit; else INIT=systemd; fi ;;
+        *) if [ "$DISTRO" = "void" ] || [ "$DISTRO" = "artix" ]; then INIT=runit; else INIT=systemd; fi ;;
     esac
 fi
 info "init system: ${INIT}"
@@ -314,11 +317,11 @@ fetch_dotfiles() {
         clone_dotfiles "no git checkout" || return 1
     fi
 
-    # the full edition's installer is bin/install.sh, not bin/install-install.sh
+    # map the edition label in .rstl-edition to the installer script name
     case "$EDITION" in
-        install)      INSTALLER="bin/install.sh" ;;
-        install-min)  INSTALLER="bin/install-min.sh" ;;
-        install-base) INSTALLER="bin/install-base.sh" ;;
+        install)      INSTALLER="bin/install" ;;
+        install-min)  INSTALLER="bin/minstall" ;;
+        install-base) INSTALLER="bin/binstall" ;;
     esac
     if [ -f "${SOURCE_DIR}/${INSTALLER}" ]; then
         return 0
