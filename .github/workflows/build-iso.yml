@@ -551,22 +551,63 @@ jobs:
           headers=(-H "Authorization: Bearer $GH_TOKEN" \
                    -H 'Accept: application/vnd.github+json' \
                    -H 'X-GitHub-Api-Version: 2022-11-28')
-          release="$(curl -fsSL "${headers[@]}" "$api/releases/tags/$RELEASE_TAG")"
+          release="$(curl --http1.1 --retry 3 --retry-all-errors --retry-delay 2 \
+            -fsSL "${headers[@]}" "$api/releases/tags/$RELEASE_TAG")"
           release_id="$(jq -er '.id' <<< "$release")"
           uploads="https://uploads.github.com/repos/$GH_REPO/releases/$release_id/assets"
           for iso in dist/*.iso; do
             [ -f "$iso" ] || { echo "::error::no ISO files found"; exit 1; }
             asset="$(basename "$iso")"
-            old_id="$(jq -r --arg name "$asset" '.assets[]? | select(.name == $name) | .id' <<< "$release" | head -n 1)"
-            if [ -n "$old_id" ]; then
-              curl -fsSL -X DELETE "${headers[@]}" "$api/releases/assets/$old_id" >/dev/null
-            fi
-            echo "Uploading $asset to $RELEASE_TAG"
-            curl -fL --retry 3 --retry-delay 2 \
-              "${headers[@]}" \
-              -H 'Content-Type: application/octet-stream' \
-              --data-binary "@$iso" \
-              "$uploads?name=$asset" >/dev/null
+            expected_size="$(stat -c '%s' "$iso")"
+            expected_digest="sha256:$(sha256sum "$iso" | awk '{print $1}')"
+            uploaded=0
+
+            for attempt in 1 2 3 4 5; do
+              assets="$(curl --http1.1 --retry 3 --retry-all-errors --retry-delay 2 \
+                -fsSL "${headers[@]}" "$api/releases/$release_id/assets?per_page=100")" || {
+                  echo "::warning::could not check release assets for $asset (attempt $attempt/5)"
+                  sleep "$((attempt * 10))"
+                  continue
+                }
+              existing="$(jq -c --arg name "$asset" '[.[] | select(.name == $name)][0] // empty' <<< "$assets")"
+              if [ -n "$existing" ]; then
+                old_id="$(jq -r '.id' <<< "$existing")"
+                old_size="$(jq -r '.size' <<< "$existing")"
+                old_digest="$(jq -r '.digest // empty' <<< "$existing")"
+                if [ "$old_size" = "$expected_size" ] && \
+                   { [ -z "$old_digest" ] || [ "$old_digest" = "$expected_digest" ]; }; then
+                  echo "$asset is already uploaded and verified"
+                  uploaded=1
+                  break
+                fi
+                echo "Removing incomplete or mismatched asset $asset"
+                if ! curl --http1.1 --retry 3 --retry-all-errors --retry-delay 2 \
+                    -fsSL -X DELETE "${headers[@]}" "$api/releases/assets/$old_id" >/dev/null; then
+                  echo "::warning::could not remove stale asset $asset (attempt $attempt/5)"
+                  sleep "$((attempt * 10))"
+                  continue
+                fi
+              fi
+
+              echo "Uploading $asset to $RELEASE_TAG (attempt $attempt/5)"
+              if curl --http1.1 --connect-timeout 30 --max-time 3600 \
+                  --speed-time 120 --speed-limit 1024 -fL \
+                  "${headers[@]}" \
+                  -H 'Content-Type: application/octet-stream' \
+                  --data-binary "@$iso" \
+                  "$uploads?name=$asset" >/dev/null; then
+                uploaded=1
+                break
+              fi
+
+              echo "::warning::upload attempt $attempt/5 failed for $asset; checking again before retry"
+              sleep "$((attempt * 10))"
+            done
+
+            [ "$uploaded" -eq 1 ] || {
+              echo "::error::failed to upload $asset after 5 attempts"
+              exit 1
+            }
           done
 
   # Update only the release description after every worker has uploaded its
