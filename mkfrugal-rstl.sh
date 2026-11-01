@@ -983,6 +983,14 @@ case "$flavor" in
         ;;
 esac
 
+# The package-list installer treats per-package extras as optional and can
+# skip Firefox when the configured repos do not resolve it. Firefox ISOs must
+# never silently ship without their defining package, so enforce it here.
+if [ "$opt_firefox" -eq 1 ]; then
+    info "ensuring Firefox is installed for this browser variant"
+    chr pacman -S --needed --noconfirm firefox
+fi
+
 # ---- host-side ELF trim ----
 # binstall / minstall defer their strip for rootfs builds: doing
 # it inside the chroot strips the chroot's LIVE interpreter/libs, which has

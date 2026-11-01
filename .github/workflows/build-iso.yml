@@ -547,3 +547,29 @@ jobs:
               --data-binary "@$iso" \
               "$uploads?name=$asset" >/dev/null
           done
+
+  # Update only the release description after every worker has uploaded its
+  # assets. ISO bytes still go straight from each matrix worker to GitHub.
+  finalize-release:
+    name: Finalize release notes
+    if: always()
+    needs: [prepare-release, build-base, build-iso]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Replace the in-progress placeholder
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.release_tag }}
+          BASE_RESULT: ${{ needs.build-base.result }}
+          ISO_RESULT: ${{ needs.build-iso.result }}
+        run: |
+          set -euo pipefail
+          if [ "$BASE_RESULT" = success ] && [ "$ISO_RESULT" = success ]; then
+            notes="All ISO assets finished building and uploading successfully."
+          else
+            notes="$(printf 'ISO build did not fully succeed. Check the [GitHub Actions run](https://github.com/%s/actions/runs/%s) for failed or cancelled jobs.\n\nBase jobs: %s\nISO jobs: %s' "$GH_REPO" "$GITHUB_RUN_ID" "$BASE_RESULT" "$ISO_RESULT")"
+          fi
+          gh release edit "$RELEASE_TAG" --notes "$notes"
