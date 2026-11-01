@@ -1,6 +1,6 @@
 # Build rstl.sway frugal ISOs with a two-phase matrix:
 #
-#   build-base   3 jobs (one per microarchitecture v1/v2/v3). Each pacstraps
+#   build-base   3 jobs (one per microarchitecture v1/v2/v3). Each basestraps
 #                ONE install-base rootfs (linux-cachyos kernel + modules + /boot
 #                kept, users + passwords set) with mkfrugal-rstl.sh --stage-base,
 #                then uploads it as the baserootfs-<arch> artifact. Only these
@@ -30,9 +30,9 @@
 # workflow_dispatch. No push trigger: releases are generated on a cadence and
 # pruned to keep only the 2 most recent (see the release job).
 #
-# --arch vN selects pacman-vN.conf so the rootfs is installed against the
-# matching CachyOS repo tier (v1/v2 -> generic [cachyos], v3 -> the x86_64_v3
-# optimized repo).
+# Jobs run in Artix runit containers. --arch vN selects pacman-vN.conf so the
+# rootfs uses Artix repos, Arch compatibility, ALHP tiers supported by that
+# CPU level, and the CachyOS generic/v3/v4 repositories.
 #
 # v4 is intentionally NOT in the matrix: x86_64_v4 (AVX-512) binaries signal 4
 # (SIGILL) as soon as a chrooted command runs on a host without AVX-512, and
@@ -61,7 +61,7 @@ jobs:
     name: base-${{ matrix.arch }}
     runs-on: ubuntu-latest
     container:
-      image: archlinux:latest
+      image: artixlinux/artixlinux:base-runit
       options: --privileged
     strategy:
       fail-fast: false
@@ -72,7 +72,10 @@ jobs:
         run: |
           pacman -Syu --noconfirm \
             base-devel sudo git rust wget xorriso mtools dosfstools \
-            squashfs-tools arch-install-scripts grub kmod cpio gzip xz zstd
+            squashfs-tools artools-base grub kmod cpio gzip xz zstd
+
+      - name: Provide the Arch chroot command name used by the builder
+        run: ln -s /usr/bin/artix-chroot /usr/local/bin/arch-chroot
 
       - name: Pin HOME=/root for chroot sanity
         run: echo "HOME=/root" >> "$GITHUB_ENV"
@@ -165,7 +168,7 @@ jobs:
     needs: build-base
     runs-on: ubuntu-latest
     container:
-      image: archlinux:latest
+      image: artixlinux/artixlinux:base-runit
       options: --privileged
     strategy:
       fail-fast: false
@@ -185,7 +188,10 @@ jobs:
         run: |
           pacman -Syu --noconfirm \
             base-devel sudo git rust wget xorriso mtools dosfstools \
-            squashfs-tools arch-install-scripts grub kmod cpio gzip xz zstd
+            squashfs-tools artools-base grub kmod cpio gzip xz zstd
+
+      - name: Provide the Arch chroot command name used by the builder
+        run: ln -s /usr/bin/artix-chroot /usr/local/bin/arch-chroot
 
       - name: Pin HOME=/root for chroot sanity
         run: echo "HOME=/root" >> "$GITHUB_ENV"
