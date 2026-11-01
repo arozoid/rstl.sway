@@ -516,7 +516,7 @@ if [ -n "$reuse_rootfs" ]; then
     info "reusing base rootfs '$ROOTFS' (skip basestrap / repo bootstrap / -Syu / kernel)"
 else
     mkdir -p "$ROOTFS"
-    basestrap -C "$REPO/pacman-artix-bootstrap.conf" -K "$ROOTFS" --noconfirm base runit elogind-runit sudo git artix-archlinux-support archlinux-mirrorlist
+    basestrap -C "$REPO/pacman-artix-bootstrap.conf" -K "$ROOTFS" --noconfirm base runit runit-rc elogind-runit sudo git artix-archlinux-support archlinux-mirrorlist
     # marker so minstall / binstall may run as root inside a rootfs
     touch "$ROOTFS/etc/.rstl-sway-rootfs"
 fi
@@ -825,9 +825,10 @@ chr() {
     if arch-chroot "$ROOTFS" env HOME=/root "$@"; then
         echo "  [chr ok] $*" >&2
         return 0
+    else
+        rc=$?
     fi
     # always attribute a failing/crashing chroot call before set -e aborts
-    rc=$?
     echo "  [chr FAILED rc=$rc] $*" >&2
     return $rc
 }

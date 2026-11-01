@@ -98,8 +98,14 @@ DISTRO="$(detect_distro)"
 if { [ "$DISTRO" = "void" ] || [ "$DISTRO" = "artix" ]; } && [ "$INIT_GIVEN" -eq 0 ]; then
     RUNIT=1
 fi
-if [ "$RUNIT" -eq 1 ] && [ ! -d /etc/sv ]; then
-    echo "--runit needs runit (/etc/sv is missing)" >&2
+RUNIT_SV_DIR=/etc/sv
+RUNIT_SERVICE_DIR=/var/service
+if [ "$DISTRO" = artix ]; then
+    RUNIT_SV_DIR=/etc/runit/sv
+    RUNIT_SERVICE_DIR=/run/runit/service
+fi
+if [ "$RUNIT" -eq 1 ] && [ ! -d "$RUNIT_SV_DIR" ]; then
+    echo "--runit needs runit ($RUNIT_SV_DIR is missing)" >&2
     exit 1
 fi
 
@@ -246,12 +252,12 @@ runit_service() {
 service_enable() {
     if [ "$RUNIT" -eq 1 ]; then
         svc="$(runit_service "$1")"
-        if [ ! -d "/etc/sv/$svc" ]; then
-            echo "  runit service ${svc} not found in /etc/sv" >&2
+        if [ ! -d "$RUNIT_SV_DIR/$svc" ]; then
+            echo "  runit service ${svc} not found in $RUNIT_SV_DIR" >&2
             return 1
         fi
-        run_sudo mkdir -p /var/service
-        run_sudo ln -sfn "/etc/sv/$svc" "/var/service/$svc"
+        run_sudo mkdir -p "$RUNIT_SERVICE_DIR"
+        run_sudo ln -sfn "$RUNIT_SV_DIR/$svc" "$RUNIT_SERVICE_DIR/$svc"
     else
         run_sudo systemctl enable "$1"
     fi
@@ -272,7 +278,7 @@ service_disable_now() {
     if [ "$RUNIT" -eq 1 ]; then
         svc="$(runit_service "$1")"
         run_sudo sv down "$svc" >/dev/null 2>&1 || true
-        [ -e "/var/service/$svc" ] && run_sudo rm -f "/var/service/$svc"
+        [ -e "$RUNIT_SERVICE_DIR/$svc" ] && run_sudo rm -f "$RUNIT_SERVICE_DIR/$svc"
     else
         run_sudo systemctl disable --now "$1" >/dev/null 2>&1 || true
     fi
