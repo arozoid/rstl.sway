@@ -5,6 +5,8 @@
 #   bin/update.sh                          update this machine
 #   bin/update.sh --yes                    do not ask for confirmation
 #   bin/update.sh --edition install-min    update a specific edition
+#   bin/update.sh --runit                  keep runit (default on Void)
+#   bin/update.sh --systemd                switch the service calls back to systemd
 #   bin/update.sh --root                   update a root installation
 #   bin/update.sh --help                   show this help
 #
@@ -13,6 +15,7 @@
 #                     update this edition instead of the detected one
 #   --program <vim|mouse>                 program configuration to keep
 #   --firefox / --no-firefox              keep or drop the firefox bundle
+#   --runit / --systemd                   override the recorded init system
 #   --no-upgrade                          skip the system upgrade (pacman -Syu / dnf upgrade / xbps-install -Syu)
 #   --yes, -y                             do not ask for confirmation
 #   --root                                root installation (installs into /root, no sudo)
@@ -21,8 +24,9 @@
 #   --help, -h                            show this help
 #
 # What it does:
-#   1. works out the edition, the program configuration and the firefox bundle
-#      from ~/.config/rstl.sway/.rstl-edition (the installers rewrite it on every
+#   1. works out the edition, the program configuration, the firefox bundle,
+#      the distribution and the init system from
+#      ~/.config/rstl.sway/.rstl-edition (the installers rewrite it on every
 #      run) and falls back to detecting them from the installed packages when
 #      that file is missing
 #   2. fetches the newest dotfiles: `git pull` when the directory still is a
@@ -49,6 +53,8 @@ DO_UPGRADE=1
 EDITION=""
 PROGRAM=""
 FIREFOX=""
+DISTRO=""
+INIT=""
 SOURCE_DIR=""
 CLONE_DIR=""
 
@@ -117,6 +123,8 @@ while [ "$#" -gt 0 ]; do
         --program=*)         PROGRAM="${1#*=}"; shift ;;
         --firefox)           FIREFOX=1; shift ;;
         --no-firefox)        FIREFOX=0; shift ;;
+        --runit)             INIT=runit; shift ;;
+        --systemd)           INIT=systemd; shift ;;
         --dir)               [ "$#" -ge 2 ] || die "--dir needs a value"
                             DOTFILES_DIR="$2"; shift 2 ;;
         --dir=*)             DOTFILES_DIR="${1#*=}"; shift ;;
@@ -143,15 +151,19 @@ case "$FIREFOX" in
     ""|0|1) ;;
     *) die "--firefox/--no-firefox take no value, got: $FIREFOX" ;;
 esac
+case "$INIT" in
+    ""|systemd|runit) ;;
+    *) die "unknown init system '$INIT' (systemd, runit)" ;;
+esac
 case "$RSTL_ROOT" in
     0|1) ;;
     *) die "RSTL_ROOT must be 0 or 1, got: $RSTL_ROOT" ;;
 esac
 if [ "$RSTL_ROOT" -eq 1 ] && [ "$(id -u)" -ne 0 ]; then
-    die "--root requires running as root (use bin/update-root.sh)"
+    die "--root requires running as root (run this script with sudo)"
 fi
 if [ "$(id -u)" -eq 0 ] && [ "$RSTL_ROOT" -ne 1 ] && [ ! -e /etc/.rstl-sway-rootfs ]; then
-    die "do not run as root. Run as your normal user (sudo is used when needed). For an intentional root update use bin/update-root.sh or --root."
+    die "do not run as root. Run as your normal user (sudo is used when needed). For an intentional root update pass --root."
 fi
 [ -d "$DOTFILES_DIR" ] || die "${DOTFILES_DIR} does not exist - nothing to update. Run an installer first (see MANUAL_INSTALL.md)."
 
@@ -199,6 +211,18 @@ detect_program() {
     fi
 }
 
+detect_distro() {
+    if command -v xbps-install >/dev/null 2>&1; then
+        echo void
+    elif command -v dnf >/dev/null 2>&1; then
+        echo fedora
+    elif command -v pacman >/dev/null 2>&1; then
+        echo arch
+    else
+        echo unknown
+    fi
+}
+
 # ---------------------------------------------------------------------------
 # plan
 # ---------------------------------------------------------------------------
@@ -240,6 +264,24 @@ if [ -z "$FIREFOX" ]; then
     esac
 fi
 info "firefox bundle: ${FIREFOX}"
+
+if [ -z "$DISTRO" ]; then
+    DISTRO="$(indicator_get distro)"
+    case "$DISTRO" in
+        arch|fedora|void) ;;
+        *) DISTRO="$(detect_distro)" ;;
+    esac
+fi
+info "distribution: ${DISTRO}"
+
+if [ -z "$INIT" ]; then
+    INIT="$(indicator_get init)"
+    case "$INIT" in
+        systemd|runit) ;;
+        *) if [ "$DISTRO" = "void" ]; then INIT=runit; else INIT=systemd; fi ;;
+    esac
+fi
+info "init system: ${INIT}"
 
 # ---------------------------------------------------------------------------
 # fetch the newest dotfiles
@@ -365,6 +407,8 @@ header "update plan"
 printf "  edition   %s\n" "$EDITION"
 printf "  program   %s\n" "$PROGRAM"
 printf "  firefox   %s\n" "$FIREFOX"
+printf "  distro    %s\n" "$DISTRO"
+printf "  init      %s\n" "$INIT"
 printf "  packages  %s core packages from %s\n" "$CORE_COUNT" "$(basename "$LIST")"
 printf "  system    %s\n" "$([ "$DO_UPGRADE" -eq 1 ] && echo "${UPGRADE_CMD:-no package manager found}" || echo 'no system upgrade (--no-upgrade)')"
 echo
@@ -393,8 +437,11 @@ ROOT_ARG=""
 if [ "$(id -u)" -eq 0 ]; then
     ROOT_ARG="--root"
 fi
+# Pass the init system explicitly: on Void the installer would otherwise default
+# to runit even when the user asked for systemd (and vice versa).
+INIT_ARG="--${INIT}"
 if RSTL_PROGRAM="$PROGRAM" RSTL_FIREFOX="$FIREFOX" \
-   sh "${SOURCE_DIR}/${INSTALLER}" --yes --no-cleanup $ROOT_ARG; then
+   sh "${SOURCE_DIR}/${INSTALLER}" --yes --no-cleanup "$INIT_ARG" $ROOT_ARG; then
     ok "dotfiles updated"
 else
     die "the installer failed - see the output above"

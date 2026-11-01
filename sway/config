@@ -19,7 +19,8 @@
 # local/ is the opposite: the installers leave it alone. The ratl settings
 # tools (win+comma, or `rstl rstl-settings`) live in ratl/ and write their
 # generated overrides to local/; the include at the bottom gives them the last
-# word.
+# word. Those tools are deprecated but kept working until the replacement
+# settings suite lands.
 
 ### modifier
 set $mod Mod4 

@@ -64,16 +64,30 @@ all installers support:
 | `--firefox`           | install firefox        |
 | `--no-firefox`        | skip firefox           |
 | `--no-cleanup`        | skip package cleanup   |
-| `--root`              | install into `/root`   |
+| `--root`              | install into `/root` (must already be root) |
+| `--runit`             | manage services with runit instead of systemd (default on Void) |
+| `--systemd`           | manage services with systemd (overrides the Void default) |
 | `--help`              | show available options |
 
-for root installations, use the corresponding wrappers:
+for root installations, pass `--root` to the installer itself:
 
 ```bash
-bin/install-root.sh --yes
-bin/install-min-root.sh --yes
-bin/install-base-root.sh --yes
+sudo bin/install.sh --root --yes
+sudo bin/install-min.sh --root --yes
+sudo bin/install-base.sh --root --yes
+sudo bin/update.sh --root --yes
 ```
+
+the distribution is detected from the package manager (`arch`, `fedora`,
+`void`) and recorded in `.rstl-edition`. on Void runit is the default init
+system; `--systemd` overrides that, and `--runit` asks for runit anywhere it is
+installed. Artix is not supported yet: `--runit` on a system without `/etc/sv`
+fails early.
+
+there is no `systemctl --user` under runit, so the installers skip per-user
+services and write `sway/config.d/90-audio.conf`, which starts pipewire in the
+sway session. WirePlumber and the PulseAudio interface are linked from the
+distribution's example configs into `~/.config/pipewire/pipewire.conf.d`.
 
 ### updating
 
@@ -81,7 +95,10 @@ bin/install-base-root.sh --yes
 rstl update.sh
 ```
 
-updates packages and dotfiles, then reapplies the installed edition.
+updates packages and dotfiles, then reapplies the installed edition. `--runit` /
+`--systemd` override the recorded init system; everything else (edition,
+program, firefox, distribution, init) is read from `.rstl-edition`, which the
+installers rewrite on every run.
 
 use `--help` to see additional options.
 
@@ -94,7 +111,9 @@ rstl install.sh --yes
 rstl update.sh
 ```
 
-running `rstl` without arguments opens an interactive script picker.
+running `rstl` without arguments opens an interactive script picker. the
+deprecated ratl settings tools in `ratl/` are not listed there, but still run by
+name (`rstl rstl-settings`) until the replacement settings suite lands.
 
 ## configuration
 

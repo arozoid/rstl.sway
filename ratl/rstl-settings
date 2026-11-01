@@ -1,6 +1,10 @@
 #!/bin/sh
 # rstl.sway settings - one ratl menu for display, wallpaper, input, keys, power and FRUGAL changes.
 #
+# DEPRECATED: this ratl settings tool is no longer listed by the `rstl`
+# menu and will be replaced by the new settings suite. It still runs when
+# called by name (the sway binding uses it) until that replacement lands.
+#
 # Usage:
 #   rstl-settings              open the settings menu
 #   rstl-settings display      open a category directly

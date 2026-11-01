@@ -1,6 +1,10 @@
 #!/bin/sh
 # rstl.sway power management - idle timeouts, lid switch and power profile.
 #
+# DEPRECATED: this ratl settings tool is no longer listed by the `rstl`
+# menu and will be replaced by the new settings suite. It still runs when
+# called by name (the sway binding uses it) until that replacement lands.
+#
 # Usage:
 #   rstl-power                 edit lock/blank/suspend timers and the lid action
 #   rstl-power --help          show this help

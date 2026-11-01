@@ -1,6 +1,10 @@
 #!/bin/sh
 # rstl.sway keyboard shortcuts - inspect and rebind top-level sway bindings.
 #
+# DEPRECATED: this ratl settings tool is no longer listed by the `rstl`
+# menu and will be replaced by the new settings suite. It still runs when
+# called by name (the sway binding uses it) until that replacement lands.
+#
 # Usage:
 #   rstl-keys                  choose a binding, edit its key and command
 #   rstl-keys --help           show this help

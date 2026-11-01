@@ -1,6 +1,10 @@
 #!/bin/sh
 # rstl.sway input options - keyboard, pointer and touchpad settings.
 #
+# DEPRECATED: this ratl settings tool is no longer listed by the `rstl`
+# menu and will be replaced by the new settings suite. It still runs when
+# called by name (the sway binding uses it) until that replacement lands.
+#
 # Usage:
 #   rstl-input                 choose an input device, then edit its settings
 #   rstl-input --help          show this help

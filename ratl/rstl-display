@@ -1,6 +1,10 @@
 #!/bin/sh
 # rstl.sway display options - resolution, scale and rotation per output.
 #
+# DEPRECATED: this ratl settings tool is no longer listed by the `rstl`
+# menu and will be replaced by the new settings suite. It still runs when
+# called by name (the sway binding uses it) until that replacement lands.
+#
 # Usage:
 #   rstl-display               choose an output, then its mode/scale/rotation
 #   rstl-display --help        show this help

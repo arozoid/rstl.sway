@@ -1,6 +1,10 @@
 #!/bin/sh
 # rstl.sway FRUGAL changes - merge RAM-only changes into the real profile.
 #
+# DEPRECATED: this ratl settings tool is no longer listed by the `rstl`
+# menu and will be replaced by the new settings suite. It still runs when
+# called by name (the sway binding uses it) until that replacement lands.
+#
 # Usage:
 #   rstl-changes               find the running RAM overlay and merge it
 #   rstl-changes --dry-run     show what would be merged, change nothing

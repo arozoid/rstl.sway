@@ -11,11 +11,15 @@
 #   rstl --help               this help
 #
 # With no arguments on a terminal, rstl is a small REPL: it lists everything
-# runnable in ~/.config/rstl.sway/bin and ~/.config/rstl.sway/ratl, one line per
-# script with the description from that script's own header, takes a number (or
-# a name), prints the script's --help when it has one, asks for the arguments
-# and runs it. When the script finishes the menu comes back, so several things
-# can be run in a row; an empty line leaves.
+# runnable in ~/.config/rstl.sway/bin, one line per script with the description
+# from that script's own header, takes a number (or a name), prints the script's
+# --help when it has one, asks for the arguments and runs it. When the script
+# finishes the menu comes back, so several things can be run in a row; an empty
+# line leaves.
+#
+# The ratl settings tools in ratl/ are deprecated: they are still resolvable by
+# name (rstl rstl-settings) so existing sway bindings keep working, but they are
+# deliberately not listed in the menu.
 #
 # Without a terminal there is nobody to answer the prompts, so the plain listing
 # stands: print the scripts and exit 2. That is what a script asking "what can I
@@ -77,7 +81,7 @@ usage() {
 }
 
 # ---------------------------------------------------------------------------
-# what is in bin/ and ratl/
+# what is in bin/
 # ---------------------------------------------------------------------------
 # A script describes itself: the first line of its own header comment is its
 # description, so a new script shows up in the menu with something useful
@@ -89,28 +93,25 @@ describe() {
         | sed 's/^rstl\.sway[[:space:]]\{1,\}//'
 }
 
-# every runnable script in bin/ and ratl/, one per line, as
-# "name|description"
+# every runnable script in bin/, one per line, as "name|description". The
+# deprecated ratl/ tools are intentionally not listed, but resolve() still finds
+# them when they are named explicitly.
 available() {
-    for dir in "$BIN_DIR" "$RATL_DIR"; do
-        [ -d "$dir" ] || continue
-        for f in "$dir"/*; do
-            [ -f "$f" ] && [ -x "$f" ] || continue
-            [ "${f##*/}" = "rstl" ] && continue
-            printf '%s|%s\n' "${f##*/}" "$(describe "$f")"
-        done
+    [ -d "$BIN_DIR" ] || return 0
+    for f in "$BIN_DIR"/*; do
+        [ -f "$f" ] && [ -x "$f" ] || continue
+        [ "${f##*/}" = "rstl" ] && continue
+        printf '%s|%s\n' "${f##*/}" "$(describe "$f")"
     done
 }
 
 # the plain names, for the non-interactive listing and the error messages
 available_names() {
-    for dir in "$BIN_DIR" "$RATL_DIR"; do
-        [ -d "$dir" ] || continue
-        for f in "$dir"/*; do
-            [ -f "$f" ] && [ -x "$f" ] || continue
-            [ "${f##*/}" = "rstl" ] && continue
-            printf '  %s\n' "${f##*/}"
-        done
+    [ -d "$BIN_DIR" ] || return 0
+    for f in "$BIN_DIR"/*; do
+        [ -f "$f" ] && [ -x "$f" ] || continue
+        [ "${f##*/}" = "rstl" ] && continue
+        printf '  %s\n' "${f##*/}"
     done
 }
 
@@ -173,7 +174,7 @@ pick() {
     count="$(printf '%s\n' "$menu" | wc -l | tr -d ' ')"
     LEAVE=0
 
-    header "dotfiles + settings ops"
+    header "dotfiles ops"
     index=0
     printf '%s\n' "$menu" | while IFS='|' read -r name desc; do
         index=$((index + 1))
@@ -246,7 +247,7 @@ pick() {
 
 repl() {
     if [ -z "$(available)" ]; then
-        printf 'rstl: no runnable scripts in %s or %s\n' "$BIN_DIR" "$RATL_DIR" >&2
+        printf 'rstl: no runnable scripts in %s\n' "$BIN_DIR" >&2
         return 1
     fi
     while :; do

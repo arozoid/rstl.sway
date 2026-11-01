@@ -172,6 +172,7 @@ sudo ln -s ~/.config/rstl.sway/greetd /etc/greetd
 ### post-install extras
 
 - enable the login manager: `sudo systemctl enable greetd` (and mask `getty@tty1` so greetd takes over)
+  - on Void/runit, link `/etc/sv/greetd` into `/var/service` instead and disable `agetty-tty1`. the installers do this for you; the same conversion applies to every service below (`dbus`, `NetworkManager`, `bluetoothd`, `cronie`, `wpa_supplicant`).
 - first-login hook: greetd/tuigreet starts sway through `rstl-first-login`, so install it once:
 
   ```bash
@@ -199,16 +200,19 @@ drop a file of your own next to them (`50-mine.conf`), and reload with
 win+shift+c. `sway -C -c ~/.config/sway/config` checks a config without
 starting a session.
 
-win+comma opens the ratl settings menu (`rstl rstl-settings` from a terminal).
-the display, wallpaper, input, keyboard-shortcut and power dialogs write
+win+comma opens the old ratl settings menu (`rstl rstl-settings` from a
+terminal). these tools are deprecated: they are no longer listed in the `rstl`
+picker and will be replaced by a new settings suite, but they still run by
+name. the display, wallpaper, input, keyboard-shortcut and power dialogs write
 generated overrides to `~/.config/rstl.sway/local/`, which `sway/config`
 includes after `sway/config.d/`. the installers leave `local/` alone, so those
 changes survive updates; delete a generated file to return to the repository
 default. the files are git-ignored except for `local/README.md`.
 
-the dialogs live in `ratl/`; `bin/rstl` searches both `bin/` and `ratl/`. they
-use a forest-green theme, and each select shows a scrolling list of up to eight
-choices instead of only the current value.
+the dialogs live in `ratl/`; `bin/rstl` still resolves a bare name there, but
+the picker only lists `bin/`. they use a forest-green theme, and each select
+shows a scrolling list of up to eight choices instead of only the current
+value.
 
 `rstl rstl-changes` handles FRUGAL's `w_changes=RAM0`, `RAM1` and `RAM2` modes:
 it finds `/mnt/layers/RAM/upper_changes`, locates the persistent profile, and

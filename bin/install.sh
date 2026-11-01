@@ -1,5 +1,5 @@
 #!/bin/sh
-# rstl.sway dotfiles installer for Arch Linux
+# rstl.sway dotfiles installer (full edition)
 #
 # Usage:
 #   bin/install.sh                  run every step, confirming each one
@@ -8,7 +8,14 @@
 #   bin/install.sh --program mouse  pick the program configuration
 #   bin/install.sh --firefox        bundle the firefox browser
 #   bin/install.sh --root           root install (installs into /root)
+#   bin/install.sh --runit          manage services with runit instead of systemd
+#   bin/install.sh --systemd        manage services with systemd (default off Void)
 #   bin/install.sh --help           show this help
+#
+# The distribution is detected from the package manager (arch, fedora, void) and
+# recorded in ../.rstl-edition. On Void, runit is the default init system;
+# --systemd overrides that, and --runit asks for runit anywhere it is installed.
+# Artix is not supported yet: --runit on a system without /etc/sv fails early.
 #
 # Every step can be cancelled with 'n' and the script keeps going. The package
 # list lives next to this script, in ../packages-install.txt, and the edition
@@ -28,6 +35,8 @@ RSTL_ROOT="${RSTL_ROOT:-0}"
 
 ASSUME_YES=0
 SKIP_CLEANUP=0
+INIT_GIVEN=0
+RUNIT=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --yes|-y)         ASSUME_YES=1; shift ;;
@@ -38,6 +47,8 @@ while [ "$#" -gt 0 ]; do
     --firefox)        RSTL_FIREFOX=1; shift ;;
     --no-firefox)     RSTL_FIREFOX=0; shift ;;
     --root)           RSTL_ROOT=1; shift ;;
+    --runit)          RUNIT=1; INIT_GIVEN=1; shift ;;
+    --systemd)        RUNIT=0; INIT_GIVEN=1; shift ;;
     --help|-h)        sed -n '2,$ { /^#/!q; s/^#[[:space:]]\{0,1\}//p; }' "$0"; exit 0 ;;
     *)                echo "unknown option: $1 (try --help)" >&2; exit 2 ;;
   esac
@@ -55,7 +66,34 @@ case "$RSTL_ROOT" in
   *) echo "RSTL_ROOT must be 0 or 1, got: $RSTL_ROOT" >&2; exit 2 ;;
 esac
 if [ "$RSTL_ROOT" -eq 1 ] && [ "$(id -u)" -ne 0 ]; then
-  echo "--root requires running as root (use bin/install-root.sh)" >&2
+  echo "--root requires running as root (run this script with sudo)" >&2
+  exit 1
+fi
+
+# Which distribution this is. The package manager is the reliable signal: a
+# chroot/rootfs has no /etc/os-release of its own, but it does have the package
+# manager the build installed. The same order as step_2 (xbps, dnf, pacman).
+detect_distro() {
+  if command -v xbps-install >/dev/null 2>&1; then
+    echo void
+  elif command -v dnf >/dev/null 2>&1; then
+    echo fedora
+  elif command -v pacman >/dev/null 2>&1; then
+    echo arch
+  else
+    echo unknown
+  fi
+}
+DISTRO="$(detect_distro)"
+
+# Void runs runit, so that is the default there. --runit asks for it anywhere;
+# Artix support is planned but not implemented, so be explicit when /etc/sv is
+# missing instead of silently calling systemctl on a system that has no systemd.
+if [ "$DISTRO" = "void" ] && [ "$INIT_GIVEN" -eq 0 ]; then
+  RUNIT=1
+fi
+if [ "$RUNIT" -eq 1 ] && [ ! -d /etc/sv ]; then
+  echo "--runit needs runit (/etc/sv is missing); Artix support is not implemented yet" >&2
   exit 1
 fi
 
@@ -65,6 +103,8 @@ fi
 EDITION="install"
 EDITION_PROGRAM="$RSTL_PROGRAM"
 PKG_LIST="packages-install.txt"
+INIT_NAME=systemd
+[ "$RUNIT" -eq 1 ] && INIT_NAME=runit
 # the step that strips build artifacts; skipped with --no-cleanup
 CLEANUP_STEP="step_9"
 
@@ -98,18 +138,15 @@ REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DOTFILES_DIR="${HOME}/.config/rstl.sway"
 
 # ---------------------------------------------------------------------------
-# temp dir for the ASCII art (kept outside the loop so data survives)
+# temp dir for the generated package lists (kept outside the loop so data
+# survives)
 # ---------------------------------------------------------------------------
 GCDIR="$(mktemp -d)"
 trap 'rm -rf "$GCDIR"' EXIT
-ASCII_FILE="$GCDIR/ascii"
-
-# ASCII art (sourced from nvim/init.lua's dashboard header)
-if [ -f "$REPO_DIR/nvim/init.lua" ]; then
-  sed -n "/local header_ascii = {/,/^  }$/p" "$REPO_DIR/nvim/init.lua" \
-    | sed -E "/local header_ascii = \{/d; /^ *}$/d; s/^ *'(.*)',?$/\1/" \
-    > "$ASCII_FILE"
-fi
+# The dashboard header is plain text in the repository so every installer (and
+# nvim itself) can use the same art without parsing a Lua file.
+ASCII_FILE="$REPO_DIR/assets/rstl-header.txt"
+[ -f "$ASCII_FILE" ] || ASCII_FILE=/dev/null
 
 rule() {
   printf "${1:-$C_CYAN}%*s${C_RESET}\n" "$BOX_W" "" | tr ' ' '='
@@ -137,7 +174,7 @@ center() {
 
 banner_start() {
   print_art "$C_CYAN"
-  center "rstl.sway · dotfiles installer for Arch Linux" "$C_BOLD$C_CYAN"
+  center "rstl.sway · dotfiles installer" "$C_BOLD$C_CYAN"
   center "minimal sway rice · zero margins · 1px borders · optimized for laptops" "$C_DIM"
   echo
 }
@@ -164,6 +201,58 @@ run_sudo() {
   else
     sudo -v
     sudo "$@"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Services: systemd (Arch/Fedora) or runit (Void, and --runit elsewhere)
+# ---------------------------------------------------------------------------
+# The installers only need three operations: enable at boot, enable + start
+# now, and disable/stop. Keeping them here means the steps below stay the same
+# on both init systems instead of growing an `if runit` in every step.
+runit_service() {
+  case "$1" in
+    greetd.service|greetd)              echo greetd ;;
+    NetworkManager.service)             echo NetworkManager ;;
+    bluetooth.service|bluetoothd)       echo bluetoothd ;;
+    cronie.service|crond.service|cron.service|cronie) echo cronie ;;
+    dbus.service|dbus)                  echo dbus ;;
+    *)                                  echo "${1%.service}" ;;
+  esac
+}
+
+service_enable() {
+  if [ "$RUNIT" -eq 1 ]; then
+    svc="$(runit_service "$1")"
+    if [ ! -d "/etc/sv/$svc" ]; then
+      warn "runit service ${svc} not found in /etc/sv"
+      return 1
+    fi
+    run_sudo mkdir -p /var/service
+    run_sudo ln -sfn "/etc/sv/$svc" "/var/service/$svc"
+  else
+    run_sudo systemctl enable "$1"
+  fi
+}
+
+service_enable_now() {
+  if [ "$RUNIT" -eq 1 ]; then
+    service_enable "$1" || return 1
+    svc="$(runit_service "$1")"
+    run_sudo sv up "$svc" >/dev/null 2>&1 ||
+      warn "could not start runit service ${svc} (try: sudo sv up ${svc})"
+  else
+    run_sudo systemctl enable --now "$1"
+  fi
+}
+
+service_disable_now() {
+  if [ "$RUNIT" -eq 1 ]; then
+    svc="$(runit_service "$1")"
+    run_sudo sv down "$svc" >/dev/null 2>&1 || true
+    [ -e "/var/service/$svc" ] && run_sudo rm -f "/var/service/$svc"
+  else
+    run_sudo systemctl disable --now "$1" >/dev/null 2>&1 || true
   fi
 }
 
@@ -213,13 +302,45 @@ dnf_map_pkg() {
   esac
 }
 
+# dnf4 spells "assume yes" --noconfirm, but dnf5 (Fedora 41+) dropped that flag
+# and keeps only the global -y/--assumeyes. -y works on both, so use it.
+DNF_YES="-y"
+
+# Cache of the names the enabled repositories offer, filled by step_2. Every
+# dnf invocation reloads the repo metadata (about a second on a normal Fedora
+# box), so the list is queried once and every lookup greps it.
+DNF_REPO_PKGS=""
+
+# Print the name of every package in the enabled repositories, one per line.
+# dnf5's --queryformat does not append a newline to each field, so the \n has to
+# be part of the format string, otherwise the whole list comes back as one long
+# line and nothing ever matches. dnf4 honours the same escape. dnf4 without
+# dnf-plugins-core has no repoquery, so fall back to `dnf list`, whose first
+# column is name.arch (the section headers have no dot, hence the awk filter).
+dnf_repo_names() {
+  if dnf repoquery --available --queryformat '%{name}\n' 2>/dev/null; then
+    return 0
+  fi
+  dnf list --quiet 2>/dev/null \
+    | awk '$1 ~ /\./ { sub(/\..*/, "", $1); print $1 }' | sort -u
+}
+
+# is $1 a package name the enabled repositories provide?
+dnf_has_pkg() {
+  if [ -n "${DNF_REPO_PKGS:-}" ] && [ -s "$DNF_REPO_PKGS" ]; then
+    grep -qxF "$1" "$DNF_REPO_PKGS"
+  else
+    dnf_repo_names | grep -qxF "$1"
+  fi
+}
+
 install_or_fallback_dnf() {
   pkg=$(dnf_map_pkg "$1"); fallback=$(dnf_map_pkg "$2")
-  if run_sudo dnf repoquery --queryformat "%{name}" 2>/dev/null | grep -qx "$pkg"; then
-    run_sudo dnf install --noconfirm --allowerasing "$pkg"
+  if dnf_has_pkg "$pkg"; then
+    run_sudo dnf install "$DNF_YES" --allowerasing "$pkg"
   else
     printf "  ${C_DIM}%s not found, using %s${C_RESET}\n" "$1" "$2"
-    run_sudo dnf install --noconfirm --allowerasing "$fallback"
+    run_sudo dnf install "$DNF_YES" --allowerasing "$fallback"
   fi
 }
 
@@ -415,10 +536,10 @@ copy_dotfiles() {
 # ---------------------------------------------------------------------------
 # Edition indicator (~/.config/rstl.sway/.rstl-edition)
 # ---------------------------------------------------------------------------
-# Which flavor installed this dotfiles directory, with which program, so
-# bin/update.sh knows what to re-apply. Rewritten from scratch on every run
-# (never merged with whatever was there) and git-ignored: it describes the
-# machine, not the repository.
+# Which distribution, init system and flavor installed this dotfiles
+# directory, with which program, so bin/update.sh knows what to re-apply.
+# Rewritten from scratch on every run (never merged with whatever was there)
+# and git-ignored: it describes the machine, not the repository.
 write_edition() {
   target="$DOTFILES_DIR/.rstl-edition"
   if ! {
@@ -426,6 +547,8 @@ write_edition() {
     printf 'edition=%s\n'   "$EDITION"
     printf 'program=%s\n'   "$EDITION_PROGRAM"
     printf 'firefox=%s\n'   "$RSTL_FIREFOX"
+    printf 'distro=%s\n'    "$DISTRO"
+    printf 'init=%s\n'      "$INIT_NAME"
     printf 'dotfiles=%s\n'  "$DOTFILES_DIR"
     printf 'packages=%s\n'  "$PKG_LIST"
     printf 'installed=%s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z' 2>/dev/null)"
@@ -433,7 +556,7 @@ write_edition() {
     warn "could not write the edition indicator ${target}"
     return 1
   fi
-  ok "edition recorded in ${target} (${EDITION}, program ${EDITION_PROGRAM})"
+  ok "edition recorded in ${target} (${EDITION}, ${DISTRO}/${INIT_NAME}, program ${EDITION_PROGRAM})"
 }
 
 # combined step header + confirmation prompt
@@ -546,26 +669,32 @@ EOF
 step_2() {
   info "installing required packages"
 
-  # detect package manager: xbps (Void) and dnf (Fedora) take precedence over
-  # pacman if more than one happens to exist
-  if command -v xbps-install >/dev/null 2>&1; then
-    PKG_MGR=xbps
-    add_void_repo
-  elif command -v dnf >/dev/null 2>&1; then
-    PKG_MGR=dnf
-    add_fedora_repo
-  elif command -v pacman >/dev/null 2>&1; then
-    PKG_MGR=pacman
-    add_rstl_repo
-    enable_multilib
-    if [ -f "$REPO_DIR/scripts/pacman-cachyos.sh" ]; then
-      sh "$REPO_DIR/scripts/pacman-cachyos.sh" ||
-        warn "could not apply the CachyOS pacman output options"
-    fi
-  else
-    warn "neither xbps, pacman nor dnf found — skipping package installation"
-    return 1
-  fi
+  # DISTRO was detected from the package manager at startup and recorded in
+  # .rstl-edition. xbps (Void) and dnf (Fedora) win over pacman if more than
+  # one happens to exist.
+  case "$DISTRO" in
+    void)
+      PKG_MGR=xbps
+      add_void_repo
+      ;;
+    fedora)
+      PKG_MGR=dnf
+      add_fedora_repo
+      ;;
+    arch)
+      PKG_MGR=pacman
+      add_rstl_repo
+      enable_multilib
+      if [ -f "$REPO_DIR/scripts/pacman-cachyos.sh" ]; then
+        sh "$REPO_DIR/scripts/pacman-cachyos.sh" ||
+          warn "could not apply the CachyOS pacman output options"
+      fi
+      ;;
+    *)
+      warn "neither xbps, pacman nor dnf found — skipping package installation"
+      return 1
+      ;;
+  esac
 
   # the package list is data: ../packages-install.txt, next to the repository
   # root. #@core goes in one atomic transaction, everything else one package at
@@ -588,31 +717,36 @@ step_2() {
     printf "  ${C_DIM}freedesktop secret service already present; skipping dssd${C_RESET}\n"
   fi
 
-  printf "  ${C_DIM}%s: %s core, %s per-package (program: %s)%s\n" \
+  printf "  ${C_DIM}%s: %s core, %s per-package (program: %s)${C_RESET}\n" \
     "$PKG_LIST" \
     "$(wc -l < "$GCDIR/packages" | tr -d ' ')" \
     "$(wc -l < "$GCDIR/packages-extra" | tr -d ' ')" \
-    "$RSTL_PROGRAM" \
-    "$C_RESET"
+    "$RSTL_PROGRAM"
 
   if [ "$PKG_MGR" = "dnf" ]; then
     # dnf resolves every target before installing anything, so filter the list
     # against the repos first: install everything that resolves in a single
-    # transaction, and report the names that do not.
-    repo_pkgs="$(mktemp)"
-    run_sudo dnf repoquery --queryformat "%{name}" > "$repo_pkgs" 2>/dev/null || : > "$repo_pkgs"
+    # transaction, and report the names that do not. The repository names are
+    # queried once and cached, because each dnf call reloads the metadata.
+    DNF_REPO_PKGS="$GCDIR/dnf-repo-pkgs"
+    if ! dnf_repo_names > "$DNF_REPO_PKGS" || [ ! -s "$DNF_REPO_PKGS" ]; then
+      fail "failed to query enabled repositories with dnf (try: sudo dnf makecache)"
+      DNF_REPO_PKGS=""
+      return 1
+    fi
     wanted=""
     missing=""
     for pkg in $(cat "$GCDIR/packages"); do
       name=$(dnf_map_pkg "$pkg")
-      if grep -qxF "$name" "$repo_pkgs"; then
+      if dnf_has_pkg "$name"; then
         wanted="$wanted $name"
       else
         missing="$missing $name"
       fi
     done
-    rm -f "$repo_pkgs"
-    wanted="${wanted# }"
+    # bluez and bluez-utils both map to bluez, so drop the duplicates
+    wanted=$(printf '%s\n' $wanted | sort -u | tr '\n' ' ')
+    wanted="${wanted% }"
     missing="${missing# }"
 
     # a session without these cannot boot into the desktop at all: refuse to
@@ -633,21 +767,22 @@ step_2() {
 
     if [ -n "$wanted" ]; then
       printf "  ${C_DIM}installing: %s${C_RESET}\n" "$wanted"
-      run_sudo dnf install --noconfirm --allowerasing $wanted
+      # shellcheck disable=SC2086  # $wanted is a list of names on purpose
+      run_sudo dnf install "$DNF_YES" --allowerasing $wanted
     fi
 
     while IFS= read -r pkg; do
       [ -n "$pkg" ] || continue
       name=$(dnf_map_pkg "$pkg")
-      if run_sudo dnf repoquery --queryformat "%{name}" 2>/dev/null | grep -qx "$name"; then
-        run_sudo dnf install --noconfirm --allowerasing "$name"
+      if dnf_has_pkg "$name"; then
+        run_sudo dnf install "$DNF_YES" --allowerasing "$name"
       else
         printf "  ${C_DIM}extra package %s not found in any repo, skipping${C_RESET}\n" "$pkg"
       fi
     done < "$GCDIR/packages-extra"
 
     # theme/cursor packages with official-repo fallbacks
-    run_sudo dnf install --noconfirm --allowerasing hicolor-icon-theme 2>/dev/null || true
+    run_sudo dnf install "$DNF_YES" --allowerasing hicolor-icon-theme 2>/dev/null || true
     install_or_fallback_dnf notwaita-cursors-grey adwaita-cursors
     install_or_fallback_dnf papirus-icon-theme-dark-only adwaita-icon-theme
     # fd: Fedora ships the binary as fd-find
@@ -902,12 +1037,18 @@ session   optional  pam_gnome_keyring.so auto_start
 EOF'
 
   printf "  ${C_DIM}enabling greetd.service${C_RESET}\n"
-  run_sudo systemctl enable greetd.service
+  service_enable_now greetd.service
 
-  printf "  ${C_DIM}masking agetty on tty1 (greetd takes over the login screen)${C_RESET}\n"
-  run_sudo systemctl mask getty@tty1.service >/dev/null 2>&1 || true
+  if [ "$RUNIT" -eq 1 ]; then
+    printf "  ${C_DIM}stopping agetty on tty1 (greetd takes over the login screen)${C_RESET}\n"
+    run_sudo sv down agetty-tty1 >/dev/null 2>&1 || true
+    [ -e /var/service/agetty-tty1 ] && run_sudo rm -f /var/service/agetty-tty1
+  else
+    printf "  ${C_DIM}masking agetty on tty1 (greetd takes over the login screen)${C_RESET}\n"
+    run_sudo systemctl mask getty@tty1.service >/dev/null 2>&1 || true
+  fi
 
-  ok "greetd configured (tuigreet -> rstl-first-login -> sway)"
+  ok "greetd configured (tuigreet -> rstl-first-login -> sway, ${INIT_NAME})"
 }
 
 # ---------------------------------------------------------------------------
@@ -961,18 +1102,43 @@ install_cron_entry() {
     printf '%s\n%s' "$merged" "$cron" | crontab -
 }
 
+# cronie's systemd unit is cronie.service on Arch/Void but crond.service on
+# Fedora/RHEL, so ask systemd which one this machine has instead of hardcoding
+# a name that does not exist on the other distribution. Under runit the service
+# lives in /etc/sv; Void's cronie package calls it cronie.
+cron_service() {
+  if [ "$RUNIT" -eq 1 ]; then
+    for svc in cronie crond cron; do
+      if [ -d "/etc/sv/$svc" ]; then
+        echo "$svc"
+        return 0
+      fi
+    done
+    echo cronie
+    return 0
+  fi
+  for unit in cronie.service crond.service cron.service; do
+    if systemctl cat "$unit" >/dev/null 2>&1; then
+      echo "$unit"
+      return 0
+    fi
+  done
+  echo cronie.service
+}
+
 step_6() {
   info "battery alerts setup (40% / 80%)"
 
   # remove the old systemd timer config, if any. A root shell has no user
-  # manager to talk to, so only touch the per-user units when not root.
-  if [ "$(id -u)" -ne 0 ]; then
+  # manager to talk to, so only touch the per-user units when not root. runit
+  # has no per-user timer manager, so there is nothing to disable there.
+  if [ "$(id -u)" -ne 0 ] && [ "$RUNIT" -ne 1 ]; then
     if systemctl --user is-enabled batt.timer >/dev/null 2>&1; then
       systemctl --user disable --now batt.timer >/dev/null 2>&1 || true
     fi
   fi
   rm -f "$HOME/.config/systemd/user/batt.service" "$HOME/.config/systemd/user/batt.timer"
-  if [ "$(id -u)" -ne 0 ]; then
+  if [ "$(id -u)" -ne 0 ] && [ "$RUNIT" -ne 1 ]; then
     systemctl --user daemon-reload >/dev/null 2>&1 || true
   fi
 
@@ -982,8 +1148,9 @@ step_6() {
   fi
 
   # make sure cronie is running
-  run_sudo systemctl enable --now cronie.service >/dev/null 2>&1 || \
-    warn "could not enable cronie.service — start it manually (systemctl enable --now cronie)"
+  cron_unit="$(cron_service)"
+  service_enable_now "$cron_unit" >/dev/null 2>&1 || \
+    warn "could not enable ${cron_unit} — start it manually (systemctl/sv)"
 
   uid="$(id -u)"
 
@@ -1030,18 +1197,28 @@ step_8() {
   info "final preferences"
 
   install_user="$(id -un)"
-  printf "  ${C_DIM}enabling lingering + pipewire user services${C_RESET}\n"
   if [ "$(id -u)" -ne 0 ]; then
-    run_sudo loginctl enable-linger "$install_user"
-    sudo -u "$install_user" systemctl --user enable pipewire.socket pipewire-pulse.socket wireplumber.service >/dev/null 2>&1 || \
-      warn "could not enable pipewire user services (enable them after login if needed)"
+    if [ "$RUNIT" -eq 1 ]; then
+      # runit has no per-user service manager: pipewire is started from the
+      # sway session instead (see setup_runit_audio below).
+      info "runit: per-user pipewire services are started from the sway session"
+    else
+      printf "  ${C_DIM}enabling lingering + pipewire user services${C_RESET}\n"
+      run_sudo loginctl enable-linger "$install_user"
+      sudo -u "$install_user" systemctl --user enable pipewire.socket pipewire-pulse.socket wireplumber.service >/dev/null 2>&1 || \
+        warn "could not enable pipewire user services (enable them after login if needed)"
+    fi
   else
     info "running as root; skipping user linger and pipewire services"
   fi
 
-  printf "  ${C_DIM}enabling system services (network, bluetooth)${C_RESET}\n"
-  run_sudo systemctl enable NetworkManager.service >/dev/null 2>&1
-  run_sudo systemctl enable bluetooth.service >/dev/null 2>&1
+  printf "  ${C_DIM}enabling system services (dbus, network, bluetooth)${C_RESET}\n"
+  if [ "$RUNIT" -eq 1 ]; then
+    service_enable_now dbus.service
+  fi
+  service_enable_now NetworkManager.service
+  service_enable_now bluetooth.service
+  setup_runit_audio
 
   ok "final preferences applied"
 
@@ -1050,6 +1227,37 @@ step_8() {
   "
   install_cron_entry 'foot-idle\.sh' "$cron"
   ok "foot-idle.sh enabled"
+}
+
+# On runit there is no `systemctl --user`: pipewire has to be started by the
+# session. WirePlumber and the PulseAudio interface are only loaded when their
+# example configs are linked into pipewire's config.d, so do both and add one
+# sway autostart line. Under systemd the generated file is removed again, so
+# switching init systems does not leave two ways to start the same daemon.
+setup_runit_audio() {
+  autostart="$DOTFILES_DIR/sway/config.d/90-audio.conf"
+  if [ "$RUNIT" -ne 1 ]; then
+    [ -e "$autostart" ] && rm -f "$autostart" && ok "removed the runit audio autostart"
+    return 0
+  fi
+
+  conf_d="$HOME/.config/pipewire/pipewire.conf.d"
+  mkdir -p "$conf_d"
+  for link in \
+    /usr/share/examples/wireplumber/10-wireplumber.conf \
+    /usr/share/examples/pipewire/20-pipewire-pulse.conf
+  do
+    [ -f "$link" ] || continue
+    ln -sfn "$link" "$conf_d/${link##*/}"
+  done
+
+  cat > "$autostart" <<'EOF'
+# generated by bin/install.sh --runit (and by the Void default): runit has no
+# per-user service manager, so the session starts pipewire, which in turn
+# loads wireplumber and pipewire-pulse from ~/.config/pipewire/pipewire.conf.d.
+exec_always --no-startup-id sh -c 'command -v pipewire >/dev/null 2>&1 || exit 0; pgrep -x pipewire >/dev/null 2>&1 || pipewire >/dev/null 2>&1 &'
+EOF
+  ok "session audio autostart written to ${autostart}"
 }
 
 # ---------------------------------------------------------------------------
@@ -1130,7 +1338,7 @@ EOF
 if [ "$(id -u)" -eq 0 ] && [ "$RSTL_ROOT" -ne 1 ] && [ ! -e /etc/.rstl-sway-rootfs ]; then
   printf "${C_RED}${C_BOLD}Error:${C_RESET} ${C_BOLD}do not run as root.${C_RESET}\n" >&2
   printf "${C_DIM}Run as your normal user (sudo is used when needed).${C_RESET}\n" >&2
-  printf "${C_DIM}For an intentional root install use bin/install-root.sh or --root.${C_RESET}\n" >&2
+  printf "${C_DIM}For an intentional root install pass --root.${C_RESET}\n" >&2
   exit 1
 fi
 

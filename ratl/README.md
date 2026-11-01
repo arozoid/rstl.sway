@@ -1,7 +1,9 @@
-# ratl settings tools
+# ratl settings tools (deprecated)
 
-The ratl-based desktop settings live here, separate from the general scripts
-in `bin/`:
+These ratl-based desktop settings are **deprecated**. They are no longer listed
+in the `rstl` menu and will be replaced by the new settings suite. They still
+run when named directly (`rstl rstl-settings`, and the win+comma binding), so an
+existing desktop keeps working until the replacement lands.
 
 | script | what it changes |
 | --- | --- |
@@ -17,7 +19,7 @@ in `bin/`:
 theme, the `~/.local/bin/ratl` preference, the terminal guard, atomic writes,
 and the confirm/sudo helpers.
 
-`bin/rstl` searches both `bin/` and this directory, so the tools still run as
-`rstl rstl-settings`, `rstl rstl-changes`, and so on. The installers purge and
-replace this directory together with `bin/`; generated user state belongs in
-`../local/`, which they leave alone.
+`bin/rstl` only lists scripts in `bin/`, but still resolves a bare name here, so
+the tools run as `rstl rstl-settings`, `rstl rstl-changes`, and so on. The
+installers purge and replace this directory together with `bin/`; generated
+user state belongs in `../local/`, which they leave alone.
