@@ -567,9 +567,15 @@ jobs:
           ISO_RESULT: ${{ needs.build-iso.result }}
         run: |
           set -euo pipefail
-          if [ "$BASE_RESULT" = success ] && [ "$ISO_RESULT" = success ]; then
-            notes="All ISO assets finished building and uploading successfully."
-          else
-            notes="$(printf 'ISO build did not fully succeed. Check the [GitHub Actions run](https://github.com/%s/actions/runs/%s) for failed or cancelled jobs.\n\nBase jobs: %s\nISO jobs: %s' "$GH_REPO" "$GITHUB_RUN_ID" "$BASE_RESULT" "$ISO_RESULT")"
+          generated_notes="$(gh api --method POST "repos/$GH_REPO/releases/generate-notes" \
+            -f tag_name="$RELEASE_TAG" --jq .body)"
+          if [ -z "$generated_notes" ]; then
+            generated_notes="No source changes since the previous release."
           fi
+          if [ "$BASE_RESULT" = success ] && [ "$ISO_RESULT" = success ]; then
+            build_status="All ISO assets finished building and uploading successfully."
+          else
+            build_status="$(printf 'ISO build did not fully succeed. Check the [GitHub Actions run](https://github.com/%s/actions/runs/%s) for failed or cancelled jobs.\n\nBase jobs: %s\nISO jobs: %s' "$GH_REPO" "$GITHUB_RUN_ID" "$BASE_RESULT" "$ISO_RESULT")"
+          fi
+          notes="$(printf '## build status\n\n%s\n\n## changes\n\n%s' "$build_status" "$generated_notes")"
           gh release edit "$RELEASE_TAG" --notes "$notes"
