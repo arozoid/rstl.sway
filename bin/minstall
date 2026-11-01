@@ -25,7 +25,7 @@ set -u
 
 if [ -n "${RSTL_TRACE:-}" ]; then
     set -x
-    export PS4='+[install-min:$LINENO] '
+    export PS4='+[minstall:$LINENO] '
 fi
 
 # Program configuration. The ISO build picks it through the environment
@@ -111,7 +111,7 @@ fi
 # Which flavor this installer is, and which package list it reads. Both are
 # recorded in the edition indicator, so bin/update.sh can re-apply exactly this
 # flavor later.
-EDITION="install-min"
+EDITION="minstall"
 EDITION_PROGRAM="$RSTL_PROGRAM"
 PKG_LIST="packages-install-min.txt"
 INIT_NAME=systemd

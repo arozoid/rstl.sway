@@ -4,14 +4,14 @@
 # Usage:
 #   bin/update.sh                          update this machine
 #   bin/update.sh --yes                    do not ask for confirmation
-#   bin/update.sh --edition install-min    update a specific edition
+#   bin/update.sh --edition minstall    update a specific edition
 #   bin/update.sh --runit                  keep runit (default on Void)
 #   bin/update.sh --systemd                switch the service calls back to systemd
 #   bin/update.sh --root                   update a root installation
 #   bin/update.sh --help                   show this help
 #
 # Options:
-#   --edition, --flavor <install|install-min|install-base>
+#   --edition, --flavor <install|minstall|binstall>
 #                     update this edition instead of the detected one
 #   --program <vim|mouse>                 program configuration to keep
 #   --firefox / --no-firefox              keep or drop the firefox bundle
@@ -140,9 +140,14 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
+# Normalize edition names recorded by older releases.
 case "$EDITION" in
-    ""|install|install-min|install-base) ;;
-    *) die "unknown edition '$EDITION' (install, install-min, install-base)" ;;
+    install-min)  EDITION=minstall ;;
+    install-base) EDITION=binstall ;;
+esac
+case "$EDITION" in
+    ""|install|minstall|binstall) ;;
+    *) die "unknown edition '$EDITION' (install, minstall, binstall)" ;;
 esac
 case "$PROGRAM" in
     ""|vim|mouse) ;;
@@ -198,9 +203,9 @@ detect_edition() {
        pkg_installed neovim || pkg_installed micro; then
         echo install
     elif pkg_installed swaylock || pkg_installed swayidle; then
-        echo install-min
+        echo minstall
     else
-        echo install-base
+        echo binstall
     fi
 }
 
@@ -246,7 +251,7 @@ else
     info "edition: ${EDITION} (given)"
 fi
 
-if [ "$EDITION" = "install-base" ]; then
+if [ "$EDITION" = "binstall" ]; then
     PROGRAM="none"     # the base edition carries no program configuration
 else
     if [ -z "$PROGRAM" ]; then
@@ -320,8 +325,8 @@ fetch_dotfiles() {
     # map the edition label in .rstl-edition to the installer script name
     case "$EDITION" in
         install)      INSTALLER="bin/install" ;;
-        install-min)  INSTALLER="bin/minstall" ;;
-        install-base) INSTALLER="bin/binstall" ;;
+        minstall)  INSTALLER="bin/minstall" ;;
+        binstall) INSTALLER="bin/binstall" ;;
     esac
     if [ -f "${SOURCE_DIR}/${INSTALLER}" ]; then
         return 0

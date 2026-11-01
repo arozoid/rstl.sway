@@ -24,8 +24,8 @@
 #   target    directory the frugal is placed in (defaults to ./rstl.sway).
 #
 #   -a, --arch LEVEL        v1|v2|v3|v4|auto (default: auto when not a TTY)
-#   -f, --flavor NAME       install | install-min | install-base | rstl-inst
-#                           (default: install-min)
+#   -f, --flavor NAME       install | minstall | binstall | rstl-inst
+#                           (default: minstall)
 #   -y, --yes               assume yes for the installer scripts
 #   -K, --kernel PKG        kernel package, 'vdpup' for the FirstRib huge
 #                           kernel 6.1.52-vdpup, or 'rstl' for the rstl kernel
@@ -36,8 +36,8 @@
 #       --program MODE      program configuration: 'vim' (nvim + superfile) or
 #                           'mouse' (micro with cachyos-micro-settings + rovr).
 #                           The desktop flavor decides how much of it is kept:
-#                           install = everything, install-min = file manager
-#                           only, install-base = none. (default: vim)
+#                           install = everything, minstall = file manager
+#                           only, binstall = none. (default: vim)
 #       --firefox            also install the firefox browser (browser bundle variant)
 #       --rstl-source DIR   reuse a pre-extracted rstl kernel tree (boot/ +
 #                           lib/ + config, e.g. ~/Downloads/rstl.krnl) instead
@@ -63,7 +63,7 @@
 #       --fetch-rstl        download + prepare the latest 'rstl' kernel assets
 #                           (vmlinuz, reorganized modules sfs, firmware) into
 #                           --cache and exit (no build is started).
-#       --stage-base        build a REUSABLE base rootfs (install-base flavor,
+#       --stage-base        build a REUSABLE base rootfs (binstall flavor,
 #                           linux-cachyos kernel + modules + /boot kept) and exit
 #                           before the frugal is assembled. The workflow's first
 #                           3 jobs use this to cache one rootfs per microarch.
@@ -88,8 +88,8 @@
 #                  copy too)
 #   rstl-inst      same desktop, but boots straight into the rstl-inst TUI on tty1
 #                  (install to disk / try-live sway / network / shell)
-#   install-min    minimal desktop, minstall runs as root
-#   install-base   bare-minimum sway desktop, no audio codecs/TUIs/BT/NM
+#   minstall    minimal desktop, minstall runs as root
+#   binstall   bare-minimum sway desktop, no audio codecs/TUIs/BT/NM
 #
 # Program configurations (--program):
 #   vim        nvim + superfile (spf) file manager
@@ -202,7 +202,7 @@ usage() {
 # ---------------------------------------------------------------------------
 target=""
 requested_arch=""
-flavor="install-min"
+flavor="minstall"
 assume_yes=0
 kernel_pkg="linux-cachyos"
 kernel_vdpup=0
@@ -228,7 +228,7 @@ while [ "$#" -gt 0 ]; do
         -a|--arch) [ "$#" -ge 2 ] || die "--arch requires v1|v2|v3|v4|auto"
             requested_arch="$2"; shift 2 ;;
         --arch=*) requested_arch="${1#*=}"; shift ;;
-        -f|--flavor) [ "$#" -ge 2 ] || die "--flavor requires install|install-min|install-base|rstl-inst"
+        -f|--flavor) [ "$#" -ge 2 ] || die "--flavor requires install|minstall|binstall|rstl-inst"
             flavor="$2"; shift 2 ;;
         --flavor=*) flavor="${1#*=}"; shift ;;
         -y|--yes) assume_yes=1; shift ;;
@@ -283,8 +283,8 @@ case "$program" in
 esac
 
 case "$flavor" in
-    install|install-min|install-base|rstl-inst) ;;
-    *) die "unknown flavor: $flavor (use install, install-min, install-base or rstl-inst)" ;;
+    install|minstall|binstall|rstl-inst) ;;
+    *) die "unknown flavor: $flavor (use install, minstall, binstall or rstl-inst)" ;;
 esac
 
 # ---------------------------------------------------------------------------
@@ -792,7 +792,7 @@ chmod +x "$ROOTFS/etc/skel/.config/rstl.sway"/bin/* \
          "$ROOTFS/etc/skel/.config/rstl.sway"/ratl/rstl-* \
          "$ROOTFS/etc/skel/.config/rstl.sway"/scripts/*.sh 2>/dev/null || true
 # root does NOT get a second copy: /root/.config/rstl.sway is a link into the
-# skel tree, so every root flow (install-min/install-base run as root, the
+# skel tree, so every root flow (minstall/binstall run as root, the
 # rustle scaffolding copies, the root desktop) reads/writes the ONE repo copy. New
 # users pick it up through skel; rstl-first-login skips root at boot
 # ($HOME != /root guard), so the skel template stays pristine.
@@ -931,7 +931,7 @@ set_passwords() {
 # ---------------------------------------------------------------------------
 header "Installing flavor: $flavor"
 case "$flavor" in
-    install-min)
+    minstall)
         chr /bin/sh -c "RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox /root/.config/rstl.sway/bin/minstall $FLAG_YES"
         ensure_rustle_user
         # surface the root-staged desktop config for the rustle login too
@@ -945,7 +945,7 @@ case "$flavor" in
         set_passwords
         ;;
 
-    install-base)
+    binstall)
         chr /bin/sh -c "RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox /root/.config/rstl.sway/bin/binstall $FLAG_YES"
         ensure_rustle_user
         # surface the root-staged desktop config for the rustle login too
@@ -1054,7 +1054,7 @@ EOF
 fi
 
 # --stage-base: the rootfs is now the reusable base (linux-cachyos kernel with
-# /boot + /usr/lib/modules intact, install-base done, users + passwords set).
+# /boot + /usr/lib/modules intact, binstall done, users + passwords set).
 # Stop BEFORE the frugal assembly, which strips /boot + modules from the rootfs
 # and compresses it into 07rootfs.sfs. The workflow tars this directory as the
 # baserootfs artifact; layered jobs --reuse-rootfs it.

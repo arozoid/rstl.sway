@@ -17,7 +17,7 @@
 #   bin/binstall --help            show this help
 #
 # The base variant carries no program configuration: the vim/mouse editions are
-# install/install-min only, so --program is accepted and ignored here.
+# install/minstall only, so --program is accepted and ignored here.
 # RSTL_FIREFOX=1 / --firefox bundles the firefox browser on top of the base
 # desktop.
 #
@@ -34,7 +34,7 @@ set -u
 
 if [ -n "${RSTL_TRACE:-}" ]; then
     set -x
-    export PS4='+[install-base:$LINENO] '
+    export PS4='+[binstall:$LINENO] '
 fi
 
 RSTL_FIREFOX="${RSTL_FIREFOX:-0}"
@@ -112,7 +112,7 @@ fi
 # Which flavor this installer is, and which package list it reads. Both are
 # recorded in the edition indicator, so bin/update.sh can re-apply exactly this
 # flavor later.
-EDITION="install-base"
+EDITION="binstall"
 EDITION_PROGRAM="none"   # the base edition carries no program configuration
 PKG_LIST="packages-install-base.txt"
 INIT_NAME=systemd
