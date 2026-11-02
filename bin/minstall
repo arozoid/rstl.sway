@@ -674,7 +674,7 @@ step_2() {
         add_fedora_repo
         PKG_MGR=dnf
         ;;
-    arch)
+    arch|artix)
         conf="/etc/pacman.conf"
         if ! grep -qF "[rstl-repo]" "$conf" 2>/dev/null; then
             printf '\n[rstl-repo]\nSigLevel = Optional TrustAll\nServer = https://arozoid.github.io/rstl.repo/arch/\n' \

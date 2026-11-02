@@ -702,7 +702,7 @@ step_2() {
       PKG_MGR=dnf
       add_fedora_repo
       ;;
-    arch)
+    arch|artix)
       PKG_MGR=pacman
       add_rstl_repo
       enable_multilib
