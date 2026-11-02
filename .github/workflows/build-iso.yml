@@ -136,7 +136,7 @@ jobs:
       - name: update system and install tooling
         run: |
           pacman -Syu --noconfirm \
-            base-devel sudo git rust wget xorriso mtools dosfstools \
+            base-devel sudo git wget xorriso mtools dosfstools \
             squashfs-tools artools-base grub kmod cpio gzip xz zstd
 
       - name: provide the arch chroot command name used by the builder
@@ -273,7 +273,7 @@ jobs:
       - name: update system and install tooling
         run: |
           pacman -Syu --noconfirm \
-            base-devel sudo git rust wget xorriso mtools dosfstools \
+            base-devel sudo git wget xorriso mtools dosfstools \
             squashfs-tools artools-base grub kmod cpio gzip xz zstd jq curl
 
       - name: provide the arch chroot command name used by the builder
