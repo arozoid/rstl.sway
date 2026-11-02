@@ -474,7 +474,7 @@ fi
 mkdir -p "$target"
 
 # ---------------------------------------------------------------------------
-# x86-64 level detection (same heuristics as simple-rootfs.sh)
+# x86-64 level detection (same heuristics as rootfs-common.sh)
 # ---------------------------------------------------------------------------
 detect_level() {
     _l="$(/lib/ld-linux-x86-64.so.2 --help 2>/dev/null || /lib64/ld-linux-x86-64.so.2 --help 2>/dev/null)"

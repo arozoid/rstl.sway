@@ -1,14 +1,14 @@
 #!/bin/sh
-# simple-rootfs.sh - build a minimal rstl.sway rootfs with pacstrap
+# rootfs-common.sh - shared implementation for the edition rootfs builders
 #
 # Usage:
-#   ./simple-rootfs.sh [target] [-a v1|v2|v3|v4|auto]
+#   rootfs-common.sh full|min|base [target] [-a v1|v2|v3|v4|auto]
 #
 #   target    directory to bootstrap into.
 #               - a bare name (no '/', e.g. 'rstl') creates ./rstl in the
 #                 current directory.
 #               - a path containing '/' is used as-is (absolute or relative).
-#               - if omitted, prompts (defaults to 'rstl').
+#               - if omitted, prompts (defaults to 'rstl-<edition>').
 #   -a, --arch LEVEL
 #             x86_64 microarchitecture level for the CachyOS pacman.conf:
 #               v1|v2|v3|v4  use that exact config, or
@@ -17,9 +17,8 @@
 #
 # Steps:
 #   1. pacstrap a minimal base system (base + sudo + git) into the target.
-#   2. Copy this dotfiles repository (and install-min.sh) into the rootfs.
-#   3. arch-chroot into it and run install-min.sh as root to set up the
-#      rstl.sway environment.
+#   2. Copy this dotfiles repository into the rootfs.
+#   3. Run the edition's installer as root inside the rootfs.
 #
 # Requires: root privileges, pacstrap + arch-chroot (arch-install-scripts),
 # and a configured pacman mirror.
@@ -47,27 +46,43 @@ info()  { printf "${C_PURPLE}:: %s${C_RESET}\n" "$*"; }
 # error
 die()   { printf "${C_RED}error: %s${C_RESET}\n" "$*" >&2; exit 1; }
 
+target=""
 SELF_BIND=0
+builder="mkrootfs"
 cleanup() {
     if [ "$SELF_BIND" -eq 1 ]; then
-        echo "simple-rootfs: unmounting '$target'"
+        echo "$builder: unmounting '$target'"
         umount "$target" 2>/dev/null || true
     fi
 }
 trap cleanup EXIT
 
+edition="${1:-}"
+case "$edition" in
+    full) installer=install ;;
+    min)  installer=minstall ;;
+    base) installer=binstall ;;
+    *)
+        printf 'usage: mkrootfs-full.sh | mkrootfs-min.sh | mkrootfs-base.sh [target] [-a v1|v2|v3|v4|auto]\n' >&2
+        exit 2
+        ;;
+esac
+shift
+builder="mkrootfs-$edition.sh"
+default_target="rstl-$edition"
+
 usage() {
-    cat <<'EOF'
-simple-rootfs.sh - build a minimal rstl.sway rootfs with pacstrap
+    cat <<EOF
+${builder} - build a rstl.sway ${edition} rootfs with pacstrap
 
 Usage:
-  ./simple-rootfs.sh [target] [-a v1|v2|v3|v4|auto]
+  ./${builder} [target] [-a v1|v2|v3|v4|auto]
 
-  target    directory to bootstrap into.
+  target    directory to bootstrap into (default: ${default_target}).
               - a bare name (no '/', e.g. 'rstl') creates ./rstl in the
                 current directory.
               - a path containing '/' is used as-is.
-              - if omitted, prompts (defaults to 'rstl').
+              - if omitted, prompts (defaults to '${default_target}').
   -a, --arch LEVEL
             x86_64 microarchitecture level for the CachyOS pacman.conf.
               v1|v2|v3|v4  use that exact config, or
@@ -75,9 +90,9 @@ Usage:
 
 Steps:
   1. pacstrap a minimal base system (base + sudo + git) into the target.
-  2. Copy this dotfiles repository (and install-min.sh) into the rootfs.
-  3. arch-chroot into it and run install-min.sh as root to set up the
-     rstl.sway environment.
+  2. Copy this dotfiles repository into the rootfs.
+  3. arch-chroot into it and run ${installer} as root to set up the
+     rstl.sway ${edition} environment.
 
 Requires: root privileges, pacstrap + arch-chroot (arch-install-scripts),
 and a configured pacman mirror.
@@ -85,7 +100,6 @@ EOF
 }
 
 # ---- parse arguments ----
-target=""
 requested_arch=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -112,9 +126,9 @@ done
 
 # ---- resolve target directory ----
 if [ -z "$target" ]; then
-    printf 'Enter target directory [rstl]: '
+    printf 'Enter target directory [%s]: ' "$default_target"
     read -r ans || :
-    target="${ans:-rstl}"
+    target="${ans:-$default_target}"
 fi
 
 case "$target" in
@@ -184,7 +198,7 @@ mkdir -p "$target"
 # in the architecture-specific config.
 pacstrap -C "$repo_root/pacman-base.conf" -K "$target" --noconfirm base sudo git
 
-# marker so install-min.sh knows it is running inside a rootfs and may run
+# marker so the installer knows it is running inside a rootfs and may run
 # as root (it otherwise refuses to run as root on a normal host).
 touch "$target/etc/.rstl-sway-rootfs"
 
@@ -239,7 +253,8 @@ copy_repo() {
     # .git and its companions never enter the rootfs: the build is not a place
     # to keep history (it would bloat the image) and the installers copy from
     # this tree, where a stale .git would be replaced anyway (see copy_dotfiles
-    # in bin/install*.sh). .rstl-edition is per-machine state, not dotfiles.
+    # in the installer's copy_dotfiles). .rstl-edition is per-machine state, not
+    # dotfiles.
     tar --exclude='./build_work' \
         --exclude='./build_output' \
         --exclude='./rstl-inst/target' \
@@ -262,13 +277,13 @@ chmod +x "$skel_dir"/bin/* "$skel_dir"/scripts/*.sh 2>/dev/null || true
 mkdir -p "$target/root/.config"
 ln -sfn /etc/skel/.config/rstl.sway "$target/root/.config/rstl.sway"
 
-# ---- 3. run install-min.sh inside the rootfs ----
-header "Entering rootfs to run install-min.sh"
+# ---- 3. run the selected installer inside the rootfs ----
+header "Entering rootfs to run ${installer} (${edition} edition)"
 if ! mountpoint -q "$target"; then
     info "bind-mounting '$target' onto itself (pacman needs a root mountpoint)"
     mount --bind "$target" "$target"
     SELF_BIND=1
 fi
-arch-chroot "$target" /bin/sh /root/.config/rstl.sway/bin/install-min.sh
+arch-chroot "$target" /bin/sh "/root/.config/rstl.sway/bin/${installer}"
 
-echo "simple-rootfs: done."
+echo "$builder: done."
