@@ -516,13 +516,16 @@ PKGCACHE_MOUNTED=0
 # unmounted before the rootfs itself. Doing it in the exit trap covers failures
 # as well as the normal end of the build.
 pkgcache_unmount() {
-    if [ "$PKGCACHE_MOUNTED" -eq 1 ]; then
-        umount "$ROOTFS/var/cache/pacman/pkg" 2>/dev/null || true
+    [ "$PKGCACHE_MOUNTED" -eq 1 ] || return 0
+    if umount "$ROOTFS/var/cache/pacman/pkg" 2>/dev/null; then
         PKGCACHE_MOUNTED=0
+        return 0
     fi
+    warn "could not unmount '$ROOTFS/var/cache/pacman/pkg'"
+    return 1
 }
 cleanup() {
-    pkgcache_unmount
+    pkgcache_unmount || true
     if [ "$SELF_BIND" -eq 1 ]; then
         umount "$ROOTFS" 2>/dev/null || true
     fi
@@ -1101,7 +1104,7 @@ fi
 # and compresses it into 07rootfs.sfs. The workflow tars this directory as the
 # baserootfs artifact; layered jobs --reuse-rootfs it.
 if [ "$stage_base" -eq 1 ]; then
-    pkgcache_unmount
+    pkgcache_unmount || die "cannot unmount the shared package cache; refusing to stage a base rootfs that contains it"
     header "Base rootfs staged at '$ROOTFS'"
     info "stage-base: stopping before frugal assembly (keeping /boot + /usr/lib/modules)"
     exit 0
@@ -1112,7 +1115,7 @@ fi
 # ---------------------------------------------------------------------------
 # the package cache was only a build accelerator: unmount it now so neither the
 # rootfs squashfs nor the base-rootfs artifact carries the archives
-pkgcache_unmount
+pkgcache_unmount || die "cannot unmount the shared package cache; refusing to assemble an image that contains it"
 header "Assembling frugal at '$target'"
 
 # --- initrd ---------------------------------------------------------------

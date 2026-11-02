@@ -463,12 +463,18 @@ jobs:
                 pkgcache_ok=0
                 mount --bind "$CACHE/pacman-$ARCH" "$ET/07rootfs/var/cache/pacman/pkg" && pkgcache_ok=1
                 if ! arch-chroot "$ET/07rootfs" pacman -S --needed --noconfirm firefox; then
-                  [ "$pkgcache_ok" -eq 1 ] && umount "$ET/07rootfs/var/cache/pacman/pkg" 2>/dev/null || true
+                  if [ "$pkgcache_ok" -eq 1 ]; then
+                    umount "$ET/07rootfs/var/cache/pacman/pkg" 2>/dev/null || true
+                  fi
                   umount "$ET/07rootfs" 2>/dev/null || true
                   echo "::error::firefox install into forked binstall-firefox-$ARCH stage failed"
                   exit 1
                 fi
-                [ "$pkgcache_ok" -eq 1 ] && umount "$ET/07rootfs/var/cache/pacman/pkg" 2>/dev/null || true
+                if [ "$pkgcache_ok" -eq 1 ] && ! umount "$ET/07rootfs/var/cache/pacman/pkg"; then
+                  umount "$ET/07rootfs" 2>/dev/null || true
+                  echo "::error::could not unmount the shared package cache; refusing to wrap an ISO that contains it"
+                  exit 1
+                fi
                 umount "$ET/07rootfs" 2>/dev/null || true
                 find "$ET/07rootfs/var/cache/pacman/pkg" -mindepth 1 -delete 2>/dev/null || true
               fi
