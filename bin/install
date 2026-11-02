@@ -316,18 +316,34 @@ DNF_YES="-y"
 # box), so the list is queried once and every lookup greps it.
 DNF_REPO_PKGS=""
 
-# Print the name of every package in the enabled repositories, one per line.
-# dnf5's --queryformat does not append a newline to each field, so the \n has to
-# be part of the format string, otherwise the whole list comes back as one long
-# line and nothing ever matches. dnf4 honours the same escape. dnf4 without
-# dnf-plugins-core has no repoquery, so fall back to `dnf list`, whose first
-# column is name.arch (the section headers have no dot, hence the awk filter).
-dnf_repo_names() {
-  if dnf repoquery --available --queryformat '%{name}\n' 2>/dev/null; then
-    return 0
-  fi
-  dnf list --quiet 2>/dev/null \
+# Print names from the requested packages that are available in enabled repos.
+# Querying only these package specs avoids listing and parsing every Fedora
+# package. `dnf list` prints name.arch; section headings have no dot.
+dnf_available_names() {
+  [ "$#" -gt 0 ] || return 1
+  dnf list --available --quiet "$@" 2>/dev/null \
     | awk '$1 ~ /\./ { sub(/\..*/, "", $1); print $1 }' | sort -u
+}
+
+# Query only installer candidates instead of materializing every name in all
+# enabled Fedora repositories. All package names here are mapped to Fedora's
+# names before the single availability query.
+dnf_requested_names() {
+  {
+    while IFS= read -r pkg; do
+      [ -n "$pkg" ] && dnf_map_pkg "$pkg"
+    done < "$GCDIR/packages"
+    while IFS= read -r pkg; do
+      [ -n "$pkg" ] && dnf_map_pkg "$pkg"
+    done < "$GCDIR/packages-extra"
+    for pkg in \
+      notwaita-cursors-grey adwaita-cursors \
+      papirus-icon-theme-dark-only adwaita-icon-theme \
+      fd-find fd
+    do
+      dnf_map_pkg "$pkg"
+    done
+  } | sort -u
 }
 
 # is $1 a package name the enabled repositories provide?
@@ -734,7 +750,11 @@ step_2() {
     # transaction, and report the names that do not. The repository names are
     # queried once and cached, because each dnf call reloads the metadata.
     DNF_REPO_PKGS="$GCDIR/dnf-repo-pkgs"
-    if ! dnf_repo_names > "$DNF_REPO_PKGS" || [ ! -s "$DNF_REPO_PKGS" ]; then
+    dnf_requested_names > "$GCDIR/dnf-query-pkgs"
+    # Candidate names contain no whitespace; word splitting passes them as
+    # separate package specs to one availability query.
+    # shellcheck disable=SC2046
+    if ! dnf_available_names $(cat "$GCDIR/dnf-query-pkgs") > "$DNF_REPO_PKGS" || [ ! -s "$DNF_REPO_PKGS" ]; then
       fail "failed to query enabled repositories with dnf (try: sudo dnf makecache)"
       DNF_REPO_PKGS=""
       return 1
