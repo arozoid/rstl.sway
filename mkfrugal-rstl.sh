@@ -57,6 +57,9 @@
 #                           is bind-mounted over the rootfs cache dir for the
 #                           build and unmounted before the image is assembled,
 #                           so it speeds up rebuilds without shipping packages
+#       --kernel-cache DIR  reuse the cachyos initrd.gz + 00modules.sfs built for
+#                           a kernel version across flavor builds (keyed by the
+#                           module version; still kept out of the image)
 #       --rstl-inst-bin FILE prebuilt rstl-inst binary (required for --flavor rstl-inst
 #                           unless cargo + the rstl-inst submodule are available)
 #       --password PASS     login password for root/rustle (default: rstl)
@@ -65,8 +68,8 @@
 #                           vdpup-variant ISO be wired onto an existing build's
 #                           compressed rootfs without a full second build.
 #       --fetch-rstl        download + prepare the latest 'rstl' kernel assets
-#                           (vmlinuz, reorganized modules sfs, firmware) into
-#                           --cache and exit (no build is started).
+#                           (vmlinuz, reorganized modules sfs, firmware, and
+#                           initrd) into --cache and exit (no build is started).
 #       --stage-base        build a REUSABLE base rootfs (binstall flavor,
 #                           linux-cachyos kernel + modules + /boot kept) and exit
 #                           before the frugal is assembled. The workflow's first
@@ -223,6 +226,7 @@ opt_modules_build=""
 opt_modules_source=""
 cache="${TMPDIR:-/tmp}/rstl-frugal-cache"
 opt_pkgcache=""
+opt_kernel_cache=""
 rstl_inst_bin=""
 password="${RSTL_FRUGAL_PASSWORD:-rstl}"
 force=0
@@ -255,6 +259,9 @@ while [ "$#" -gt 0 ]; do
         --pkgcache) [ "$#" -ge 2 ] || die "--pkgcache requires a directory"
             opt_pkgcache="$2"; shift 2 ;;
         --pkgcache=*) opt_pkgcache="${1#*=}"; shift ;;
+        --kernel-cache) [ "$#" -ge 2 ] || die "--kernel-cache requires a directory"
+            opt_kernel_cache="$2"; shift 2 ;;
+        --kernel-cache=*) opt_kernel_cache="${1#*=}"; shift ;;
         --rstl-inst-bin) [ "$#" -ge 2 ] || die "--rstl-inst-bin requires a file"
             rstl_inst_bin="$2"; shift 2 ;;
         --rstl-inst-bin=*) rstl_inst_bin="${1#*=}"; shift ;;
@@ -360,9 +367,60 @@ fi
 #                         as /usr/lib/modules so mkFRkernel can build the
 #                         initrd from it in the normal section 8 flow)
 #   rstl-firmware.sfs     the release's firmware tree, usrmerge + zstd 19
+#   rstl-initrd.gz        mkFRkernel initrd built from rstl-modules (shared by
+#                         every flavor/config of the prepared release)
 # --rstl-source DIR reuses a pre-extracted tree (boot/ + lib/ + config) and
 # skips the GitHub resolution + download entirely.
 # ---------------------------------------------------------------------------
+build_rstl_initrd() {
+    rstl_initrd_stamp="$cache/.rstl-initrd.src"
+    rstl_skeleton="$cache/first-rib-initrd.gz"
+    rstl_skeleton_url="https://gitlab.com/firstrib/firstrib/-/raw/master/latest/build_system/initrd-latest.gz"
+    if [ -s "$rstl_skeleton" ]; then
+        # Refresh conditionally so an upstream initrd change invalidates the
+        # generated cache while unchanged builds transfer no payload.
+        if curl -fL --connect-timeout 30 --max-time 300 --time-cond "$rstl_skeleton" \
+            -o "$rstl_skeleton.part" "$rstl_skeleton_url"; then
+            if [ -s "$rstl_skeleton.part" ]; then
+                mv "$rstl_skeleton.part" "$rstl_skeleton"
+            else
+                rm -f "$rstl_skeleton.part" # HTTP 304: the cached copy is current
+            fi
+        else
+            rm -f "$rstl_skeleton.part"
+            warn "could not refresh FirstRib initrd skeleton; using the cached copy"
+        fi
+    else
+        curl -fL --connect-timeout 30 --max-time 300 --retry 3 --retry-delay 5 \
+            -o "$rstl_skeleton.part" "$rstl_skeleton_url" \
+            || die "could not download the FirstRib initrd skeleton"
+        mv "$rstl_skeleton.part" "$rstl_skeleton"
+    fi
+    [ -s "$rstl_skeleton" ] || die "FirstRib initrd skeleton is empty"
+    rstl_initrd_tok="$rstl_tok|$(sha256sum "$rstl_skeleton" | awk '{print $1}')|$(sha256sum "$REPO/mkFRkernel" | awk '{print $1}')"
+    if [ -s "$cache/rstl-initrd.gz" ] \
+        && [ "$(cat "$rstl_initrd_stamp" 2>/dev/null)" = "$rstl_initrd_tok" ]; then
+        ok "rstl initrd already prepared ($rstl_asset)"
+        return 0
+    fi
+    info "building rstl initrd.gz (mkFRkernel)"
+    rstl_iw="$cache/.rstl-initrd"
+    rm -rf "$rstl_iw"
+    mkdir -p "$rstl_iw"
+    cp -a "$rstl_skeleton" "$rstl_iw/initrd-latest.gz"
+    if ! ( cd "$rstl_iw" \
+        && "$REPO/mkFRkernel" initrd-latest.gz "$cache/rstl-modules" gz >mkFRkernel.log 2>&1 ); then
+        cat "$rstl_iw/mkFRkernel.log" >&2
+        rm -rf "$rstl_iw"
+        die "mkFRkernel failed for the rstl module tree"
+    fi
+    mv "$rstl_iw/initrd-latest.img" "$cache/rstl-initrd.gz"
+    rm -rf "$rstl_iw"
+    printf '%s\n' "$rstl_initrd_tok" > "$rstl_initrd_stamp.part"
+    mv "$rstl_initrd_stamp.part" "$rstl_initrd_stamp"
+    ok "rstl initrd.gz -> $(du -h "$cache/rstl-initrd.gz" | cut -f1)"
+}
+
 fetch_rstl_assets() {
     mkdir -p "$cache"
     if [ -n "$opt_rstl_source" ]; then
@@ -374,6 +432,20 @@ fetch_rstl_assets() {
         resolve_rstl_release
 
         rstl_tok="$rstl_tag|$rstl_asset"
+        # Prepared assets are deterministic: same release archive in, same
+        # vmlinuz/modules/firmware out. The workflow builds several kernels per
+        # job and calls this for every one, so re-extracting and re-squashing
+        # the 245M firmware at zstd 19 every time is pure waste. Reuse the
+        # prepared set when it still belongs to the resolved release.
+        rstl_assets_stamp="$cache/.rstl-assets.src"
+        if [ -s "$cache/rstl-vmlinuz" ] && [ -s "$cache/rstl-00modules.sfs" ] \
+            && [ -s "$cache/rstl-firmware.sfs" ] \
+            && [ -d "$cache/rstl-modules/usr/lib/modules" ] \
+            && [ "$(cat "$rstl_assets_stamp" 2>/dev/null)" = "$rstl_tok" ]; then
+            ok "rstl assets already prepared ($rstl_asset)"
+            build_rstl_initrd
+            return 0
+        fi
         rstl_cached="$cache/rstl-kernel.tar.zst"
         rstl_stamp="$cache/.rstl-kernel.src"
         if [ -s "$rstl_cached" ] && [ "$(cat "$rstl_stamp" 2>/dev/null)" = "$rstl_tok" ]; then
@@ -429,15 +501,23 @@ fetch_rstl_assets() {
         -noappend -comp zstd -Xcompression-level 19 -no-progress >/dev/null
     rm -rf "$rstl_fww"
 
+    if [ -z "$opt_rstl_source" ]; then
+        # stamp last: an interrupted preparation must never be mistaken for a
+        # complete one
+        printf '%s\n' "$rstl_tok" > "$rstl_assets_stamp"
+    fi
     [ -n "$opt_rstl_source" ] || rm -rf "$rstl_work"
     ok "rstl assets ready: vmlinuz $(du -h "$cache/rstl-vmlinuz" | cut -f1), \
 00modules.sfs $(du -h "$cache/rstl-00modules.sfs" | cut -f1), \
 firmware $(du -h "$cache/rstl-firmware.sfs" | cut -f1), kernel $rstl_modver"
+    if [ -z "$opt_rstl_source" ]; then
+        build_rstl_initrd
+    fi
 }
 
 if [ "$fetch_rstl_mode" -eq 1 ]; then
     fetch_rstl_assets
-    for f in rstl-vmlinuz rstl-00modules.sfs rstl-firmware.sfs; do
+    for f in rstl-vmlinuz rstl-00modules.sfs rstl-firmware.sfs rstl-initrd.gz; do
         [ -e "$cache/$f" ] && printf '  %s (%s)\n' "$f" "$(du -h "$cache/$f" | cut -f1)"
     done
     printf '  rstl-modules/ (plain tree, %s)\n' "$(du -sh "$cache/rstl-modules" | cut -f1)"
@@ -1118,6 +1198,24 @@ fi
 pkgcache_unmount || die "cannot unmount the shared package cache; refusing to assemble an image that contains it"
 header "Assembling frugal at '$target'"
 
+# --- kernel cache ----------------------------------------------------------
+# The cachyos 00modules.sfs depends on the module version, not the flavor or
+# program config. Reuse it across builds. Rebuild the initrd at most weekly
+# (and after mkFRkernel changes) so its FirstRib skeleton does not stay stale.
+# Only use this cache for a stock cachyos rootfs; with --modules-source/
+# --modules-build-dir the module tree is different by design, and vdpup/rstl
+# ship (or prepare) their own assets.
+kcache_ok=0
+if [ -n "$opt_kernel_cache" ] && [ "$kernel_vdpup" -eq 0 ] \
+    && [ "$kernel_rstl" -eq 0 ] && [ -z "$opt_modules_source" ] \
+    && [ -z "$opt_modules_build" ]; then
+    if mkdir -p "$opt_kernel_cache"; then
+        kcache_ok=1
+    else
+        warn "cannot create kernel cache '$opt_kernel_cache'; rebuilding kernel assets"
+    fi
+fi
+
 # --- initrd ---------------------------------------------------------------
 # cachyos + rstl: rebuild the FirstRib skeleton with this kernel's modules
 # baked in (mkFRkernel). vdpup: FirstRib's own initrd-latest.gz is a complete
@@ -1125,19 +1223,30 @@ header "Assembling frugal at '$target'"
 if [ "$kernel_vdpup" -eq 1 ]; then
     cp -a "$cache/vdpup-initrd.gz" "$target/initrd.gz"
 else
-    info "building initrd.gz (mkFRkernel)"
-    initrd_work="$target/.initrd"
-    rm -rf "$initrd_work"
-    mkdir -p "$initrd_work"
-    (
-        cd "$initrd_work"
-        "$REPO/mkFRkernel" latest "$ROOTFS" gz >mkFRkernel.log 2>&1 || {
-            cat mkFRkernel.log >&2
-            exit 1
-        }
-    )
-    mv "$initrd_work/initrd-latest.img" "$target/initrd.gz"
-    rm -rf "$initrd_work"
+    kc_initrd=""
+    if [ "$kcache_ok" -eq 1 ]; then
+        kernel_cache_week="$(date -u +%Y-%W)"
+        mkfrkernel_hash="$(sha256sum "$REPO/mkFRkernel" | awk '{print substr($1, 1, 12)}')"
+        kc_initrd="$opt_kernel_cache/initrd-$kernelver-$kernel_cache_week-$mkfrkernel_hash.gz"
+    fi
+    if [ -n "$kc_initrd" ] && [ -s "$kc_initrd" ]; then
+        cp -a "$kc_initrd" "$target/initrd.gz"
+        ok "initrd.gz reused from kernel cache ($(basename "$kc_initrd"))"
+    else
+        info "building initrd.gz (mkFRkernel)"
+        initrd_work="$target/.initrd"
+        rm -rf "$initrd_work"
+        mkdir -p "$initrd_work"
+        (
+            cd "$initrd_work"
+            "$REPO/mkFRkernel" latest "$ROOTFS" gz >mkFRkernel.log 2>&1 || {
+                cat mkFRkernel.log >&2
+                exit 1
+            }
+        )
+        mv "$initrd_work/initrd-latest.img" "$target/initrd.gz"
+        rm -rf "$initrd_work"
+    fi
     # Guard: a module-less initrd cannot mount the sfs layers (loop mounts
     # fail and the kernel panics on boot). The cachyos kernel ships loop as a
     # module (=m), so its initrd must carry loop.ko. The rstl kernel instead
@@ -1158,6 +1267,12 @@ else
     else
         ok "kernel provides loop builtin (no loop.ko module needed)"
     fi
+    # only cache an initrd that passed the boot guard
+    if [ -n "$kc_initrd" ] && [ ! -s "$kc_initrd" ]; then
+        cp -a "$target/initrd.gz" "$kc_initrd.part" \
+            && mv "$kc_initrd.part" "$kc_initrd" \
+            || warn "could not save initrd.gz to the kernel cache"
+    fi
 fi
 ok "initrd.gz -> $(du -h "$target/initrd.gz" | cut -f1)"
 
@@ -1167,15 +1282,9 @@ ok "initrd.gz -> $(du -h "$target/initrd.gz" | cut -f1)"
 # fetch_rstl_assets(). cachyos: w_init mounts NN=00 as an overlay LAYER, so
 # the archive must be laid out at usr/lib/modules/... (usrmerge), not at a bare
 # modules/ top-level dir, and is squashed at zstd level 19.
-if [ "$kernel_vdpup" -eq 1 ]; then
-    cp -a "$cache/vdpup-00modules.sfs" "$target/00modules.sfs"
-    ok "00modules.sfs (stock vdpup) -> $(du -h "$target/00modules.sfs" | cut -f1)"
-    unsquashfs -s "$target/00modules.sfs" 2>/dev/null | grep -m1 Compression | sed 's/^/    /' || true
-elif [ "$kernel_rstl" -eq 1 ]; then
-    cp -a "$cache/rstl-00modules.sfs" "$target/00modules.sfs"
-    ok "00modules.sfs (rstl, usrmerge) -> $(du -h "$target/00modules.sfs" | cut -f1)"
-    unsquashfs -s "$target/00modules.sfs" 2>/dev/null | grep -m1 Compression | sed 's/^/    /' || true
-else
+# squash the rootfs module tree (or --modules-source) into 00modules.sfs,
+# keeping the usr/lib/modules/... usrmerge layout
+build_00modules() {
     info "building 00modules.sfs (zstd level 19)"
     modlayer="$target/.00mod"
     rm -rf "$modlayer"
@@ -1218,6 +1327,30 @@ else
         -noappend -comp zstd -Xcompression-level 19 -no-progress >/dev/null
     rm -rf "$modlayer"
     ok "00modules.sfs -> $(du -h "$target/00modules.sfs" | cut -f1)"
+}
+
+if [ "$kernel_vdpup" -eq 1 ]; then
+    cp -a "$cache/vdpup-00modules.sfs" "$target/00modules.sfs"
+    ok "00modules.sfs (stock vdpup) -> $(du -h "$target/00modules.sfs" | cut -f1)"
+    unsquashfs -s "$target/00modules.sfs" 2>/dev/null | grep -m1 Compression | sed 's/^/    /' || true
+elif [ "$kernel_rstl" -eq 1 ]; then
+    cp -a "$cache/rstl-00modules.sfs" "$target/00modules.sfs"
+    ok "00modules.sfs (rstl, usrmerge) -> $(du -h "$target/00modules.sfs" | cut -f1)"
+    unsquashfs -s "$target/00modules.sfs" 2>/dev/null | grep -m1 Compression | sed 's/^/    /' || true
+else
+    kc_modules=""
+    [ "$kcache_ok" -eq 1 ] && kc_modules="$opt_kernel_cache/00modules-$kernelver.sfs"
+    if [ -n "$kc_modules" ] && [ -s "$kc_modules" ]; then
+        cp -a "$kc_modules" "$target/00modules.sfs"
+        ok "00modules.sfs reused from kernel cache ($(basename "$kc_modules"))"
+    else
+        build_00modules
+        if [ -n "$kc_modules" ] && [ ! -s "$kc_modules" ]; then
+            cp -a "$target/00modules.sfs" "$kc_modules.part" \
+                && mv "$kc_modules.part" "$kc_modules" \
+                || warn "could not save 00modules.sfs to the kernel cache"
+        fi
+    fi
     unsquashfs -s "$target/00modules.sfs" 2>/dev/null | grep -m1 Compression | sed 's/^/    /' || true
 fi
 

@@ -894,9 +894,24 @@ step_2() {
         missing="$missing $pkg"
       fi
     done
+    # resolve the optional/program/firefox tier against the same repo list:
+    # they can share dependencies with core and with each other, so install
+    # them in one transaction instead of re-resolving the world per package
+    extras_wanted=""
+    extras_missing=""
+    while IFS= read -r pkg; do
+      [ -n "$pkg" ] || continue
+      if grep -qxF "$pkg" "$repo_pkgs"; then
+        extras_wanted="$extras_wanted $pkg"
+      else
+        extras_missing="$extras_missing $pkg"
+      fi
+    done < "$GCDIR/packages-extra"
     rm -f "$repo_pkgs"
     wanted="${wanted# }"     # drop the leading space; keeps the lists symmetric
     missing="${missing# }"   # drop the leading space so membership tests are exact
+    extras_wanted="${extras_wanted# }"
+    extras_missing="${extras_missing# }"
 
     # a session without these cannot boot into the desktop at all: refuse to
     # continue (and let the rootfs/ISO build fail) instead of shipping a broken
@@ -919,14 +934,21 @@ step_2() {
       pac_retry -S --needed --noconfirm $wanted
     fi
 
-    while IFS= read -r pkg; do
-      [ -n "$pkg" ] || continue
-      if run_sudo pacman -Ssq "^${pkg}$" 2>/dev/null | grep -qx "$pkg"; then
-        pac_retry -S --needed --noconfirm "$pkg"
-      else
-        printf "  ${C_DIM}extra package %s not found in any repo, skipping${C_RESET}\n" "$pkg"
+    if [ -n "$extras_missing" ]; then
+      printf "  ${C_DIM}extra packages not in any repo, skipped: %s${C_RESET}\n" "$extras_missing"
+    fi
+    if [ -n "$extras_wanted" ]; then
+      printf "  ${C_DIM}installing extras: %s${C_RESET}\n" "$extras_wanted"
+      # one transaction, then one package at a time only if the group fails:
+      # a broken optional package must not take the rest of the tier down
+      # shellcheck disable=SC2086  # $extras_wanted is a list of names on purpose
+      if ! pac_retry -S --needed --noconfirm $extras_wanted; then
+        for pkg in $extras_wanted; do
+          pac_retry -S --needed --noconfirm "$pkg" \
+            || warn "optional package '$pkg' failed to install"
+        done
       fi
-    done < "$GCDIR/packages-extra"
+    fi
 
     # theme/cursor packages with official-repo fallbacks (kept separate so a
     # missing AUR package cannot fail the whole install). The base icon theme

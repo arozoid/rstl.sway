@@ -330,15 +330,28 @@ jobs:
             ${{ github.workspace }}/cache/vdpup-initrd.gz
           key: vdpup-kernel-6.1.52
 
+      - name: cache cachyos kernel assets (initrd + modules sfs)
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/cache/cachyos-kernel-${{ matrix.arch }}
+          key: cachyos-kernel-${{ matrix.arch }}-${{ steps.epoch.outputs.week }}
+          restore-keys: |
+            cachyos-kernel-${{ matrix.arch }}-
+
       - name: cache rstl kernel (latest rstl.linuz release assets)
         uses: actions/cache@v6
         with:
           path: |
             ${{ github.workspace }}/cache/rstl-kernel.tar.zst
+            ${{ github.workspace }}/cache/.rstl-kernel.src
+            ${{ github.workspace }}/cache/.rstl-assets.src
             ${{ github.workspace }}/cache/rstl-vmlinuz
             ${{ github.workspace }}/cache/rstl-00modules.sfs
             ${{ github.workspace }}/cache/rstl-modules
             ${{ github.workspace }}/cache/rstl-firmware.sfs
+            ${{ github.workspace }}/cache/rstl-initrd.gz
+            ${{ github.workspace }}/cache/.rstl-initrd.src
+            ${{ github.workspace }}/cache/first-rib-initrd.gz
           key: rstl-kernel-${{ steps.epoch.outputs.week }}
           restore-keys: |
             rstl-kernel-
@@ -442,7 +455,8 @@ jobs:
                   --kernel linux-cachyos \
                   --firmware "$CACHE/01firmware.sfs" \
                   --cache "$CACHE" \
-                  --pkgcache "$CACHE/pacman-$ARCH"
+                  --pkgcache "$CACHE/pacman-$ARCH" \
+                  --kernel-cache "$CACHE/cachyos-kernel-$ARCH"
 
               # binstall browser variant: fork THIS pristine pre-squash
               # stage (mkfrugal-iso squashes 07rootfs/ in place below) and
@@ -521,20 +535,17 @@ jobs:
 
             # 3/3 rstl variant: the rstl kernel has no pacman package. Rewrap
             # the cachyos frugal (07rootfs.sfs content is kernel-independent)
-            # with the rstl vmlinuz + its module/firmware sfs, plus a freshly
-            # built initrd from the cached rstl module tree (loop is built
+            # with the rstl vmlinuz + its module/firmware sfs, plus the cached
+            # initrd from the rstl module tree (loop is built
             # into the rstl kernel, so the initrd needs no loop.ko).
             ./mkfrugal-rstl.sh --fetch-rstl --cache "$CACHE"
             R="$STAGE/rstlsway-rstl"
             cp -al "$T" "$R"
-            ( cd "$STAGE" \
-              && "$GITHUB_WORKSPACE/mkFRkernel" latest "$CACHE/rstl-modules" gz \
-                   > rstl-mkfrkernel.log 2>&1 ) || {
-                 echo "::error::mkFRkernel failed (rstl $LABEL)"
-                 tail -60 "$STAGE/rstl-mkfrkernel.log" >&2
-                 exit 1
-               }
-            mv "$STAGE/initrd-latest.img" "$R/initrd.gz"
+            [ -s "$CACHE/rstl-initrd.gz" ] || {
+              echo "::error::cached rstl initrd is missing ($LABEL)"
+              exit 1
+            }
+            cp -a "$CACHE/rstl-initrd.gz" "$R/initrd.gz"
             # The rstl kernel builds loop INTO the image (CONFIG_BLK_DEV_LOOP=y,
             # see arozoid/rstl.linuz config/minimize.sh), so its release ships
             # no loop.ko module and the initrd needs none: the kernel itself
@@ -616,8 +627,10 @@ jobs:
             -fsSL "${headers[@]}" "$api/releases/tags/$RELEASE_TAG")"
           release_id="$(jq -er '.id' <<< "$release")"
           uploads="https://uploads.github.com/repos/$GH_REPO/releases/$release_id/assets"
-          for iso in dist/*.iso; do
-            [ -f "$iso" ] || { echo "::error::no ISO files found"; exit 1; }
+
+          upload_iso() {
+            local iso="$1"
+            local asset expected_size expected_digest uploaded attempt assets existing old_id old_size old_digest
             asset="$(basename "$iso")"
             expected_size="$(stat -c '%s' "$iso")"
             expected_digest="sha256:$(sha256sum "$iso" | awk '{print $1}')"
@@ -667,8 +680,23 @@ jobs:
 
             [ "$uploaded" -eq 1 ] || {
               echo "::error::failed to upload $asset after 5 attempts"
-              exit 1
+              return 1
             }
+          }
+
+          pids=()
+          max_uploads=2
+          for iso in dist/*.iso; do
+            [ -f "$iso" ] || { echo "::error::no ISO files found"; exit 1; }
+            upload_iso "$iso" &
+            pids+=("$!")
+            if [ "${#pids[@]}" -ge "$max_uploads" ]; then
+              wait "${pids[0]}" || exit 1
+              pids=("${pids[@]:1}")
+            fi
+          done
+          for pid in "${pids[@]}"; do
+            wait "$pid" || exit 1
           done
 
   # Finalize the description and prune old releases after every worker has

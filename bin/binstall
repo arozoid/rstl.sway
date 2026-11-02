@@ -480,6 +480,38 @@ pac_install_filtered() {
     pac_retry -S --needed --noconfirm $wanted
 }
 
+# Optional packages are not required to boot. Filter them against one repo
+# listing and try one transaction first; retry individually only if the group
+# fails, so one awkward optional package cannot discard the rest.
+pac_install_extras_filtered() {
+    extras_file="$1"
+    avail="$(mktemp)"
+    run_sudo pacman -Ssq > "$avail" 2>/dev/null || : > "$avail"
+    wanted=""
+    missing=""
+    while IFS= read -r pkg; do
+        [ -n "$pkg" ] || continue
+        if grep -qxF "$pkg" "$avail"; then
+            wanted="$wanted $pkg"
+        else
+            missing="$missing $pkg"
+        fi
+    done < "$extras_file"
+    rm -f "$avail"
+    wanted="${wanted# }"
+    missing="${missing# }"
+    [ -z "$missing" ] || echo "  extra packages not in any repo, skipped:$missing" >&2
+    [ -n "$wanted" ] || return 0
+    echo "  installing extras: $wanted"
+    # shellcheck disable=SC2086  # package names are intentionally word-split
+    if ! pac_retry -S --needed --noconfirm $wanted; then
+        for pkg in $wanted; do
+            pac_retry -S --needed --noconfirm "$pkg" \
+                || echo "  optional package '$pkg' failed to install" >&2
+        done
+    fi
+}
+
 confirm() {
     if [ "$ASSUME_YES" -eq 1 ]; then
         echo "  [auto-yes] $1"
@@ -861,15 +893,9 @@ step_2() {
         pac_install_filtered "$(cat "$GCDIR/packages")" \
             "sway greetd greetd-tuigreet foot mako rofi"
 
-        # base has no program config; an optional firefox bundle is still honored
-        # and installed one at a time so a missing package skips instead of aborting
-        for pm in $(cat "$GCDIR/packages-extra"); do
-            if run_sudo pacman -Ssq "^${pm}$" 2>/dev/null | grep -qx "$pm"; then
-                pac_retry -S --needed --noconfirm "$pm"
-            else
-                printf "  %s not found in repos, skipping\n" "$pm"
-            fi
-        done
+        # The base flavor has no program config, but optional Firefox is still
+        # honored through the same filtered extras transaction.
+        pac_install_extras_filtered "$GCDIR/packages-extra"
 
         # note: intentionally omitted from the base variant: swaylock/swayidle,
         # networkmanager, bluez/bluez-utils (wpa_cli via wpa_supplicant instead),
