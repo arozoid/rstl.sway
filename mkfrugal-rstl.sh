@@ -53,6 +53,10 @@
 #                          module compilation; gives size parity with the
 #                          FirstRib huge-kernel 00modules which ships build/)
 #       --cache DIR         download cache (default: ${TMPDIR:-/tmp}/rstl-frugal-cache)
+#       --pkgcache DIR      share downloaded pacman packages between builds: DIR
+#                           is bind-mounted over the rootfs cache dir for the
+#                           build and unmounted before the image is assembled,
+#                           so it speeds up rebuilds without shipping packages
 #       --rstl-inst-bin FILE prebuilt rstl-inst binary (required for --flavor rstl-inst
 #                           unless cargo + the rstl-inst submodule are available)
 #       --password PASS     login password for root/rustle (default: rstl)
@@ -218,6 +222,7 @@ opt_firmware=""
 opt_modules_build=""
 opt_modules_source=""
 cache="${TMPDIR:-/tmp}/rstl-frugal-cache"
+opt_pkgcache=""
 rstl_inst_bin=""
 password="${RSTL_FRUGAL_PASSWORD:-rstl}"
 force=0
@@ -247,6 +252,9 @@ while [ "$#" -gt 0 ]; do
         --cache) [ "$#" -ge 2 ] || die "--cache requires a directory"
             cache="$2"; shift 2 ;;
         --cache=*) cache="${1#*=}"; shift ;;
+        --pkgcache) [ "$#" -ge 2 ] || die "--pkgcache requires a directory"
+            opt_pkgcache="$2"; shift 2 ;;
+        --pkgcache=*) opt_pkgcache="${1#*=}"; shift ;;
         --rstl-inst-bin) [ "$#" -ge 2 ] || die "--rstl-inst-bin requires a file"
             rstl_inst_bin="$2"; shift 2 ;;
         --rstl-inst-bin=*) rstl_inst_bin="${1#*=}"; shift ;;
@@ -503,7 +511,18 @@ info "x86-64-v$arch_level -> $pacman_conf_name; flavor: $flavor; kernel: $kernel
 # 1. basestrap a runit Artix base rootfs (optimized repos come next)
 # ---------------------------------------------------------------------------
 SELF_BIND=0
+PKGCACHE_MOUNTED=0
+# The shared package cache is mounted inside the rootfs, so it must be
+# unmounted before the rootfs itself. Doing it in the exit trap covers failures
+# as well as the normal end of the build.
+pkgcache_unmount() {
+    if [ "$PKGCACHE_MOUNTED" -eq 1 ]; then
+        umount "$ROOTFS/var/cache/pacman/pkg" 2>/dev/null || true
+        PKGCACHE_MOUNTED=0
+    fi
+}
 cleanup() {
+    pkgcache_unmount
     if [ "$SELF_BIND" -eq 1 ]; then
         umount "$ROOTFS" 2>/dev/null || true
     fi
@@ -533,6 +552,21 @@ fi
 mount --bind "$ROOTFS" "$ROOTFS"
 SELF_BIND=1
 
+# A shared pacman cache keeps the initial -Syu/-S and every later flavor install
+# from re-downloading the same archives. It lives outside the rootfs tree (the
+# workflow caches it between jobs) and is bind-mounted over the rootfs cache
+# dir. pkgcache_unmount() runs before the frugal is assembled or the base
+# rootfs is tarred, so the packages never enter the image.
+if [ -n "$opt_pkgcache" ]; then
+    mkdir -p "$opt_pkgcache" "$ROOTFS/var/cache/pacman/pkg"
+    if mount --bind "$opt_pkgcache" "$ROOTFS/var/cache/pacman/pkg"; then
+        PKGCACHE_MOUNTED=1
+        info "sharing pacman package cache '$opt_pkgcache' (kept out of the image)"
+    else
+        warn "could not bind-mount '$opt_pkgcache'; downloads stay per-build"
+    fi
+fi
+
 # ---------------------------------------------------------------------------
 # 2. install the ALHP mirrorlist and CachyOS keyring + mirrorlists, then swap in
 #    the Artix + Arch compatibility + ALHP + CachyOS pacman.conf
@@ -549,12 +583,20 @@ bootstrap_cachyos() {
     done
     arch-chroot "$ROOTFS" pacman-key --init
     arch-chroot "$ROOTFS" pacman-key --populate archlinux
-    # bound the keyserver fetch so a flaky dirmngr cannot hang the build
-    mkdir -p "$ROOTFS/root/.gnupg"
-    printf 'keyserver timeout 30\n' > "$ROOTFS/root/.gnupg/dirmngr.conf"
-    arch-chroot "$ROOTFS" pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com
-    arch-chroot "$ROOTFS" pacman-key --lsign-key F3B607488DB35A47
-    arch-chroot "$ROOTFS" pacman -U --noconfirm $pkgs
+    # LocalFileSigLevel is Optional in the bootstrap config, so the keyring
+    # package can be installed before its key is trusted. Installing it first
+    # lets --populate import the CachyOS signing key from the package itself
+    # (no keyserver round-trip, which used to be the slowest/flakiest step).
+    # If a mirror somehow rejects the local package, fall back to fetching the
+    # key explicitly so the build does not depend on one code path.
+    if ! arch-chroot "$ROOTFS" pacman -U --noconfirm --needed $pkgs; then
+        warn "keyring package install failed; trusting the CachyOS key via keyserver"
+        mkdir -p "$ROOTFS/root/.gnupg"
+        printf 'keyserver timeout 30\n' > "$ROOTFS/root/.gnupg/dirmngr.conf"
+        arch-chroot "$ROOTFS" pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com
+        arch-chroot "$ROOTFS" pacman-key --lsign-key F3B607488DB35A47
+        arch-chroot "$ROOTFS" pacman -U --noconfirm --needed $pkgs
+    fi
     arch-chroot "$ROOTFS" pacman-key --populate cachyos 2>/dev/null || true
     ok "CachyOS keyring + mirrorlists installed"
 }
@@ -907,7 +949,7 @@ install_as_rustle() {
     chr chown -R rustle:rustle /home/rustle/.config
     printf '%%wheel ALL=(ALL:ALL) NOPASSWD: ALL\n' > "$ROOTFS/etc/sudoers.d/10-installer"
     chmod 440 "$ROOTFS/etc/sudoers.d/10-installer"
-    if ! chr /bin/su - rustle -c "cd \$HOME/.config/rstl.sway && RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox ./${1} ${FLAG_YES}" \
+    if ! chr /bin/su - rustle -c "cd \$HOME/.config/rstl.sway && RSTL_KEEP_PKG_CACHE=$PKGCACHE_MOUNTED RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox ./${1} ${FLAG_YES}" \
             1>"$target/installer.log" 2>&1; then
         tail -40 "$target/installer.log" >&2 || true
         die "${1} failed while running as rustle"
@@ -932,7 +974,7 @@ set_passwords() {
 header "Installing flavor: $flavor"
 case "$flavor" in
     minstall)
-        chr /bin/sh -c "RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox /root/.config/rstl.sway/bin/minstall $FLAG_YES"
+        chr /bin/sh -c "RSTL_KEEP_PKG_CACHE=$PKGCACHE_MOUNTED RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox /root/.config/rstl.sway/bin/minstall $FLAG_YES"
         ensure_rustle_user
         # surface the root-staged desktop config for the rustle login too
         home="$ROOTFS/home/rustle"
@@ -946,7 +988,7 @@ case "$flavor" in
         ;;
 
     binstall)
-        chr /bin/sh -c "RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox /root/.config/rstl.sway/bin/binstall $FLAG_YES"
+        chr /bin/sh -c "RSTL_KEEP_PKG_CACHE=$PKGCACHE_MOUNTED RSTL_PROGRAM=$program RSTL_FIREFOX=$opt_firefox /root/.config/rstl.sway/bin/binstall $FLAG_YES"
         ensure_rustle_user
         # surface the root-staged desktop config for the rustle login too
         home="$ROOTFS/home/rustle"
@@ -1059,6 +1101,7 @@ fi
 # and compresses it into 07rootfs.sfs. The workflow tars this directory as the
 # baserootfs artifact; layered jobs --reuse-rootfs it.
 if [ "$stage_base" -eq 1 ]; then
+    pkgcache_unmount
     header "Base rootfs staged at '$ROOTFS'"
     info "stage-base: stopping before frugal assembly (keeping /boot + /usr/lib/modules)"
     exit 0
@@ -1067,6 +1110,9 @@ fi
 # ---------------------------------------------------------------------------
 # 8. assemble the frugal directory
 # ---------------------------------------------------------------------------
+# the package cache was only a build accelerator: unmount it now so neither the
+# rootfs squashfs nor the base-rootfs artifact carries the archives
+pkgcache_unmount
 header "Assembling frugal at '$target'"
 
 # --- initrd ---------------------------------------------------------------

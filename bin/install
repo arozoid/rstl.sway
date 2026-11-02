@@ -276,6 +276,15 @@ pac_retry() {
   done
 }
 
+# Repository blocks added during this run need one sync, not one per block:
+# the add_* functions only set the flag and step_2 syncs once when done.
+NEED_SYNC=0
+pac_sync_if_needed() {
+  [ "${NEED_SYNC:-0}" -eq 1 ] || return 0
+  pac_retry -Sy --noconfirm
+  NEED_SYNC=0
+}
+
 # install $1 if it exists in the (synced) repos, otherwise install the $2 fallback
 install_or_fallback() {
   pkg="$1"; fallback="$2"
@@ -422,8 +431,8 @@ add_rstl_repo() {
 
   printf "  ${C_DIM}adding rstl-repo (arch) to ${conf}${C_RESET}\n"
   printf '\n%s\n%s\n%s\n' "$repo_line" "$sig_line" "$server_line" | run_sudo tee -a "$conf" >/dev/null
-  pac_retry -Sy --noconfirm
-  ok "rstl-repo added and synced"
+  NEED_SYNC=1
+  ok "rstl-repo added"
 }
 
 # add rstl.repo to dnf (fedora/ endpoint)
@@ -469,8 +478,8 @@ enable_multilib() {
 
   printf "  ${C_DIM}enabling multilib in ${conf}${C_RESET}\n"
   printf '\n[multilib]\n%s\n' "$mirror" | run_sudo tee -a "$conf" >/dev/null
-  pac_retry -Sy --noconfirm
-  ok "multilib enabled and synced"
+  NEED_SYNC=1
+  ok "multilib enabled"
 }
 
 # ---------------------------------------------------------------------------
@@ -706,6 +715,7 @@ step_2() {
       PKG_MGR=pacman
       add_rstl_repo
       enable_multilib
+      pac_sync_if_needed
       if [ -f "$REPO_DIR/scripts/pacman-cachyos.sh" ]; then
         sh "$REPO_DIR/scripts/pacman-cachyos.sh" ||
           warn "could not apply the CachyOS pacman output options"
@@ -1341,10 +1351,15 @@ EOF
     printf "  ${C_DIM}removing orphaned packages...${C_RESET}\n"
     run_sudo pacman -Rns --noconfirm $(pacman -Qdtq 2>/dev/null) 2>/dev/null || true
 
-    # clear pacman cache
-    printf "  ${C_DIM}clearing pacman cache...${C_RESET}\n"
-    run_sudo pacman -Scc --noconfirm 2>/dev/null || true
-    run_sudo rm -rf /var/cache/pacman/pkg/* 2>/dev/null || true
+    # clear pacman cache (unless the build mounted a shared cache: emptying it
+    # here would throw away the archives the next flavor build reuses)
+    if [ "${RSTL_KEEP_PKG_CACHE:-0}" = "1" ]; then
+      printf "  ${C_DIM}keeping pacman cache (shared build cache)${C_RESET}\n"
+    else
+      printf "  ${C_DIM}clearing pacman cache...${C_RESET}\n"
+      run_sudo pacman -Scc --noconfirm 2>/dev/null || true
+      run_sudo rm -rf /var/cache/pacman/pkg/* 2>/dev/null || true
+    fi
   elif command -v xbps-remove >/dev/null 2>&1; then
     printf "  ${C_DIM}removing orphaned packages...${C_RESET}\n"
     run_sudo xbps-remove -oy >/dev/null 2>&1 || true

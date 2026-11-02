@@ -685,10 +685,11 @@ step_2() {
         ;;
     arch|artix)
         conf="/etc/pacman.conf"
+        repo_changed=0
         if ! grep -qF "[rstl-repo]" "$conf" 2>/dev/null; then
             printf '\n[rstl-repo]\nSigLevel = Optional TrustAll\nServer = https://arozoid.github.io/rstl.repo/arch/\n' \
                 | run_sudo tee -a "$conf" >/dev/null
-            pac_retry -Sy --noconfirm
+            repo_changed=1
         fi
 
         # 32 bit libraries, so lib32-* packages can be installed. A pacman.conf
@@ -704,10 +705,14 @@ step_2() {
                 mirror='Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch'
             fi
             printf '\n[multilib]\n%s\n' "$mirror" | run_sudo tee -a "$conf" >/dev/null
-            pac_retry -Sy --noconfirm
+            repo_changed=1
             echo "multilib enabled in $conf"
         else
             echo "multilib already enabled in $conf"
+        fi
+        # one sync for every repository block added above
+        if [ "$repo_changed" -eq 1 ]; then
+            pac_retry -Sy --noconfirm
         fi
         PKG_MGR=pacman
         if [ -f "$REPO_DIR/scripts/pacman-cachyos.sh" ]; then
@@ -1060,8 +1065,11 @@ step_8() {
 
     if command -v pacman >/dev/null 2>&1; then
         run_sudo pacman -Rns --noconfirm $(pacman -Qdtq 2>/dev/null) >/dev/null 2>&1 || true
-        run_sudo pacman -Scc --noconfirm >/dev/null 2>&1 || true
-        run_sudo rm -rf /var/cache/pacman/pkg/* 2>/dev/null || true
+        # keep the archives when a build mounted its shared package cache
+        if [ "${RSTL_KEEP_PKG_CACHE:-0}" != "1" ]; then
+            run_sudo pacman -Scc --noconfirm >/dev/null 2>&1 || true
+            run_sudo rm -rf /var/cache/pacman/pkg/* 2>/dev/null || true
+        fi
     elif command -v xbps-remove >/dev/null 2>&1; then
         run_sudo xbps-remove -oy >/dev/null 2>&1 || true
         run_sudo xbps-remove -OO >/dev/null 2>&1 || true

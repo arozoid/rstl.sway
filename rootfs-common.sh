@@ -223,12 +223,20 @@ bootstrap_cachyos() {
         pkgs="$pkgs $base/$pkg"
     done
 
-    # (re)initialize + populate the keyring, then trust the CachyOS admin key
+    # (re)initialize + populate the keyring, then trust the CachyOS admin key.
+    # LocalFileSigLevel is Optional in pacman-base.conf, so the keyring package
+    # can be installed before its key is trusted. Installing it first lets
+    # --populate import the CachyOS key from the package itself instead of
+    # making a keyserver round-trip. Fall back to the keyserver only if the
+    # local package install fails (e.g. a mirror serves a broken file).
     arch-chroot "$target" pacman-key --init
     arch-chroot "$target" pacman-key --populate archlinux
-    arch-chroot "$target" pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com
-    arch-chroot "$target" pacman-key --lsign-key F3B607488DB35A47
-    arch-chroot "$target" pacman -U --noconfirm $pkgs
+    if ! arch-chroot "$target" pacman -U --noconfirm --needed $pkgs; then
+        info "keyring package install failed; trusting the CachyOS key via keyserver"
+        arch-chroot "$target" pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com
+        arch-chroot "$target" pacman-key --lsign-key F3B607488DB35A47
+        arch-chroot "$target" pacman -U --noconfirm --needed $pkgs
+    fi
     arch-chroot "$target" pacman-key --populate cachyos 2>/dev/null || true
     info "CachyOS keyring + mirrorlists installed"
 }

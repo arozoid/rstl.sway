@@ -120,6 +120,26 @@ running `rstl` without arguments opens an interactive script picker. the
 deprecated ratl settings tools in `ratl/` are not listed there, but still run by
 name (`rstl rstl-settings`) until the replacement settings suite lands.
 
+### building isos
+
+the weekly ISOs are built by `.github/workflows/build-iso.yml`:
+
+1. `mkrootfs-*.sh` builds a local rootfs through `rootfs-common.sh`.
+2. `mkfrugal-rstl.sh` stages the selected flavor and assembles the frugal.
+3. `mkfrugal-iso.sh` wraps the frugal into a bootable ISO.
+
+the rootfs, CachyOS bootstrap, system upgrade and kernel install run once per
+microarchitecture and are reused by the layered ISO jobs. downloaded pacman
+packages are shared through `mkfrugal-rstl.sh --pkgcache DIR` (bind-mounted for
+the build and removed before the image is assembled), and GitHub Actions caches
+that directory plus the container's package cache. the CachyOS signing key is
+imported from its keyring package instead of a keyserver.
+
+remaining cost: every program configuration still installs its own package
+layer, and each ISO job extracts the base rootfs once per configuration.
+CachyOS mirrorlist 404s are harmless while another mirror serves the database;
+they never bypass signature verification.
+
 ## configuration
 
 sway configuration is stored in `sway/`.

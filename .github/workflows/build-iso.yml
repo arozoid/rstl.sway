@@ -37,6 +37,10 @@
 # (SIGILL) as soon as a chrooted command runs on a host without AVX-512, and
 # neither GitHub runners nor desktop CPU < Ice Lake/Zen4 have it. v4 ISOs can
 # still be built locally with:  sudo ./mkfrugal-rstl.sh stage --arch v4 ...
+#
+# The runner may log a warning about /root/.docker/config.json while it pulls
+# the public Artix container image. No step here uses Docker, so that warning
+# comes from the runner's own credential lookup, not from the build scripts.
 name: Build Frugal ISOs
 
 on:
@@ -117,6 +121,18 @@ jobs:
       matrix:
         arch: [v1, v2, v3]
     steps:
+      - name: compute weekly cache epoch
+        id: epoch
+        run: echo "week=$(date -u +%Y-%W)" >> "$GITHUB_OUTPUT"
+
+      - name: cache container package archives
+        uses: actions/cache@v6
+        with:
+          path: /var/cache/pacman/pkg
+          key: artix-tools-${{ runner.arch }}-${{ steps.epoch.outputs.week }}
+          restore-keys: |
+            artix-tools-${{ runner.arch }}-
+
       - name: update system and install tooling
         run: |
           pacman -Syu --noconfirm \
@@ -135,6 +151,14 @@ jobs:
 
       - name: trust git checkout (dubious ownership)
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: cache rootfs package archives
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/cache/pacman-${{ matrix.arch }}
+          key: pacman-${{ matrix.arch }}-${{ steps.epoch.outputs.week }}
+          restore-keys: |
+            pacman-${{ matrix.arch }}-
 
       - name: build base rootfs (binstall, --stage-base, linux-cachyos kept)
         timeout-minutes: 120
@@ -157,7 +181,8 @@ jobs:
           set +e
           timeout 110m stdbuf -oL -eL ./mkfrugal-rstl.sh \
             "$STAGE/rstlsway" --arch "$ARCH" --flavor binstall --stage-base --yes \
-            --kernel linux-cachyos --cache "$GITHUB_WORKSPACE/cache" 2>&1 | tee build.log
+            --kernel linux-cachyos --cache "$GITHUB_WORKSPACE/cache" \
+            --pkgcache "$GITHUB_WORKSPACE/cache/pacman-$ARCH" 2>&1 | tee build.log
           RC=$?
           set -e
           if [ "$RC" -eq 124 ]; then
@@ -233,6 +258,18 @@ jobs:
           - { flavor: binstall, arch: v2 }
           - { flavor: binstall, arch: v3 }
     steps:
+      - name: compute weekly cache epoch
+        id: epoch
+        run: echo "week=$(date -u +%Y-%W)" >> "$GITHUB_OUTPUT"
+
+      - name: cache container package archives
+        uses: actions/cache@v6
+        with:
+          path: /var/cache/pacman/pkg
+          key: artix-tools-${{ runner.arch }}-${{ steps.epoch.outputs.week }}
+          restore-keys: |
+            artix-tools-${{ runner.arch }}-
+
       - name: update system and install tooling
         run: |
           pacman -Syu --noconfirm \
@@ -251,6 +288,14 @@ jobs:
 
       - name: trust git checkout (dubious ownership)
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: cache rootfs package archives
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/cache/pacman-${{ matrix.arch }}
+          key: pacman-${{ matrix.arch }}-${{ steps.epoch.outputs.week }}
+          restore-keys: |
+            pacman-${{ matrix.arch }}-
 
       - name: cache huge-kernel firmware
         uses: actions/cache@v6
@@ -294,7 +339,9 @@ jobs:
             ${{ github.workspace }}/cache/rstl-00modules.sfs
             ${{ github.workspace }}/cache/rstl-modules
             ${{ github.workspace }}/cache/rstl-firmware.sfs
-          key: rstl-kernel
+          key: rstl-kernel-${{ steps.epoch.outputs.week }}
+          restore-keys: |
+            rstl-kernel-
 
       - name: download base rootfs (baserootfs-${{ matrix.arch }})
         uses: actions/download-artifact@v8
@@ -394,7 +441,8 @@ jobs:
                   --yes \
                   --kernel linux-cachyos \
                   --firmware "$CACHE/01firmware.sfs" \
-                  --cache "$CACHE"
+                  --cache "$CACHE" \
+                  --pkgcache "$CACHE/pacman-$ARCH"
 
               # binstall browser variant: fork THIS pristine pre-squash
               # stage (mkfrugal-iso squashes 07rootfs/ in place below) and
@@ -409,11 +457,18 @@ jobs:
                 # root (arch-chroot adds none); mkfrugal does the same self
                 # bind-mount before every chrooted pacman call.
                 mount --bind "$ET/07rootfs" "$ET/07rootfs"
+                # reuse the same package cache as the layer build; it must be
+                # unmounted before the stage is squashed so it stays out of the ISO
+                mkdir -p "$CACHE/pacman-$ARCH" "$ET/07rootfs/var/cache/pacman/pkg"
+                pkgcache_ok=0
+                mount --bind "$CACHE/pacman-$ARCH" "$ET/07rootfs/var/cache/pacman/pkg" && pkgcache_ok=1
                 if ! arch-chroot "$ET/07rootfs" pacman -S --needed --noconfirm firefox; then
+                  [ "$pkgcache_ok" -eq 1 ] && umount "$ET/07rootfs/var/cache/pacman/pkg" 2>/dev/null || true
                   umount "$ET/07rootfs" 2>/dev/null || true
                   echo "::error::firefox install into forked binstall-firefox-$ARCH stage failed"
                   exit 1
                 fi
+                [ "$pkgcache_ok" -eq 1 ] && umount "$ET/07rootfs/var/cache/pacman/pkg" 2>/dev/null || true
                 umount "$ET/07rootfs" 2>/dev/null || true
                 find "$ET/07rootfs/var/cache/pacman/pkg" -mindepth 1 -delete 2>/dev/null || true
               fi
