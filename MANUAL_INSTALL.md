@@ -179,7 +179,7 @@ sudo ln -s ~/.config/rstl.sway/greetd /etc/greetd
   sudo install -Dm755 ~/.config/rstl.sway/scripts/first-login.sh /usr/local/bin/rstl-first-login
   ```
 - drop your wallpaper at `~/Pictures/Wallpapers/wallpaper.jpg` or edit `~/.config/rstl.sway/wallpaper`
-- battery alerts run via cronie. add `~/.config/rstl.sway/scripts/batt.sh` to your crontab (see step 6 of `install.sh`)
+- battery alerts run via cronie. add `~/.config/rstl.sway/scripts/batt.sh` to your crontab (see step 6 of `install`)
 - `rstlpk` (our minimal polkit agent) fetches from GitHub releases: `sudo rstlpk/install.sh`
 
 ### settings you may want to change
@@ -258,7 +258,7 @@ git -C ~/.config/rstl.sway submodule update --init --depth 1 nvim
 then re-apply the dotfiles by hand (a `cp -a` of the repo over
 `~/.config/rstl.sway`, minus `.git`, purging `sway/config`, `sway/config.d`,
 `bin/`, `ratl/`, the package lists and `.rstl-edition` first - see `copy_dotfiles` in
-`bin/install.sh`, which is exactly what the installers do). packages you
+`bin/install`, which is exactly what the installers do). packages you
 installed by hand are not touched: the lists in `packages-install*.txt` are what
 the installers install, and the ones listed there for your flavor are what
 `rstl update` re-installs.

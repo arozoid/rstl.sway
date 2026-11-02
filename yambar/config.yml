@@ -104,11 +104,11 @@ bar:
                     capacity < 11:
                       - string: {text: "    󱐋{capacity}%", foreground: ccccccff}
                     capacity < 31:
-                      - string: {text: "    󱐋{capacity}%", foreground: ccccccff}
+                      - string: {text: "     󱐋{capacity}%", foreground: ccccccff}
                     capacity < 61:
                       - string: {text: "    󱐋{capacity}%", foreground: ccccccff}
                     capacity < 81:
-                      - string: {text: "    󱐋{capacity}%", foreground: ccccccff}
+                      - string: {text: "     󱐋{capacity}%", foreground: ccccccff}
                     capacity >= 81:
                       - string: {text: "    󱐋{capacity}%", foreground: ccccccff}
                     default:
@@ -122,11 +122,11 @@ bar:
                     capacity < 11:
                       - string: {text: "    {capacity}%", foreground: ccccccff}
                     capacity < 31:
-                      - string: {text: "    {capacity}%", foreground: ccccccff}
+                      - string: {text: "     {capacity}%", foreground: ccccccff}
                     capacity < 61:
                       - string: {text: "    {capacity}%", foreground: ccccccff}
                     capacity < 81:
-                      - string: {text: "    {capacity}%", foreground: ccccccff}
+                      - string: {text: "     {capacity}%", foreground: ccccccff}
                     capacity >= 81:
                       - string: {text: "    {capacity}%", foreground: ccccccff}
                     default:
@@ -140,11 +140,11 @@ bar:
                     capacity < 11:
                       - string: {text: "    {capacity}%", foreground: ccccccff}
                     capacity < 31:
-                      - string: {text: "    {capacity}%", foreground: ccccccff}
+                      - string: {text: "     {capacity}%", foreground: ccccccff}
                     capacity < 61:
                       - string: {text: "    {capacity}%", foreground: ccccccff}
                     capacity < 81:
-                      - string: {text: "    {capacity}%", foreground: ccccccff}
+                      - string: {text: "     {capacity}%", foreground: ccccccff}
                     capacity >= 81:
                       - string: {text: "    {capacity}%", foreground: ccccccff}
                     default:

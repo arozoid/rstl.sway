@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # Battery charge reminder. Single-shot: cronie invokes it every minute
-# (see install.sh step 6). Throttle state survives across invocations via a
+# (see install step 6). Throttle state survives across invocations via a
 # state file, so no long-running while-loop is needed.
 
 LOW=40

@@ -5,8 +5,7 @@
 #   rstl                      interactive picker: pick a script by number (or by
 #                             name), see its --help, then type its arguments.
 #                             Press enter on an empty line to leave.
-#   rstl install.sh --yes     run bin/install.sh --yes
-#   rstl install --yes        same, the .sh suffix is optional
+#   rstl install --yes        run bin/install --yes
 #   rstl update.sh            run bin/update.sh
 #   rstl --help               this help
 #
@@ -277,7 +276,7 @@ if [ "$#" -eq 0 ] || [ -z "$(printf '%s' "${1:-}" | tr -d '[:space:]')" ]; then
         exit 0
     fi
     printf 'usage: rstl <script> [arguments...]\n' >&2
-    printf 'e.g.   rstl install.sh --yes\n' >&2
+    printf 'e.g.   rstl install --yes\n' >&2
     printf '   or:  rstl                      interactive picker\n\n' >&2
     printf 'available scripts:\n' >&2
     available_names >&2

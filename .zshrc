@@ -533,7 +533,7 @@ zstyle ':completion:*:*:*:*:*commands' list-colors '=(#b)(*)=37'
 LISTMAX=7
 
 ## zsh autosuggestions
-source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
+source /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh
 ZSH_AUTOSUGGEST_STRATEGY=(history)
 
 ## zsh auto notify
@@ -542,8 +542,8 @@ if [[ -f /usr/share/zsh/plugins/zsh-auto-notify/auto-notify.plugin.zsh ]]; then
 fi
 
 ## zsh syntax highlighting
-if [[ -f /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]]; then
-    source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+if [[ -f /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]]; then
+    source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 fi
 
 
@@ -595,3 +595,7 @@ else
 fi
 
 
+
+# opencode
+export PATH=/home/rustle/.opencode/bin:$PATH
+. "/home/rustle/.deno/env"
