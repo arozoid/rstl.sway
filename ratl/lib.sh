@@ -78,13 +78,13 @@ settings_need_tty() {
         # (the foot server supplies its own), so pass the recursion marker
         # through env explicitly.
         if [ -x "$RSTL_SETTINGS_DIR/scripts/foot-smart.sh" ]; then
-            exec "$RSTL_SETTINGS_DIR/scripts/foot-smart.sh" \
-                --app-id=rstl-settings -e env RSTL_TERMINAL_RELAUNCHED=1 "$0" "$@"
+                exec "$RSTL_SETTINGS_DIR/scripts/foot-smart.sh" \
+                --app-id=rstl-tune -e env RSTL_TERMINAL_RELAUNCHED=1 "$0" "$@"
         elif settings_have footclient; then
-            exec footclient --app-id=rstl-settings \
+            exec footclient --app-id=rstl-tune \
                 -e env RSTL_TERMINAL_RELAUNCHED=1 "$0" "$@"
         elif settings_have foot; then
-            exec foot --app-id=rstl-settings \
+            exec foot --app-id=rstl-tune \
                 -e env RSTL_TERMINAL_RELAUNCHED=1 "$0" "$@"
         fi
     fi
@@ -114,21 +114,135 @@ RATL_THEME_JSON='{
     "border": "#76a882",
     "title": "#e8f5ea",
     "accent": "#83b394",
-    "focus_foreground": "#171a18",
+    "focus_foreground": "#000000",
     "focus_background": "#76a882",
     "input_foreground": "#e0e6e0",
     "input_background": "#252825",
     "danger": "#d97583",
     "error": "#d97583"
 }'
+RATL_SYMBOLS_JSON='{
+    "checkbox_checked": "●",
+    "checkbox_unchecked": "○",
+    "radio_selected": "●",
+    "radio_unselected": "○",
+    "radio_cursor": "›",
+    "select_selected": "›",
+    "select_unselected": " ",
+    "slider_left": "",
+    "slider_right": "",
+    "slider_filled": "━",
+    "slider_empty": "─",
+    "button_left": "",
+    "button_right": "",
+    "scroll_up": "↑",
+    "scroll_down": "↓",
+    "text_cursor": "▏",
+    "separator": "─"
+}'
 
 # Run a ratl dialog and print its JSON result. Returns 1 when the user
 # cancels, so callers can simply `|| exit 0`.
 ratl_run() {
     settings_need_ratl
-    json=$(printf '%s' "$1" | jq --argjson theme "$RATL_THEME_JSON" '
-        if has("theme") then . else . + { theme: $theme } end') || return 1
+    json=$(printf '%s' "$1" | jq \
+        --argjson theme "$RATL_THEME_JSON" \
+        --argjson symbols "$RATL_SYMBOLS_JSON" '
+        # The settings UI is deliberately lowercase. Only display strings are
+        # folded so values, paths, and IDs keep their original spelling.
+        def lower_display:
+            if type == "object" then
+                with_entries(
+                    .key as $key
+                    | .value as $value
+                    | if (($key == "title" or $key == "label" or $key == "placeholder" or $key == "alt" or $key == "description") and (($value | type) == "string"))
+                      then .value = ($value | ascii_downcase)
+                      elif (($key == "text") and (($value | type) == "string"))
+                      then .value = ($value | ascii_downcase)
+                      elif (($key == "options") and (($value | type) == "array"))
+                      then .value = [$value[] | if type == "string" then ascii_downcase
+                            elif type == "object" then (if ((.label? | type) == "string") then .label |= ascii_downcase else . end)
+                            else . end]
+                      elif (($key == "children" or $key == "buttons") and (($value | type) == "array"))
+                      then .value = [$value[] | lower_display]
+                      else .value = ($value | lower_display)
+                      end
+                )
+            elif type == "array" then [.[] | lower_display]
+            else .
+            end;
+        lower_display
+        | . + { theme: (.theme // $theme), symbols: (.symbols // $symbols) }') || return 1
     "$RATL_BIN" --json "$json"
+}
+
+ratl_page() {
+    settings_need_jq
+    current_page="${RSTL_TUNE_PAGE:-}"
+    [ -n "$current_page" ] || { ratl_run "$1"; return $?; }
+    json=$(printf '%s' "$1" | jq --arg current "$current_page" '
+        . as $page
+        | [
+            {label:"Display",value:"display"},
+            {label:"Brightness",value:"brightness"},
+            {label:"Input devices",value:"input"},
+            {label:"Peripherals",value:"peripherals"},
+            {label:"Power management",value:"power"},
+            {label:"Appearance",value:"appearance"},
+            {label:"Keybinds",value:"keys"},
+            {label:"Autostart",value:"autostart"},
+            {label:"Default apps",value:"apps"},
+            {label:"Services",value:"services"},
+            {label:"Time / clock",value:"time"},
+            {label:"Updates",value:"updates"},
+            {label:"Notifications",value:"notifications"},
+            {label:"Lock screen",value:"lock"}
+          ] as $pages
+        | .fullscreen = true
+        | .padding = 1
+        | .initial_focus = "__ratl_search_tune-menu"
+        | .children = [{
+            type:"row",
+            gap:0,
+            children:[
+              {
+                type:"box", id:"tune-menu", title:"categories", search:"fuzzy",
+                width:28, border:"none", padding:1, direction:"column",
+                style:{bg:"#1f2420"},
+                children:[{
+                  type:"radio", id:"__rstl_tune_navigation",
+                  activation:"enter",
+                  exit_on_enter:true,
+                  start_unselected:false,
+                  options:$pages,
+                  selected:(([$pages[].value] | index($current)) // 0),
+                  style:{fg:"#d0d5d1"}
+                }]
+              },
+              {
+                type:"box", border:"none", padding:2, direction:"column",
+                style:{bg:"#171a18"},
+                children: ([{
+                  type:"label",
+                  text:($page.title // "settings"),
+                  style:{fg:"#83b394",bold:true}
+                }] + $page.children)
+              }
+            ]
+          }]') || return 1
+    result=$(ratl_run "$json") || return $?
+    button=$(printf '%s' "$result" | jq -r '.button // empty')
+    target=$(printf '%s' "$result" | jq -r '.values.__rstl_tune_navigation // empty')
+    if [ "$button" = __radio:__rstl_tune_navigation ]; then
+        [ -n "$target" ] || return 1
+        if [ -n "${RSTL_TUNE_NEXT_FILE:-}" ]; then
+            printf '%s\n' "$target" > "$RSTL_TUNE_NEXT_FILE"
+        else
+            "$RSTL_SETTINGS_DIR/bin/rstl-tune" "$target" >&2
+        fi
+        return 1
+    fi
+    printf '%s\n' "$result"
 }
 
 ratl_select() {
@@ -160,7 +274,11 @@ ratl_select() {
                 { label: "Cancel", action: "cancel" }
             ]
         }') || return 1
-    ratl_run "$json"
+    if [ -n "${RSTL_TUNE_PAGE:-}" ]; then
+        ratl_page "$json"
+    else
+        ratl_run "$json"
+    fi
 }
 
 ratl_message() {

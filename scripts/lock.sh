@@ -26,8 +26,19 @@ if [ -z "$image" ] || [ ! -f "$image" ]; then
     image="$(ls -t "$HOME"/Pictures/Wallpapers/* 2>/dev/null | head -n1)"
 fi
 
+LOCK_CONF="$DOTFILES_DIR/local/lock"
+LOCK_ARGS=""
+if [ -r "$LOCK_CONF" ]; then
+    LOCK_ARGS="--config $LOCK_CONF"
+fi
+
 if [ -n "$image" ] && [ -f "$image" ]; then
+    # The generated config contains only validated swaylock options.
+    if [ -n "$LOCK_ARGS" ]; then
+        exec swaylock --daemonize --config "$LOCK_CONF" --image "$image" --scaling fill
+    fi
     exec swaylock --daemonize --image "$image" --scaling fill
 else
+    if [ -n "$LOCK_ARGS" ]; then exec swaylock --daemonize --config "$LOCK_CONF"; fi
     exec swaylock --daemonize
 fi

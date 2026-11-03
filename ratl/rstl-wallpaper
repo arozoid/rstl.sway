@@ -1,9 +1,7 @@
 #!/bin/sh
 # rstl.sway wallpaper options - pick a wallpaper, preview it, apply per output.
 #
-# DEPRECATED: this ratl settings tool is no longer listed by the `rstl`
-# menu and will be replaced by the new settings suite. It still runs when
-# called by name (the sway binding uses it) until that replacement lands.
+# Wallpaper settings page opened by bin/rstl-tune.
 #
 # Usage:
 #   rstl-wallpaper             choose an output (or all), pick an image, preview
@@ -132,7 +130,7 @@ preview=$(jq -n \
         ]
     }')
 
-result=$(ratl_run "$preview") || exit 0
+result=$(ratl_page "$preview") || exit 0
 color=$(printf '%s' "$result" | jq -r '.values.color // empty')
 value="$wallpaper"
 if [ -n "$color" ]; then

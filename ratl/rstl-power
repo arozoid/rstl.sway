@@ -1,9 +1,7 @@
 #!/bin/sh
 # rstl.sway power management - idle timeouts, lid switch and power profile.
 #
-# DEPRECATED: this ratl settings tool is no longer listed by the `rstl`
-# menu and will be replaced by the new settings suite. It still runs when
-# called by name (the sway binding uses it) until that replacement lands.
+# Power settings page opened by bin/rstl-tune.
 #
 # Usage:
 #   rstl-power                 edit lock/blank/suspend timers and the lid action
@@ -40,6 +38,28 @@ case "${1:-}" in
 esac
 
 settings_need_tty "$@"
+power_backend=systemctl
+if [ -d /run/runit ]; then
+    if settings_have loginctl; then
+        power_backend=loginctl
+    elif settings_have zzz; then
+        power_backend=zzz
+    fi
+fi
+power_action() {
+    action="$1"
+    if [ "$power_backend" = loginctl ]; then
+        printf 'loginctl %s' "$action"
+    elif [ "$power_backend" = zzz ]; then
+        case "$action" in
+            suspend) printf 'zzz' ;;
+            hibernate) printf 'hibernate' ;;
+            poweroff) printf 'poweroff' ;;
+        esac
+    else
+        printf 'systemctl %s' "$action"
+    fi
+}
 if ! settings_have swayidle; then
     ratl_message "Power management" \
         "swayidle is not installed. Install swayidle (and swaylock) to use idle timers."
@@ -211,7 +231,7 @@ dialog=$(jq -n \
         ]
     }')
 
-result=$(ratl_run "$dialog") || exit 0
+result=$(ratl_page "$dialog") || exit 0
 lock_timeout=$(printf '%s' "$result" | jq -r '.values.lock_timeout // 180')
 blank_timeout=$(printf '%s' "$result" | jq -r '.values.blank_timeout // 600')
 suspend_timeout=$(printf '%s' "$result" | jq -r '.values.suspend_timeout // 0')
@@ -252,7 +272,7 @@ ensure_local_dir
         printf 'timeout %s %s\n' "$blank_timeout" "'swaymsg \"output * dpms off\"'"
     fi
     if [ "$suspend_timeout" -gt 0 ]; then
-        printf 'timeout %s %s\n' "$suspend_timeout" "'systemctl suspend'"
+        printf 'timeout %s %s\n' "$suspend_timeout" "'$(power_action suspend)'"
     fi
     printf 'lock sh -c %s\n' "'$DOTFILES_DIR/scripts/lock.sh'"
     printf 'unlock %s\n' "'swaymsg \"output * dpms on\"'"
@@ -269,15 +289,15 @@ ensure_local_dir
             ;;
         suspend)
             printf 'bindswitch --locked lid:on exec %s\n' \
-                "'$DOTFILES_DIR/scripts/lock.sh; systemctl suspend'"
+                "'$DOTFILES_DIR/scripts/lock.sh; $(power_action suspend)'"
             ;;
         hibernate)
             printf 'bindswitch --locked lid:on exec %s\n' \
-                "'$DOTFILES_DIR/scripts/lock.sh; systemctl hibernate'"
+                "'$DOTFILES_DIR/scripts/lock.sh; $(power_action hibernate)'"
             ;;
         poweroff)
             printf 'bindswitch --locked lid:on exec %s\n' \
-                "'$DOTFILES_DIR/scripts/lock.sh; systemctl poweroff'"
+                "'$DOTFILES_DIR/scripts/lock.sh; $(power_action poweroff)'"
             ;;
         ignore) ;;
     esac

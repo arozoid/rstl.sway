@@ -1,9 +1,7 @@
 #!/bin/sh
 # rstl.sway keyboard shortcuts - inspect and rebind top-level sway bindings.
 #
-# DEPRECATED: this ratl settings tool is no longer listed by the `rstl`
-# menu and will be replaced by the new settings suite. It still runs when
-# called by name (the sway binding uses it) until that replacement lands.
+# Keybindings page opened by bin/rstl-tune.
 #
 # Usage:
 #   rstl-keys                  choose a binding, edit its key and command
@@ -187,7 +185,7 @@ dialog=$(jq -n \
         ]
     }')
 
-result=$(ratl_run "$dialog") || exit 0
+result=$(ratl_page "$dialog") || exit 0
 new_key=$(printf '%s' "$result" | jq -r '.values.binding // empty')
 new_command=$(printf '%s' "$result" | jq -r '.values.command // empty')
 

@@ -49,12 +49,19 @@ YAMBAR_OUT="${XDG_CACHE_HOME:-$HOME/.cache}/rstl.sway/yambar-config.yml"
 # ---------- cursor theme ----------
 # The theme is a user setting, so it lives with the other settings in
 # sway/config.d/20-cursor.conf. Read it from there instead of duplicating it
-# here: this script re-applies the theme (with a runtime-computed size) on every
-# start and every reload, so a second copy would silently win over the user's.
+# here: this script re-applies the theme and selected size on every start and
+# every reload, so a second copy would silently win over the user's.
 # The fallback is only used when the config is missing or has no such line.
 CURSOR_CONF="$DOTFILES_DIR/sway/config.d/20-cursor.conf"
 CURSOR_THEME="$(sed -nE 's/^[^#]*xcursor_theme[[:space:]]+([^[:space:]]+).*/\1/p' \
     "$CURSOR_CONF" 2>/dev/null | head -n 1)"
+CURSOR_SIZE_OVERRIDE=""
+[ -r "$DOTFILES_DIR/local/cursor.conf" ] &&
+    CURSOR_THEME="$(sed -nE 's/^[^#]*xcursor_theme[[:space:]]+([^[:space:]]+).*/\1/p' \
+        "$DOTFILES_DIR/local/cursor.conf" | head -n 1)"
+[ -r "$DOTFILES_DIR/local/cursor.conf" ] &&
+    CURSOR_SIZE_OVERRIDE="$(sed -nE 's/^[^#]*xcursor_theme[[:space:]]+[^[:space:]]+[[:space:]]+([0-9]+).*/\1/p' \
+        "$DOTFILES_DIR/local/cursor.conf" | head -n 1)"
 [ -n "$CURSOR_THEME" ] || CURSOR_THEME="Notwaita-Gray"
 
 # per-output scale overrides. The ratl display dialog writes local/display.conf;
@@ -296,6 +303,10 @@ fi
 [ "$bar_height" -gt 0 ] || bar_height=$(round "$(calc "$REF_BAR_PX * $max_height / $REF_HEIGHT")")
 [ "$bar_font" -gt 0 ]   || bar_font=$(round "$(calc "$REF_FONT_PX * $max_height / $REF_HEIGHT")")
 [ "$cursor_size" -gt 0 ] || cursor_size=$REF_CURSOR_PX
+case "$CURSOR_SIZE_OVERRIDE" in
+    ''|*[!0-9]*) ;;
+    *) [ "$CURSOR_SIZE_OVERRIDE" -lt 8 ] || [ "$CURSOR_SIZE_OVERRIDE" -gt 96 ] || cursor_size=$CURSOR_SIZE_OVERRIDE ;;
+esac
 # ============================================================
 # render yambar config
 # ============================================================
@@ -305,9 +316,12 @@ printf 'ui sizing: bar %dpx, font %dpx, cursor %dpx\n' \
 
 if [ -f "$YAMBAR_SRC" ]; then
     mkdir -p "${YAMBAR_OUT%/*}"
+    clock_format="%H:%M"
+    [ -r "$DOTFILES_DIR/local/clock-format" ] && clock_format=$(cat "$DOTFILES_DIR/local/clock-format")
     sed -E \
         -e "s/^([[:space:]]*height:[[:space:]]*)[0-9]+/\1$bar_height/" \
         -e "s/pixelsize=[0-9]+/pixelsize=$bar_font/" \
+        -e "s/^([[:space:]]*time-format:[[:space:]]*).*/\1\"$clock_format\"/" \
         "$YAMBAR_SRC" > "${YAMBAR_OUT}.new" \
         && mv "${YAMBAR_OUT}.new" "$YAMBAR_OUT"
 else

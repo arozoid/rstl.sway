@@ -46,6 +46,9 @@ if [ ! -f "$MARKER" ]; then
         fi
     fi
 
+    mkdir -p "$CFG/local"
+    [ -e "$CFG/local/default-apps.conf" ] || : > "$CFG/local/default-apps.conf"
+
     # -----------------------------------------------------------------------
     # 2. symlink the config directories to their expected paths
     # -----------------------------------------------------------------------

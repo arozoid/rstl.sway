@@ -1,0 +1,115 @@
+#!/bin/sh
+# rstl-tune - Ratl settings for the rstl.sway desktop and system.
+#
+# Usage:
+#   rstl-tune                  open settings
+#   rstl-tune update [options] update this installation
+#   rstl-tune --help           show this help
+
+set -u
+
+DOTFILES_DIR="${RSTL_SWAY_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/rstl.sway}"
+. "$DOTFILES_DIR/ratl/lib.sh"
+settings_need_jq
+
+usage() {
+    sed -n '2,$ { /^#/!q; s/^#[[:space:]]\{0,1\}//p; }' "$0"
+}
+
+run_category() {
+    case "$1" in
+        display|input|power|keys)
+            RSTL_TUNE_PAGE="$1" "$DOTFILES_DIR/ratl/rstl-$1" ;;
+        brightness|peripherals|appearance|autostart|apps|services|time|notifications|lock)
+            RSTL_TUNE_PAGE="$1" "$DOTFILES_DIR/ratl/pages/$1" ;;
+        updates) RSTL_TUNE_PAGE=updates "$DOTFILES_DIR/bin/update.sh" ;;
+    esac
+}
+
+case "${1:-}" in
+    --help|-h) usage; exit 0 ;;
+    update) shift; exec "$DOTFILES_DIR/bin/update.sh" "$@" ;;
+    display|brightness|input|peripherals|power|appearance|keys|autostart|apps|services|time|updates|notifications|lock)
+        settings_need_tty "$@"; next_category="$1"; open_menu=0 ;;
+    "") next_category=""; open_menu=1 ;;
+    *) printf 'rstl-tune: unknown category: %s\n' "$1" >&2; usage >&2; exit 2 ;;
+esac
+
+settings_need_tty "$@"
+RSTL_TUNE_NEXT_FILE=$(mktemp "${TMPDIR:-/tmp}/rstl-tune-next.XXXXXX") || exit 1
+export RSTL_TUNE_NEXT_FILE
+trap 'rm -f "$RSTL_TUNE_NEXT_FILE"' 0
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+while :; do
+    if [ -z "$next_category" ]; then
+        [ "$open_menu" = 1 ] || exit 0
+        dialog=$(jq -n '{
+            fullscreen: true,
+            padding: 1,
+            initial_focus: "__ratl_search_tune-menu",
+            children: [{
+                type: "row",
+                gap: 0,
+                children: [
+                    {
+                        type: "box",
+                        id: "tune-menu",
+                        title: "categories",
+                        search: "fuzzy",
+                        width: 28,
+                        border: "none",
+                        padding: 1,
+                        direction: "column",
+                        style: {bg:"#1f2420"},
+                        children: [{
+                            type: "radio",
+                            id: "category",
+                            activation: "enter",
+                            exit_on_enter: true,
+                            start_unselected: true,
+                            options: [
+                                {label:"Display",value:"display"},
+                                {label:"Brightness",value:"brightness"},
+                                {label:"Input devices",value:"input"},
+                                {label:"Peripherals",value:"peripherals"},
+                                {label:"Power management",value:"power"},
+                                {label:"Appearance",value:"appearance"},
+                                {label:"Keybinds",value:"keys"},
+                                {label:"Autostart",value:"autostart"},
+                                {label:"Default apps",value:"apps"},
+                                {label:"Services",value:"services"},
+                                {label:"Time / clock",value:"time"},
+                                {label:"Updates",value:"updates"},
+                                {label:"Notifications",value:"notifications"},
+                                {label:"Lock screen",value:"lock"}
+                            ],
+                            selected: 0,
+                            style: {fg:"#d0d5d1"}
+                        }]
+                    },
+                    {
+                        type: "box",
+                        border: "none",
+                        padding: 2,
+                        direction: "column",
+                        style: {bg:"#171a18"},
+                        children: [
+                            {type:"label",text:"rstl-tune",style:{fg:"#83b394",bold:true}},
+                            {type:"label",text:"select a category. type to filter, or use the arrow keys.",style:{fg:"#659b75"}}
+                        ]
+                    }
+                ]
+            }],
+            buttons: [{label:"Quit",action:"cancel"}]
+        }')
+        result=$(ratl_run "$dialog") || exit 0
+        category=$(printf '%s' "$result" | jq -r '.values.category // empty')
+        [ -n "$category" ] || exit 0
+        next_category="$category"
+    fi
+    : > "$RSTL_TUNE_NEXT_FILE"
+    run_category "$next_category" || true
+    next_category=$(cat "$RSTL_TUNE_NEXT_FILE")
+done

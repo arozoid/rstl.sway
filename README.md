@@ -97,7 +97,7 @@ distribution's example configs into `~/.config/pipewire/pipewire.conf.d`.
 ### updating
 
 ```bash
-rstl update.sh
+rstl-tune update
 ```
 
 updates packages and dotfiles, then reapplies the installed edition. `--runit` /
@@ -105,20 +105,26 @@ updates packages and dotfiles, then reapplies the installed edition. `--runit` /
 program, firefox, distribution, init) is read from `.rstl-edition`, which the
 installers rewrite on every run.
 
-use `--help` to see additional options.
+`rstl` is deprecated. Its update form remains as a compatibility alias, but new
+installs and documentation use `rstl-tune update`. Use `--help` to see updater
+options.
 
-### the rstl command
+### rstl-tune
 
-`rstl` provides access to all scripts in `bin/`.
+`rstl-tune` opens the Ratl settings app. Its dark green sidebar groups display,
+brightness, input devices, peripherals, power, appearance, keybinds, autostart,
+default apps, services, time and clock, updates, notifications, and lock screen
+settings. Radio choices preview while you move the terminal cursor and open a
+section when you press Enter. It can also open a section directly, for example
+`rstl-tune input`.
 
-```bash
-rstl install --yes
-rstl update.sh
-```
+Run the updater from the app or with `rstl-tune update`.
 
-running `rstl` without arguments opens an interactive script picker. the
-deprecated ratl settings tools in `ratl/` are not listed there, but still run by
-name (`rstl rstl-settings`) until the replacement settings suite lands.
+Sway shortcuts are grouped in `sway/config.d/50-keybindings.conf`; terminal and
+launcher defaults are in `sway/config.d/05-default-apps.conf`. Personal choices
+made in rstl-tune are stored in `local/` and survive installer updates. The old
+`rstl` script command remains temporarily for compatibility with existing
+install instructions and scripts.
 
 ### building isos
 
@@ -146,12 +152,14 @@ sway configuration is stored in `sway/`.
 
 | file                          | description                        |
 | ----------------------------- | ---------------------------------- |
-| `config`                      | main configuration and keybindings |
+| `config`                      | main configuration and window rules |
+| `config.d/05-default-apps.conf` | terminal and launcher defaults    |
 | `config.d/10-appearance.conf` | appearance and window borders      |
 | `config.d/20-cursor.conf`     | cursor theme                       |
 | `config.d/25-displays.conf`   | display configuration              |
 | `config.d/30-input.conf`      | keyboard and pointer settings      |
 | `config.d/40-autostart.conf`  | startup applications               |
+| `config.d/50-keybindings.conf` | Sway shortcuts                    |
 
 custom configuration can be added through additional files in `config.d/`.
 

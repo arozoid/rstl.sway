@@ -1,42 +1,22 @@
 # sway config for rstl.sway
 #
-# This file holds the parts that are not settings: the modifier, the helper
-# variables, the keybindings, the window rules and the session bindings.
+# This file holds the modifier and window rules. Keybindings and default apps
+# live in config.d so rstl-tune can update them.
 #
-# Everything you would normally want to change lives in config.d/, one file per
-# topic, included at the bottom of this file in name order:
+# The config.d files are included at the bottom in name order:
 #
-#   10-appearance   borders, gaps, client colors
-#   20-cursor       cursor theme
-#   25-displays     per-output settings (scale is computed, see the file)
-#   30-input        mouse and focus behavior
-#   40-autostart    what runs at login and on every reload
+#   05-default-apps  terminal and application launcher
+#   10-appearance    window borders and colors
+#   20-cursor        cursor theme
+#   25-displays      output configuration
+#   30-input         pointer defaults
+#   40-autostart     startup applications
+#   50-keybindings   Sway shortcuts
 #
-# config.d/ belongs to you: add a file or edit one of these. Everything in it
-# comes straight from the repository - the installers purge the directory and
-# copy it again on every install, so what you want to keep belongs in git.
-#
-# local/ is the opposite: the installers leave it alone. The ratl settings
-# tools (win+comma, or `rstl rstl-settings`) live in ratl/ and write their
-# generated overrides to local/; the include at the bottom gives them the last
-# word. Those tools are deprecated but kept working until the replacement
-# settings suite lands.
+# rstl-tune stores per-user overrides in local/, which installers preserve.
 
 ### modifier
 set $mod Mod4 
-
-### terminal / launcher
-set $term ~/.config/rstl.sway/scripts/foot-smart.sh
-set $menu rstl-pick
-set $settings ~/.config/rstl.sway/ratl/rstl-settings
-
-bindsym $mod+Return exec $term
-bindsym $mod+d exec rofi -show drun 
-bindsym $mod+o exec $term --app-id=rstl-pick -e $menu
-bindsym $mod+comma exec $term --app-id=rstl-settings -e $settings
-bindsym $mod+Backspace exec ~/.config/rstl.sway/rofi/powermenu/rstl-powermenu.sh
-bindsym $mod+Escape exec ~/.config/rstl.sway/scripts/lock.sh
-bindsym $mod+c exec $term --app-id=calpopup sh -c '~/.config/rstl.sway/scripts/ecal.sh; sleep 500'
 
 ### window rules
 for_window [app_id="termfilechooser"] floating enable, resize set width 1000 px height 600 px, move position center
@@ -52,143 +32,16 @@ for_window [app_id="rstl-pick"] border pixel 0
 for_window [app_id="rstl-pick"] move position center
 for_window [app_id="rstl-pick"] resize set width 750 px height 550 px
 
-for_window [app_id="rstl-settings"] floating enable
-for_window [app_id="rstl-settings"] border pixel 1
-for_window [app_id="rstl-settings"] move position center
-for_window [app_id="rstl-settings"] resize set width 950 px height 700 px
-
-### session
-bindsym $mod+Shift+q kill
-bindsym $mod+Shift+e exec swaymsg exit
-bindsym $mod+Shift+c reload
-
-### focus
-bindsym $mod+h focus left
-bindsym $mod+j focus down
-bindsym $mod+k focus up
-bindsym $mod+l focus right
-
-bindsym $mod+Left focus left
-bindsym $mod+Down focus down
-bindsym $mod+Up focus up
-bindsym $mod+Right focus right
-
-### move windows
-bindsym $mod+Shift+h move left
-bindsym $mod+Shift+j move down
-bindsym $mod+Shift+k move up
-bindsym $mod+Shift+l move right
-
-bindsym $mod+Shift+Left move left
-bindsym $mod+Shift+Down move down
-bindsym $mod+Shift+Up move up
-bindsym $mod+Shift+Right move right
-
-### window state
-bindsym $mod+space floating toggle
-bindsym $mod+f fullscreen toggle
-bindsym $mod+m layout toggle split
-bindsym $mod+Tab workspace back_and_forth
-
-### workspaces
-set $ws1 "1"
-set $ws2 "2"
-set $ws3 "3"
-set $ws4 "4"
-set $ws5 "5"
-set $ws6 "6"
-set $ws7 "7"
-set $ws8 "8"
-set $ws9 "9"
-
-bindsym $mod+1 workspace $ws1
-bindsym $mod+2 workspace $ws2
-bindsym $mod+3 workspace $ws3
-bindsym $mod+4 workspace $ws4
-bindsym $mod+5 workspace $ws5
-bindsym $mod+6 workspace $ws6
-bindsym $mod+7 workspace $ws7
-bindsym $mod+8 workspace $ws8
-bindsym $mod+9 workspace $ws9
-
-### move windows to workspaces
-bindsym $mod+Shift+1 move container to workspace $ws1; workspace $ws1
-bindsym $mod+Shift+2 move container to workspace $ws2; workspace $ws2
-bindsym $mod+Shift+3 move container to workspace $ws3; workspace $ws3
-bindsym $mod+Shift+4 move container to workspace $ws4; workspace $ws4
-bindsym $mod+Shift+5 move container to workspace $ws5; workspace $ws5
-bindsym $mod+Shift+6 move container to workspace $ws6; workspace $ws6
-bindsym $mod+Shift+7 move container to workspace $ws7; workspace $ws7
-bindsym $mod+Shift+8 move container to workspace $ws8; workspace $ws8
-bindsym $mod+Shift+9 move container to workspace $ws9; workspace $ws9
-
-### workspace navigation
-bindsym $mod+Ctrl+Left workspace prev
-bindsym $mod+Ctrl+Right workspace next
-
-### layout
-bindsym $mod+s layout toggle split
-bindsym $mod+w layout tabbed
-bindsym $mod+e layout toggle split
-# moves focus between the tiled and floating layers, so you can hop from the
-# window you were tiling to a floating dialog without reaching for the mouse.
-# not a keymap variant: $mod+space already flips the focused window itself.
-bindsym $mod+Shift+space focus mode_toggle
-
-### resize mode
-mode "resize" {
-    bindsym h resize shrink width 20 px
-    bindsym j resize grow height 20 px
-    bindsym k resize shrink height 20 px
-    bindsym l resize grow width 20 px
-
-    bindsym Left resize shrink width 20 px
-    bindsym Down resize grow height 20 px
-    bindsym Up resize shrink height 20 px
-    bindsym Right resize grow width 20 px
-
-    bindsym Return mode "default"
-    bindsym Escape mode "default"
-    bindsym $mod+r mode "default"
-}
-
-bindsym $mod+r mode "resize"
-
-### media / hardware keys
-bindsym XF86AudioRaiseVolume exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+ --limit 1.5
-bindsym XF86AudioLowerVolume exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-
-bindsym XF86AudioMute exec wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
-bindsym Shift+XF86AudioMute exec wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle
-bindsym XF86AudioMicMute exec wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle
-
-bindsym XF86MonBrightnessUp exec brightnessctl set 5%+
-bindsym XF86MonBrightnessDown exec brightnessctl set 5%-
-bindsym Shift+XF86MonBrightnessUp exec brightnessctl set 100%
-bindsym Shift+XF86MonBrightnessDown exec brightnessctl set 1%
-
-bindsym XF86AudioPlay exec playerctl play-pause
-bindsym XF86AudioNext exec playerctl next
-bindsym XF86AudioPrev exec playerctl previous
-bindsym XF86AudioStop exec playerctl stop
-
-bindsym XF86TouchpadToggle exec swaymsg input type:touchpad events toggle
-bindsym XF86WLAN exec nmcli radio wifi toggle
-bindsym XF86RFKill exec rfkill toggle wlan
-bindsym XF86Bluetooth exec rfkill toggle bluetooth
-
-### displays
-# toggle ALL outputs off (headless session), then back on, restoring
-# each output's mode/scale and the workspace that lived on it
-bindsym $mod+Shift+o exec ~/.config/rstl.sway/scripts/toggle-monitors.sh
-
-### screenshots
-bindsym $mod+Shift+s exec grim -g "$(slurp)" - | tee "$HOME/Pictures/Screenshots/$(date +%Y-%m-%d_%H-%M-%S).png" | wl-copy 
+for_window [app_id="rstl-tune"] floating enable
+for_window [app_id="rstl-tune"] border pixel 1
+for_window [app_id="rstl-tune"] move position center
+for_window [app_id="rstl-tune"] resize set width 950 px height 700 px
 
 # ---------------------------------------------------------------------------
 # settings: included in name order, so a higher number wins over a lower one
 # ---------------------------------------------------------------------------
 include ~/.config/rstl.sway/sway/config.d/*.conf
 
-# settings written by the ratl dialogs (win+comma). Kept outside config.d so
+# settings written by rstl-tune. Kept outside config.d so
 # the installers do not purge them; they intentionally come last.
 include ~/.config/rstl.sway/local/*.conf

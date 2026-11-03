@@ -674,6 +674,8 @@ step_1() {
     mkdir -p "$DOTFILES_DIR"
     chmod +x "$DOTFILES_DIR"/scripts/*.sh "$DOTFILES_DIR"/bin/*.sh \
         "$DOTFILES_DIR"/ratl/rstl-* 2>/dev/null || true
+    chmod +x "$DOTFILES_DIR"/ratl/pages/* 2>/dev/null || true
+    chmod +x "$DOTFILES_DIR"/bin/rstl-tune
 
     # record which flavor (and program) owns this dotfiles dir; bin/update.sh
     # reads it back to know what to re-apply
@@ -692,11 +694,14 @@ EOF
     fi
 
     # the `rstl` wrapper: run any script in bin/ or ratl/ by name
-    # (rstl install --yes, rstl rstl-settings). Installed system-wide so it
-    # works from any directory.
+    # Install rstl-tune as the settings and update command. Keep rstl as a
+    # deprecated forwarding shim for older scripts and commands.
     if [ -f "$DOTFILES_DIR/bin/rstl" ]; then
         run_sudo install -Dm755 "$DOTFILES_DIR/bin/rstl" /usr/local/bin/rstl
-        echo "installed the rstl wrapper (/usr/local/bin/rstl)"
+    run_sudo install -Dm755 "$DOTFILES_DIR/bin/rstl-tune" /usr/local/bin/rstl-tune
+    mkdir -p "$DOTFILES_DIR/local"
+    [ -e "$DOTFILES_DIR/local/default-apps.conf" ] || : > "$DOTFILES_DIR/local/default-apps.conf"
+    echo "installed rstl-tune and the deprecated rstl compatibility command"
     fi
 }
 
