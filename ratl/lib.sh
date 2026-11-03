@@ -147,7 +147,8 @@ ratl_run() {
     settings_need_ratl
     json=$(printf '%s' "$1" | jq \
         --argjson theme "$RATL_THEME_JSON" \
-        --argjson symbols "$RATL_SYMBOLS_JSON" '
+        --argjson symbols "$RATL_SYMBOLS_JSON" \
+        --arg tune "${RSTL_TUNE_PAGE:-}" '
         # The settings UI is deliberately lowercase. Only display strings are
         # folded so values, paths, and IDs keep their original spelling.
         def lower_display:
@@ -171,7 +172,22 @@ ratl_run() {
             elif type == "array" then [.[] | lower_display]
             else .
             end;
+        def tune_layout:
+            if type == "object" then
+                with_entries(.value |= tune_layout)
+                | if .type? == "box" then
+                    if .border == "left" then . else .border = "none" end
+                  elif .type? == "select" then
+                    .type = "radio"
+                    | .navigation = (.navigation // "options_then_focus")
+                    | .activation = "enter"
+                    | .start_unselected = false
+                  else . end
+            elif type == "array" then map(tune_layout)
+            else .
+            end;
         lower_display
+        | if $tune != "" then tune_layout | .fullscreen = true | .padding = 0 | .enter_submits = false | .search_shortcut = "/" else . end
         | . + { theme: (.theme // $theme), symbols: (.symbols // $symbols) }') || return 1
     "$RATL_BIN" --json "$json"
 }
@@ -199,7 +215,9 @@ ratl_page() {
             {label:"Lock screen",value:"lock"}
           ] as $pages
         | .fullscreen = true
-        | .padding = 1
+        | .padding = 0
+        | .enter_submits = false
+        | .search_shortcut = "/"
         | .initial_focus = "__ratl_search_tune-menu"
         | .children = [{
             type:"row",
@@ -212,6 +230,7 @@ ratl_page() {
                 children:[{
                   type:"radio", id:"__rstl_tune_navigation",
                   activation:"enter",
+                  navigation:"options_then_focus",
                   exit_on_enter:true,
                   start_unselected:false,
                   options:$pages,
@@ -220,7 +239,7 @@ ratl_page() {
                 }]
               },
               {
-                type:"box", border:"none", padding:2, direction:"column",
+                type:"box", border:"left", padding:2, direction:"column",
                 style:{bg:"#171a18"},
                 children: ([{
                   type:"label",

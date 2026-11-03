@@ -15,15 +15,24 @@ valid_line() {
 brightness_page() {
     settings_need_tty
     settings_have brightnessctl || { ratl_message "Brightness" "Install brightnessctl to control display brightness."; return 1; }
-    current=$(brightnessctl -m 2>/dev/null | awk -F, 'NR == 1 { gsub(/%/, "", $4); print $4 }')
-    case "$current" in ''|*[!0-9]*) current=50 ;; esac
-    [ "$current" -lt 1 ] && current=1
-    [ "$current" -gt 100 ] && current=100
-    dialog=$(jq -n --argjson value "$current" '{title:"Brightness",width:72,children:[{type:"label",text:"Set the active backlight level."},{type:"slider",id:"level",label:"Brightness (%)",min:1,max:100,step:1,value:$value}],buttons:[{label:"Apply",action:"submit",kind:"primary"},{label:"Cancel",action:"cancel"}]}')
+    levels=$(brightnessctl -m 2>/dev/null | awk -F, 'NR == 1 { print $3, $5 }')
+    current=${levels%% *}
+    maximum=${levels#* }
+    case "$current:$maximum" in
+        *[!0-9:]*|:|*:|''|*:0)
+            ratl_message "Brightness" "Could not read the active backlight level."
+            return 1
+            ;;
+    esac
+    if [ "$current" -gt "$maximum" ]; then
+        ratl_message "Brightness" "The active backlight reported an invalid level."
+        return 1
+    fi
+    dialog=$(jq -n --argjson value "$current" --argjson maximum "$maximum" '{title:"Brightness",width:72,children:[{type:"label",text:"Set the active backlight level."},{type:"slider",id:"level",label:"Brightness",min:0,max:$maximum,step:1,value:$value}],buttons:[{label:"Apply",action:"submit",kind:"primary"},{label:"Cancel",action:"cancel"}]}')
     result=$(ratl_page "$dialog") || return 0
-    value=$(printf '%s' "$result" | jq -r '.values.level // 50')
+    value=$(printf '%s' "$result" | jq -er '.values.level')
     case "$value" in ''|*[!0-9]*) return 1 ;; esac
-    brightnessctl set "${value}%" >/dev/null 2>&1 || ratl_message "Brightness" "Could not set brightness. Check backlight permissions."
+    brightnessctl set "$value" >/dev/null 2>&1 || ratl_message "Brightness" "Could not set brightness. Check backlight permissions."
 }
 
 peripherals_page() {
@@ -173,4 +182,3 @@ lock_page() {
         printf 'indicator\n'
     } > "$RSTL_LOCAL_DIR/lock"
 }
-

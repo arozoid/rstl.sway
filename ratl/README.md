@@ -1,25 +1,18 @@
 # ratl settings pages
 
-`bin/rstl-tune` is the Ratl settings frontend. It presents the categories in a
-dark green sidebar next to each settings panel. Radio navigation previews a
-category while moving; press Enter to commit and open it. Other controls use
-their normal keyboard and mouse interactions.
+`bin/rstl-tune` opens the `ratl` settings interface, with the available categories listed in a dark green sidebar. Moving through the list previews each category; pressing Enter opens the selected page. Settings within a page can be changed using the usual keyboard and mouse controls.
 
 | script | what it changes |
 | --- | --- |
-| `rstl-settings` | legacy menu retained for older shortcuts |
+| `rstl-settings` | older settings menu, kept for existing shortcuts |
 | `rstl-display` | output mode, scale and transform |
-| `rstl-wallpaper` | wallpaper or solid colour, per output or for all outputs |
-| `rstl-input` | keyboard layout/repeat and pointer/touchpad options |
-| `rstl-keys` | top-level sway keybindings and new shortcuts |
-| `rstl-power` | lock/blank/suspend timers, lid action and power profile |
+| `rstl-wallpaper` | wallpaper and solid colour, applied per output or across all outputs |
+| `rstl-input` | keyboard layout and repeat rate, plus pointer and touchpad settings |
+| `rstl-keys` | top-level Sway keybindings and additional shortcuts |
+| `rstl-power` | lock, blank and suspend timers, lid action and power profile |
 | `rstl-changes` | merge a FRUGAL RAM overlay into the persistent profile |
-| `pages/<category>` | launch each standalone settings category |
+| `pages/<category>` | standalone launcher for each settings category |
 
-`lib.sh` provides Ratl's shared theme, terminal guard, dialog wrappers, and
-system helpers. `pages-common.sh` contains helpers for the smaller category
-launchers under `pages/`; the display, input, keybind, power, and wallpaper
-pages remain standalone scripts.
+`lib.sh` holds the shared bits used across the pages: Ratl's theme, terminal checks, dialog wrappers and system helpers. The smaller launchers under `pages/` use `pages-common.sh` for their common setup. Display, input, keybind, power and wallpaper each have their own scripts instead.
 
-The installers copy this directory with the settings scripts. Generated user
-state belongs in `../local/`, which they leave alone.
+The installers copy this directory alongside the settings scripts. Anything generated for an individual user goes in `../local/`; the installers leave that directory untouched.

@@ -47,7 +47,9 @@ while :; do
         [ "$open_menu" = 1 ] || exit 0
         dialog=$(jq -n '{
             fullscreen: true,
-            padding: 1,
+            padding: 0,
+            enter_submits: false,
+            search_shortcut: "/",
             initial_focus: "__ratl_search_tune-menu",
             children: [{
                 type: "row",
@@ -67,6 +69,7 @@ while :; do
                             type: "radio",
                             id: "category",
                             activation: "enter",
+                            navigation: "options_then_focus",
                             exit_on_enter: true,
                             start_unselected: true,
                             options: [
@@ -91,7 +94,7 @@ while :; do
                     },
                     {
                         type: "box",
-                        border: "none",
+                        border: "left",
                         padding: 2,
                         direction: "column",
                         style: {bg:"#171a18"},

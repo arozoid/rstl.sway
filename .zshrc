@@ -599,3 +599,7 @@ fi
 # opencode
 export PATH=/home/rustle/.opencode/bin:$PATH
 . "/home/rustle/.deno/env"
+
+
+# Added by Antigravity CLI installer
+export PATH="/home/rustle/.local/bin:$PATH"

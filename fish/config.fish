@@ -147,3 +147,7 @@ export LESS=-R
 export LESSUTFCHARDEF=e000-e09f:w,e0a0-e0bf:p,e0c0-f8ff:w,f0001-fffff:w
 
 
+
+
+# Added by Antigravity CLI installer
+set -gx PATH "/home/rustle/.local/bin" $PATH
