@@ -17,6 +17,8 @@ brightness_page() {
     settings_have brightnessctl || { ratl_message "Brightness" "Install brightnessctl to control display brightness."; return 1; }
     current=$(brightnessctl -m 2>/dev/null | awk -F, 'NR == 1 { gsub(/%/, "", $4); print $4 }')
     case "$current" in ''|*[!0-9]*) current=50 ;; esac
+    [ "$current" -lt 1 ] && current=1
+    [ "$current" -gt 100 ] && current=100
     dialog=$(jq -n --argjson value "$current" '{title:"Brightness",width:72,children:[{type:"label",text:"Set the active backlight level."},{type:"slider",id:"level",label:"Brightness (%)",min:1,max:100,step:1,value:$value}],buttons:[{label:"Apply",action:"submit",kind:"primary"},{label:"Cancel",action:"cancel"}]}')
     result=$(ratl_page "$dialog") || return 0
     value=$(printf '%s' "$result" | jq -r '.values.level // 50')
