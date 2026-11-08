@@ -76,6 +76,10 @@ if [ "$RSTL_ROOT" -eq 1 ] && [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+# Ensure Pictures/Wallpapers and Pictures/Screenshots exist
+mkdir -p ~/Pictures/Wallpapers
+mkdir -p ~/Pictures/Screenshots
+
 # Which distribution this is. The package manager is the reliable signal: a
 # chroot/rootfs has no /etc/os-release of its own, but it does have the package
 # manager the build installed. Same order as step_2 (xbps, dnf, pacman).

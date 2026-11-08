@@ -51,7 +51,6 @@ eza
 zoxide
 jq
 fastfetch
-neovim
 git
 rsync
 curl
@@ -95,6 +94,7 @@ zsh-auto-notify
 power-profiles-daemon
 
 #@program:vim
+neovim
 superfile
 
 #@program:mouse

@@ -69,6 +69,10 @@ if [ "$RSTL_ROOT" -eq 1 ] && [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
+# Ensure Pictures/Wallpapers and Pictures/Screenshots exist
+mkdir -p ~/Pictures/Wallpapers
+mkdir -p ~/Pictures/Screenshots
+
 # Which distribution this is. The package manager is the reliable signal: a
 # chroot/rootfs has no /etc/os-release of its own, but it does have the package
 # manager the build installed. The same order as step_2 (xbps, dnf, pacman).
@@ -101,6 +105,7 @@ if [ "$RUNIT" -eq 1 ] && [ ! -d "$RUNIT_SV_DIR" ]; then
   echo "--runit needs runit ($RUNIT_SV_DIR is missing)" >&2
   exit 1
 fi
+
 
 # Which flavor this installer is, and which package list it reads. Both are
 # recorded in the edition indicator, so bin/update.sh can re-apply exactly this

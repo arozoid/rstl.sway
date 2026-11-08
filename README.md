@@ -1,8 +1,7 @@
 # rstl.sway · ~800 MiB distro
+> (pronounced "rustle dot sway")
 
-ultra lean & minimalistic sway desktop for arch linux, designed to make the most of your screen space while keeping essential desktop features and resource usage low, especially on laptops.
-
-
+ultra lean & minimalistic sway desktop for void, fedora, arch, and artix linux, designed to make the most of your screen space while keeping essential desktop features and resource usage low, especially on laptops.
 
 ## features
 
@@ -27,13 +26,7 @@ ultra lean & minimalistic sway desktop for arch linux, designed to make the most
 
 also includes multimedia codecs, polkit authentication, secret service and xdg portal integration.
 
-the full desktop adds approximately 800 MiB over a bare arch installation, with a total installed rootfs of around 1 GiB.
-
-ISO root filesystems are built as Artix Linux with runit. Their pacman
-configuration enables Artix repositories, Arch compatibility through
-`artix-archlinux-support`, ALHP x86-64-v2/v3/v4 repositories, and CachyOS
-generic/v3/v4 repositories. The ALHP mirrorlist is shipped with the build
-configuration; ALHP currently publishes x86-64 optimized repositories.
+the full desktop, excluding a browser, adds approximately 800 MiB over a completely bare arch installation, with a total installed rootfs of around 1 GiB. often, on an already set up operating system, it adds much less (often between 200-400 MiB).
 
 ## installation
 
@@ -51,9 +44,9 @@ all editions use the same dotfiles and can be switched between at any time.
 
 | edition | installer   | packages |
 | ------- | ----------- | -------- |
-| full    | `install`   | 58       |
-| minimal | `minstall`  | 58       |
-| base    | `binstall`  | 40       |
+| full    | `install`   | 58-64    |
+| minimal | `minstall`  | 58-62    |
+| base    | `binstall`  | 40-41    |
 
 - **full:** complete desktop with editor and extras.
 - **minimal:** desktop without editor and extras.
@@ -63,17 +56,17 @@ package lists can be edited directly in `packages-install*.txt`.
 
 all installers support:
 
-| flag                  | description            |
-| --------------------- | ---------------------- |
-| `--yes`, `-y`         | skip prompts           |
-| `--program vim/mouse` | select program edition |
-| `--firefox`           | install firefox        |
-| `--no-firefox`        | skip firefox           |
-| `--no-cleanup`        | skip package cleanup   |
-| `--root`              | install into `/root` (must already be root) |
+| flag                  | description                                                     |
+| --------------------- | --------------------------------------------------------------- |
+| `--yes`, `-y`         | skip prompts                                                    |
+| `--program vim/mouse` | select program edition                                          |
+| `--firefox`           | install firefox                                                 |
+| `--no-firefox`        | skip firefox                                                    |
+| `--no-cleanup`        | skip package cleanup                                            |
+| `--root`              | install into `/root` (must already be root)                     |
 | `--runit`             | manage services with runit instead of systemd (default on Void) |
-| `--systemd`           | manage services with systemd (overrides the Void default) |
-| `--help`              | show available options |
+| `--systemd`           | manage services with systemd (overrides the Void default)       |
+| `--help`              | show available options                                          |
 
 for root installations, pass `--root` to the installer itself:
 
@@ -111,20 +104,9 @@ options.
 
 ### rstl-tune
 
-`rstl-tune` opens the Ratl settings app. Its dark green sidebar groups display,
-brightness, input devices, peripherals, power, appearance, keybinds, autostart,
-default apps, services, time and clock, updates, notifications, and lock screen
-settings. Radio choices preview while you move the terminal cursor and open a
-section when you press Enter. It can also open a section directly, for example
-`rstl-tune input`.
+rstl-tune is the settings manager for rstl.sway, built on [ratl](https://github.com/arozoid/ratl).
 
-Run the updater from the app or with `rstl-tune update`.
-
-Sway shortcuts are grouped in `sway/config.d/50-keybindings.conf`; terminal and
-launcher defaults are in `sway/config.d/05-default-apps.conf`. Personal choices
-made in rstl-tune are stored in `local/` and survive installer updates. The old
-`rstl` script command remains temporarily for compatibility with existing
-install instructions and scripts.
+unfortunately, this is still a work in progress, and is only "half-working" at the moment.
 
 ### building isos
 
@@ -141,10 +123,7 @@ the build and removed before the image is assembled), and GitHub Actions caches
 that directory plus the container's package cache. the CachyOS signing key is
 imported from its keyring package instead of a keyserver.
 
-remaining cost: every program configuration still installs its own package
-layer, and each ISO job extracts the base rootfs once per configuration.
-CachyOS mirrorlist 404s are harmless while another mirror serves the database;
-they never bypass signature verification.
+these scripts can also be used standalone, for your own workflow! however, it is required to be running arch / artix linux, or have artix-bootstrap installed on your system.
 
 ## configuration
 
@@ -205,6 +184,7 @@ some packages are provided through [rstl.repo](https://github.com/arozoid/rstl.r
 | `win+lmb`                 | move window               |
 | `win+rmb`                 | resize window             |
 | `win+shift+c`             | reload sway configuration |
+| `win+shift+o`             | toggle all displays       |
 
 function keys `f1-f12` control brightness, volume and other hardware features.
 
@@ -213,4 +193,3 @@ function keys `f1-f12` control brightness, volume and other hardware features.
 - [melatonia/meloworld-dotfiles](https://github.com/melatonia/meloworld-dotfiles) for the startup sound and default wallpaper.
 - [firstrib](https://gitlab.com/firstrib/firstrib) for the initrd and frugal installation scripts.
 - [cachyos](https://cachyos.org) for the kernel and linux-cachyos-bore base used by [rstl.linuz](https://github.com/arozoid/rstl.linuz).
-- 
