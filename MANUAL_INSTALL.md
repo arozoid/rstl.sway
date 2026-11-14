@@ -171,6 +171,13 @@ sudo ln -s ~/.config/rstl.sway/greetd /etc/greetd
 
 ### post-install extras
 
+- ensure greetd has a PAM stack. Some packages only install `/usr/lib/pam.d/greetd`; if `/etc/pam.d/greetd` is missing, seed it first (otherwise tuigreet cannot log in):
+
+  ```bash
+  sudo install -Dm644 /usr/lib/pam.d/greetd /etc/pam.d/greetd
+  ```
+
+  if there is no vendor file either, create `/etc/pam.d/greetd` with `auth`, `account`, `password`, and `session` includes for your distribution's PAM stack (`system-auth`, or `common-*` on Debian-family systems). the installers do this automatically.
 - enable the login manager: `sudo systemctl enable greetd` (and mask `getty@tty1` so greetd takes over)
   - on Void/runit, link `/etc/sv/greetd` into `/var/service` instead and disable `agetty-tty1`. the installers do this for you; the same conversion applies to every service below (`dbus`, `NetworkManager`, `bluetoothd`, `cronie`, `wpa_supplicant`).
 - first-login hook: greetd/tuigreet starts sway through `rstl-first-login`, so install it once:

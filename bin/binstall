@@ -953,9 +953,38 @@ org.freedesktop.impl.portal.FileChooser=termfilechooser'
     echo "sway config patched for base"
 }
 
+ensure_greetd_pam() {
+    # Some greetd packages ship their PAM stack in /usr/lib/pam.d instead of
+    # creating /etc/pam.d/greetd. Without the file, greetd and tuigreet cannot
+    # authenticate, so seed it before editing it.
+    [ -e /etc/pam.d/greetd ] && return 0
+    if [ -e /usr/lib/pam.d/greetd ]; then
+        run_sudo install -Dm644 /usr/lib/pam.d/greetd /etc/pam.d/greetd
+        return 0
+    fi
+    if [ -e /etc/pam.d/system-auth ]; then
+        run_sudo sh -c 'cat > /etc/pam.d/greetd' <<'PAM'
+#%PAM-1.0
+auth       include      system-auth
+account    include      system-auth
+password   include      system-auth
+session    include      system-auth
+PAM
+    else
+        run_sudo sh -c 'cat > /etc/pam.d/greetd' <<'PAM'
+#%PAM-1.0
+auth       include      common-auth
+account    include      common-account
+password   include      common-password
+session    include      common-session
+PAM
+    fi
+}
+
 step_4() {
     header "greetd + tuigreet"
     [ -e /etc/greetd/config.toml ] || { echo "/etc/greetd/config.toml missing"; return 1; }
+    ensure_greetd_pam
 
     if ! id greeter >/dev/null 2>&1; then
         run_sudo useradd -r -M -G video -d /var/lib/greetd -s /usr/sbin/nologin greeter
